@@ -417,7 +417,16 @@ export function runSimulation(events: DoseEvent[], bodyWeightKG: number): Simula
 
     const startTime = sortedEvents[0].timeH - 24;
     const endTime = sortedEvents[sortedEvents.length - 1].timeH + (24 * 14);
-    const steps = 1000;
+
+    // Determine the finest time resolution needed based on the routes present.
+    // Sublingual peaks are narrow (~1–2 h wide) and need a small step to be
+    // captured accurately; slow routes like injection tolerate coarser grids.
+    const routes = new Set(sortedEvents.map(e => e.route));
+    const maxStepH = routes.has(Route.sublingual) ? 0.25
+        : routes.has(Route.oral) ? 0.5
+        : routes.has(Route.gel) ? 1.0
+        : 2.0;
+    const steps = Math.max(1000, Math.ceil((endTime - startTime) / maxStepH) + 1);
 
     const plasmaVolumeML_E2 = CorePK.vdPerKG * bodyWeightKG * 1000;
     const plasmaVolumeML_CPA = CPA_2COMP_PK.V1_per_kg * bodyWeightKG * 1000;
