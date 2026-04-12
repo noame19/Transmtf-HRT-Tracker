@@ -142,26 +142,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return refreshPromiseRef.current;
   }, [logout]);
 
-  // Initialize auth state from cookies
+  // Initialize auth state from cookies, with silent refresh fallback
   useEffect(() => {
     const storedAccessToken = getStoredValue(TOKEN_STORAGE_KEY);
     const storedUsername = getStoredValue(USERNAME_STORAGE_KEY);
+    const storedRefreshToken = getStoredValue(REFRESH_TOKEN_STORAGE_KEY);
 
     if (storedAccessToken && storedUsername) {
+      // Access token present — restore session immediately
       setAccessToken(storedAccessToken);
       setUser({ username: storedUsername });
       apiClient.setAccessToken(storedAccessToken);
+      setIsLoading(false);
+    } else if (storedRefreshToken && storedUsername) {
+      // No access token (expired / cleared) but refresh token exists — try silent refresh
+      // Keep isLoading=true until refresh completes so ProtectedRoute doesn't flash /login
+      apiClient.refreshToken({ refresh_token: storedRefreshToken }).then((response) => {
+        if (response.success && response.data) {
+          const { access_token, refresh_token } = response.data;
+          setAccessToken(access_token);
+          setUser({ username: storedUsername });
+          apiClient.setAccessToken(access_token);
+          setStoredValue(TOKEN_STORAGE_KEY, access_token);
+          setStoredValue(REFRESH_TOKEN_STORAGE_KEY, refresh_token);
+        } else {
+          // Refresh token also invalid — clear all stored tokens
+          clearStoredValue(TOKEN_STORAGE_KEY);
+          clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
+          clearStoredValue(USERNAME_STORAGE_KEY);
+        }
+        setIsLoading(false);
+      }).catch(() => {
+        // Network error during startup refresh — keep tokens, let user retry later
+        setIsLoading(false);
+      });
+    } else {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set refresh token callback
   useEffect(() => {
     apiClient.setRefreshTokenCallback(refreshAccessToken);
   }, [refreshAccessToken]);
 
-  // Set up token refresh interval
+  // Set up token refresh interval (every 50 minutes while tab is active)
   useEffect(() => {
     if (!accessToken) return;
 
@@ -172,6 +197,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => clearInterval(refreshInterval);
     // Only re-run when accessToken changes, not when refreshAccessToken changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken]);
+
+  // Re-validate session when the page becomes visible again (e.g. mobile app resume)
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Page was hidden (background / sleep) and is now active again.
+        // Proactively refresh the access token so that a stale JWT doesn't
+        // cause the very next API call to get a 401 and trigger a forced logout.
+        refreshAccessToken();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
