@@ -163,14 +163,16 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+    <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4"
+      style={{ background: `linear-gradient(135deg, var(--accent-50) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%)` }}>
       <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border border-gray-200">
+        <div className="rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-lg)' }}>
           <div className="text-center mb-5 sm:mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2" style={{ color: 'var(--text-primary)' }}>
               {t('login.title') || 'Sign In'}
             </h1>
-            <p className="text-sm sm:text-base text-gray-600">
+            <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
               {t('login.subtitle') || 'Welcome back to Transmtf HRT Tracker'}
             </p>
           </div>
@@ -246,7 +248,7 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gray-900 text-white py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+              className="w-full py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base text-white accent-bg-gradient btn-press"
             >
               {isLoading ? (t('login.loading') || 'Signing in...') : (t('login.submit') || 'Sign In')}
             </button>

@@ -77,32 +77,37 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
+        <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="import-modal-title"
-                className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300 safe-area-pb"
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up md:modal-spring md:animate-none safe-area-pb"
+                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
             >
                 <div className="flex justify-between items-center mb-6 shrink-0">
-                    <h3 id="import-modal-title" className="text-xl font-semibold text-gray-900">{t('import.title')}</h3>
-                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
-                        <X size={20} className="text-gray-500" aria-hidden="true" />
+                    <h3 id="import-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('import.title')}</h3>
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 rounded-full transition"
+                        style={{ background: 'var(--bg-card-hover)' }}>
+                        <X size={20} style={{ color: 'var(--text-secondary)' }} aria-hidden="true" />
                     </button>
                 </div>
 
-                <div className="flex p-1 bg-gray-100 rounded-xl mb-6 shrink-0">
+                <div className="flex p-1 rounded-xl mb-6 shrink-0" style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-secondary)' }}>
                     <button
                         onClick={() => setActiveTab('qr')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'qr' ? 'bg-white text-gray-900' : 'text-gray-500'}`}
+                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'qr' ? 'shadow-sm' : ''}`}
+                        style={activeTab === 'qr' ? { background: 'var(--bg-card)', color: 'var(--text-primary)' } : { color: 'var(--text-tertiary)' }}
                     >
                         <QrCode size={16} />
                         QR Code
                     </button>
                     <button
                         onClick={() => setActiveTab('json')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'json' ? 'bg-white text-gray-900' : 'text-gray-500'}`}
+                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'json' ? 'shadow-sm' : ''}`}
+                        style={activeTab === 'json' ? { background: 'var(--bg-card)', color: 'var(--text-primary)' } : { color: 'var(--text-tertiary)' }}
                     >
                         <Activity size={16} />
                         JSON
@@ -143,7 +148,7 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                                 <button
                                     onClick={handleTextImport}
                                     disabled={!text.trim()}
-                                    className="mt-2 w-full py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                    className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition accent-bg-gradient btn-press"
                                 >
                                     {t('drawer.import')}
                                 </button>

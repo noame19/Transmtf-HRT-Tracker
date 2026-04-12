@@ -3,6 +3,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppData } from '../contexts/AppDataContext';
+import { useTheme } from '../contexts/ThemeContext';
 import {
     Languages,
     Upload,
@@ -15,6 +16,9 @@ import {
     AtSign,
     BarChart2,
     Settings as SettingsIcon,
+    Palette,
+    Moon,
+    Sun,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,6 +33,8 @@ import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
 import StatisticsModal from '../components/StatisticsModal';
+import ThemePicker from '../components/ui/ThemePicker';
+import Toggle from '../components/ui/Toggle';
 import type { Lang } from '../i18n/translations';
 import flagCN from '../flag_svg/🇨🇳.svg';
 import flagTW from '../flag_svg/🇹🇼.svg';
@@ -54,6 +60,7 @@ const SettingsPage: React.FC = () => {
     const { showDialog } = useDialog();
     const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { events, setEvents, weight, setWeight, labResults, setLabResults } = useAppData();
+    const { isDark, setIsDark } = useTheme();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -312,28 +319,69 @@ const SettingsPage: React.FC = () => {
         });
     };
 
+    const sectionTitleClass = "px-1 text-xs font-bold uppercase tracking-wider";
+
     return (
         <div className="min-h-full px-4 py-6 md:px-6">
             <div className="mx-auto w-full max-w-2xl space-y-6">
-                <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
-                        <SettingsIcon size={24} className="text-pink-500" />
+                {/* Page title */}
+                <div className="rounded-2xl border p-5"
+                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+                    <h1 className="flex items-center gap-2 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                        <SettingsIcon size={24} style={{ color: 'var(--accent-500)' }} />
                         {t('nav.settings') || 'Settings'}
                     </h1>
                 </div>
 
+                {/* Appearance Section */}
                 <section className="space-y-2">
-                    <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.appearance') || 'Appearance'}
+                    </h2>
+                    <div className="rounded-2xl border p-5 space-y-5"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+                        {/* Theme Color */}
+                        <div>
+                            <div className="flex items-start gap-3 mb-4">
+                                <Palette size={20} style={{ color: 'var(--accent-500)' }} />
+                                <div>
+                                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('settings.theme.title')}</p>
+                                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('settings.theme.desc')}</p>
+                                </div>
+                            </div>
+                            <ThemePicker />
+                        </div>
+
+                        {/* Dark Mode */}
+                        <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-start gap-3">
+                                    {isDark ? <Moon size={20} style={{ color: 'var(--accent-500)' }} /> : <Sun size={20} style={{ color: 'var(--accent-500)' }} />}
+                                    <div>
+                                        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('settings.theme.dark_mode')}</p>
+                                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('settings.theme.dark_mode_desc')}</p>
+                                    </div>
+                                </div>
+                                <Toggle checked={isDark} onChange={setIsDark} />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Language Section */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.general') || 'General'}
                     </h2>
-                    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                    <div className="rounded-2xl border p-4"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
                         <div className="mb-3 flex items-start gap-3">
                             <Languages className="text-blue-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.lang')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.lang_hint')}</p>
+                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('drawer.lang')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.lang_hint')}</p>
                             </div>
-                            <div className="ml-auto text-xs font-bold text-gray-500">{lang.toUpperCase()}</div>
+                            <div className="ml-auto text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>{lang.toUpperCase()}</div>
                         </div>
                         <CustomSelect
                             value={lang}
@@ -343,23 +391,26 @@ const SettingsPage: React.FC = () => {
                     </div>
                 </section>
 
+                {/* Data Section */}
                 <section className="space-y-2">
-                    <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.data') || 'Data Management'}
                     </h2>
-                    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
+                    <div className="overflow-hidden rounded-2xl border divide-y"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)', divideColor: 'var(--border-secondary)' }}>
                         <button
                             onClick={() => setIsImportModalOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-teal-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <Upload className="text-teal-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('import.title')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.import_hint')}</p>
+                                <p className="text-sm font-bold">{t('import.title')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.import_hint')}</p>
                             </div>
                         </button>
-
-                        <div className="h-px bg-white/70" />
 
                         <button
                             onClick={() => {
@@ -369,24 +420,29 @@ const SettingsPage: React.FC = () => {
                                 }
                                 setIsExportModalOpen(true);
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-pink-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <Download className="text-pink-500" size={20} />
+                            <Download style={{ color: 'var(--accent-500)' }} size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('export.title')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.save_hint')}</p>
+                                <p className="text-sm font-bold">{t('export.title')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.save_hint')}</p>
                             </div>
                         </button>
 
-
                         <button
                             onClick={handleQuickExport}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-blue-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <Copy className="text-blue-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.export_quick')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.export_quick_hint')}</p>
+                                <p className="text-sm font-bold">{t('drawer.export_quick')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.export_quick_hint')}</p>
                             </div>
                         </button>
 
@@ -394,31 +450,37 @@ const SettingsPage: React.FC = () => {
                             onClick={handleClearAllEvents}
                             disabled={!events.length}
                             className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
-                                events.length ? 'hover:bg-red-50' : 'cursor-not-allowed bg-gray-50 opacity-60'
+                                events.length ? 'btn-press hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed opacity-60'
                             }`}
+                            style={{ color: 'var(--text-primary)' }}
                         >
                             <Trash2 className="text-red-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.clear')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.clear_confirm')}</p>
+                                <p className="text-sm font-bold">{t('drawer.clear')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.clear_confirm')}</p>
                             </div>
                         </button>
                     </div>
                 </section>
 
+                {/* About Section */}
                 <section className="space-y-2">
-                    <h2 className="px-1 text-xs font-bold uppercase tracking-wider text-gray-400">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.about') || 'About'}
                     </h2>
-                    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
+                    <div className="overflow-hidden rounded-2xl border divide-y"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)', divideColor: 'var(--border-secondary)' }}>
                         <button
                             onClick={() => setIsModelInfoOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-purple-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <Info className="text-purple-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.model_title')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.model_desc')}</p>
+                                <p className="text-sm font-bold">{t('drawer.model_title')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.model_desc')}</p>
                             </div>
                         </button>
 
@@ -428,12 +490,15 @@ const SettingsPage: React.FC = () => {
                                     window.open('https://github.com/TransmtfTeam/Transmtf-HRT-Tracker', '_blank');
                                 });
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-gray-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <Github className="text-gray-700" size={20} />
+                            <Github size={20} style={{ color: 'var(--text-secondary)' }} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.github')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.github_desc')}</p>
+                                <p className="text-sm font-bold">{t('drawer.github')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.github_desc')}</p>
                             </div>
                         </button>
 
@@ -443,41 +508,50 @@ const SettingsPage: React.FC = () => {
                                     window.open('https://x.com/axzamyzed', '_blank');
                                 });
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-gray-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <AtSign className="text-gray-700" size={20} />
+                            <AtSign size={20} style={{ color: 'var(--text-secondary)' }} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.contact')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.contact_desc')}</p>
+                                <p className="text-sm font-bold">{t('drawer.contact')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.contact_desc')}</p>
                             </div>
                         </button>
 
                         <button
                             onClick={() => setIsStatisticsOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-blue-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <BarChart2 className="text-blue-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('statistics.title')}</p>
-                                <p className="text-xs text-gray-500">{t('statistics.desc')}</p>
+                                <p className="text-sm font-bold">{t('statistics.title')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('statistics.desc')}</p>
                             </div>
                         </button>
 
                         <button
                             onClick={() => setIsDisclaimerOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-amber-50"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <AlertTriangle className="text-amber-500" size={20} />
                             <div>
-                                <p className="text-sm font-bold text-gray-900">{t('drawer.disclaimer')}</p>
-                                <p className="text-xs text-gray-500">{t('drawer.disclaimer_desc')}</p>
+                                <p className="text-sm font-bold">{t('drawer.disclaimer')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.disclaimer_desc')}</p>
                             </div>
                         </button>
                     </div>
                 </section>
 
                 <div className="pb-4 pt-2 text-center">
-                    <p className="text-xs font-medium text-gray-400">{APP_VERSION}</p>
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>{APP_VERSION}</p>
                 </div>
             </div>
 

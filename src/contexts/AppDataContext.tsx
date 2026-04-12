@@ -12,6 +12,8 @@ const PERSONAL_MODEL_KEY = 'hrt-personal-model';
 const APPLY_E2_LEARNING_TO_CPA_KEY = 'hrt-apply-e2-learning-to-cpa';
 const CALIBRATION_MODEL_KEY = 'hrt-calibration-model';
 const APPLY_CPA_INHIBITION_TO_E2_KEY = 'hrt-apply-cpa-inhibition-to-e2';
+const THEME_COLOR_KEY = 'hrt-theme-color';
+const DARK_MODE_KEY = 'hrt-dark-mode';
 
 interface SimCI {
     timeH: number[];
@@ -196,7 +198,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
-        const hash = computeDataHash({ events, weight, labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2 });
+        const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
+        const darkModeRaw = localStorage.getItem('hrt-dark-mode');
+        const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
+        const hash = computeDataHash({ events, weight, labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode });
         localStorage.setItem('hrt-data-hash', hash);
     }, [events, weight, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2]);
 

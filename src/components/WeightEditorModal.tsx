@@ -31,50 +31,57 @@ const WeightEditorModal = ({ isOpen, onClose, currentWeight, onSave }: any) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
+        <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="weight-modal-title"
-                className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-xl p-6 md:p-8 animate-in slide-in-from-bottom duration-300 safe-area-pb"
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up md:modal-spring md:animate-none safe-area-pb"
+                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
             >
                 <div className="flex justify-between items-center mb-6">
-                    <h3 id="weight-modal-title" className="text-xl font-semibold text-gray-900">{t('modal.weight.title')}</h3>
+                    <h3 id="weight-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('modal.weight.title')}</h3>
                 </div>
-                
+
                 <div className="flex justify-center mb-8">
                     <div className="relative flex flex-col items-center">
-                        <input 
-                            type="number" 
+                        <input
+                            type="number"
                             inputMode="decimal"
                             value={weightStr}
                             onChange={(e) => setWeightStr(e.target.value)}
-                            className="text-5xl font-black text-pink-400 tabular-nums w-48 text-center bg-transparent border-b-2 border-pink-100 focus:border-pink-400 outline-none transition-colors pb-2"
+                            className="text-5xl font-black tabular-nums w-48 text-center bg-transparent border-b-2 outline-none transition-colors pb-2"
+                            style={{ color: 'var(--accent-400)', borderColor: 'var(--accent-200)' }}
+                            onFocus={e => e.target.style.borderColor = 'var(--accent-400)'}
+                            onBlur={e => e.target.style.borderColor = 'var(--accent-200)'}
                             placeholder="0.0"
                             autoFocus
                         />
-                        <div className="text-sm font-medium text-gray-400 mt-2">kg</div>
+                        <div className="text-sm font-medium mt-2" style={{ color: 'var(--text-tertiary)' }}>kg</div>
                     </div>
                 </div>
 
-                <div className="bg-blue-50 p-4 rounded-xl mb-6 flex gap-3 items-start">
-                    <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                    <p className="text-xs text-blue-700 leading-relaxed">
+                <div className="p-4 rounded-xl mb-6 flex gap-3 items-start"
+                    style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)' }}>
+                    <Info className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--accent-500)' }} />
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--accent-600)' }}>
                         {t('modal.weight.desc')}
                     </p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={onClose} className="flex-1 py-3.5 text-gray-600 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 transition">{t('btn.cancel')}</button>
+                    <button onClick={onClose} className="flex-1 py-3.5 font-bold rounded-xl btn-press transition"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}>{t('btn.cancel')}</button>
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
                         aria-busy={isSaving}
-                        className={`flex-1 py-3.5 bg-[#f6c4d7] text-white font-bold rounded-xl hover:bg-[#f3b4cb] transition ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`flex-1 py-3.5 text-white font-bold rounded-xl btn-press transition accent-bg-gradient ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (
                             <span className="flex items-center justify-center gap-2">
-                                <span className="w-4 h-4 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="accent-spinner" />
                                 {t('btn.save')}
                             </span>
                         ) : (

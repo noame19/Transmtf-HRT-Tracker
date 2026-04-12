@@ -41,19 +41,21 @@ const AnnouncementModal: React.FC = () => {
   return (
     <div
       className="fixed inset-0 z-[9998] flex items-center justify-center px-4 py-6 overflow-y-auto"
-      style={{ background: 'rgba(15,23,42,0.7)', backdropFilter: 'blur(8px)' }}
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) setVisible(false); }}
     >
       <div
-        className="relative w-full max-w-lg mx-auto my-auto bg-white rounded-3xl shadow-2xl overflow-hidden animate-announcement-in"
+        className="relative w-full max-w-lg mx-auto my-auto rounded-3xl overflow-hidden animate-announcement-in"
+        style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-pink-50 to-purple-50 border-b border-gray-100">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center gap-3 px-6 py-4 border-b"
+          style={{ background: `linear-gradient(135deg, var(--accent-50), var(--bg-card))`, borderColor: 'var(--border-secondary)' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 accent-bg-gradient">
             <Megaphone size={18} className="text-white" strokeWidth={2} />
           </div>
-          <h2 className="text-base font-bold text-gray-900 flex-1">公告 · Announcement</h2>
+          <h2 className="text-base font-bold flex-1" style={{ color: 'var(--text-primary)' }}>公告 · Announcement</h2>
           <button
             onClick={() => setVisible(false)}
             className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
@@ -70,10 +72,10 @@ const AnnouncementModal: React.FC = () => {
         />
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
+        <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'var(--border-secondary)' }}>
           <button
             onClick={() => setVisible(false)}
-            className="px-5 py-2 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-400 hover:to-purple-400 text-white text-sm font-medium rounded-xl transition shadow-sm shadow-pink-200"
+            className="px-5 py-2 text-white text-sm font-medium rounded-xl transition shadow-sm btn-press accent-bg-gradient"
           >
             知道了 · Got it
           </button>

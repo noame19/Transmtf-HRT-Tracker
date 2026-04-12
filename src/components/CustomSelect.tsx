@@ -120,13 +120,16 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                     aria-labelledby={labelId}
                     onClick={() => isOpen ? closeList() : openList()}
                     onKeyDown={handleButtonKeyDown}
-                    className="w-full p-4 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none flex items-center justify-between transition-all"
+                    className="w-full p-4 border rounded-xl focus:ring-2 outline-none flex items-center justify-between transition-all"
+                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
+                    onFocus={e => e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent-300)'}
+                    onBlur={e => e.currentTarget.style.boxShadow = 'none'}
                 >
                     <div className="flex items-center gap-2">
                         {selectedOption?.icon}
-                        <span className="font-medium text-gray-800">{selectedOption?.label || value}</span>
+                        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{selectedOption?.label || value}</span>
                     </div>
-                    <ChevronDown size={20} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={20} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--text-tertiary)' }} />
                 </button>
 
                 {isOpen && (
@@ -135,7 +138,8 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                         id={listboxId}
                         role="listbox"
                         aria-labelledby={labelId}
-                        className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-xl shadow-md z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+                        className="absolute top-full left-0 right-0 mt-2 border rounded-xl shadow-md z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
                     >
                         {options.map((opt, index) => (
                             <div
@@ -147,12 +151,16 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                                 onKeyDown={(e) => handleOptionKeyDown(e, index)}
                                 onMouseEnter={() => setFocusedIndex(index)}
                                 className={`w-full p-3 text-left flex items-center gap-2 cursor-pointer transition-colors outline-none
-                                    focus:ring-2 focus:ring-inset focus:ring-pink-300
-                                    ${opt.value === value ? 'bg-pink-50 text-pink-600 font-bold' : 'text-gray-700 hover:bg-pink-50'}`}
+                                    focus:ring-2 focus:ring-inset
+                                    ${opt.value === value ? 'font-bold' : 'hover:bg-[var(--accent-50)]'}`}
+                                style={{
+                                    color: opt.value === value ? 'var(--accent-500)' : 'var(--text-primary)',
+                                    background: opt.value === value ? 'var(--accent-50)' : undefined,
+                                }}
                             >
                                 {opt.icon}
                                 <span>{opt.label}</span>
-                                {opt.value === value && <div className="ml-auto w-2 h-2 rounded-full bg-pink-400" aria-hidden="true" />}
+                                {opt.value === value && <div className="ml-auto w-2 h-2 rounded-full" style={{ background: 'var(--accent-400)' }} aria-hidden="true" />}
                             </div>
                         ))}
                     </div>

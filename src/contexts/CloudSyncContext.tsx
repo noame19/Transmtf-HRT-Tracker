@@ -36,6 +36,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const calibrationModel = localStorage.getItem('hrt-calibration-model') || 'ekf';
     const applyE2Raw = localStorage.getItem('hrt-apply-e2-learning-to-cpa');
     const applyCPARaw = localStorage.getItem('hrt-apply-cpa-inhibition-to-e2');
+    const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
+    const darkModeRaw = localStorage.getItem('hrt-dark-mode');
 
     const storedLastModified = localStorage.getItem('hrt-last-modified');
     const parsedEvents = events ? JSON.parse(events) : [];
@@ -44,6 +46,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const resolvedLang = lang || 'en';
     const applyE2LearningToCPA = applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true';
     const applyCPAInhibitionToE2 = applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true';
+    const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
     const dataHash = computeDataHash({
       events: parsedEvents,
       weight: parsedWeight,
@@ -52,6 +55,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       calibrationModel,
       applyE2LearningToCPA,
       applyCPAInhibitionToE2,
+      themeColor,
+      darkMode,
     });
     localStorage.setItem('hrt-data-hash', dataHash);
 
@@ -63,6 +68,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       calibrationModel,
       applyE2LearningToCPA,
       applyCPAInhibitionToE2,
+      themeColor,
+      darkMode,
       lastModified: storedLastModified,
       dataHash,
     };
@@ -244,6 +251,12 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (data?.applyCPAInhibitionToE2 !== undefined) {
             localStorage.setItem('hrt-apply-cpa-inhibition-to-e2', data.applyCPAInhibitionToE2 ? '1' : '0');
           }
+          if (data?.themeColor) {
+            localStorage.setItem('hrt-theme-color', data.themeColor);
+          }
+          if (data?.darkMode !== undefined) {
+            localStorage.setItem('hrt-dark-mode', data.darkMode ? '1' : '0');
+          }
           if (data?.lastModified || fallbackTimestamp) {
             localStorage.setItem('hrt-last-modified', data?.lastModified || fallbackTimestamp || '');
           }
@@ -255,6 +268,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             calibrationModel: data?.calibrationModel || localData.calibrationModel,
             applyE2LearningToCPA: data?.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
             applyCPAInhibitionToE2: data?.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
+            themeColor: data?.themeColor || localData.themeColor,
+            darkMode: data?.darkMode ?? localData.darkMode,
           });
           localStorage.setItem('hrt-data-hash', dataHash);
 
@@ -405,7 +420,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (e.storageArea !== localStorage) {
         return;
       }
-      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2'];
+      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2', 'hrt-theme-color', 'hrt-dark-mode'];
       if (e.key && syncKeys.includes(e.key)) {
         triggerSync();
       }

@@ -458,21 +458,25 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
     return (
         <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
         >
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="dose-modal-title"
-                className="relative bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300"
+                className="relative rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-slide-up md:modal-spring md:animate-none"
+                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
             >
-                <div className="p-6 md:p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
-                    <h3 id="dose-modal-title" className="text-xl font-semibold text-gray-900">
+                <div className="p-6 md:p-8 border-b flex justify-between items-center shrink-0"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
+                    <h3 id="dose-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
                         {eventToEdit ? t('modal.dose.edit_title') : t('modal.dose.add_title')}
                     </h3>
-                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
-                        <X size={20} className="text-gray-500" />
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 rounded-full transition"
+                        style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}>
+                        <X size={20} />
                     </button>
                 </div>
 
@@ -594,7 +598,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                                     min="0"
                                                     step="0.001"
                                                     value={e2Dose} onChange={e => handleE2Change(e.target.value)}
-                                                    className="w-full p-4 bg-pink-50 border border-pink-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-bold text-pink-500 font-mono"
+                                                    className="w-full p-4 rounded-xl focus:ring-2 outline-none font-bold font-mono"
+                                                    style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)', color: 'var(--accent-500)' }}
                                                     placeholder="0.0"
                                                 />
                                             </div>
@@ -797,7 +802,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                             <button
                                 onClick={saveTemplate}
                                 disabled={!newTemplateName.trim()}
-                                className="px-3 py-2 bg-pink-500 text-white text-sm font-semibold rounded-lg hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                                className="px-3 py-2 text-white text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 accent-bg-gradient"
                             >
                                 <Check size={14} /> {t('template.confirm')}
                             </button>
@@ -805,7 +810,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     </div>
                 )}
 
-                <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-3 shrink-0 safe-area-pb">
+                <div className="p-6 border-t shrink-0 flex gap-3 safe-area-pb"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
                     {eventToEdit && (
                         <button
                             onClick={() => {
@@ -831,11 +837,11 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className={`flex-1 h-14 bg-pink-500 text-white text-lg font-bold rounded-xl hover:bg-pink-600 active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`flex-1 h-14 text-white text-lg font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 accent-bg-gradient ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (
                             <>
-                                <span className="w-4 h-4 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="accent-spinner" />
                                 <span>{t('btn.save')}</span>
                             </>
                         ) : (

@@ -8,10 +8,12 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200 p-4">
-            <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-lg animate-in slide-in-from-bottom duration-300 overflow-hidden">
-                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-900">{t('model.title')}</h3>
+        <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200 p-4"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+            <div className="rounded-3xl border w-full max-w-lg modal-spring overflow-hidden"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-lg)' }}>
+                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
+                    <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.title')}</h3>
                     <button
                         onClick={onClose}
                         className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition"
@@ -65,7 +67,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 <div className="px-6 pb-6 pt-4">
                     <button
                         onClick={onClose}
-                        className="w-full py-3 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition"
+                        className="w-full py-3 text-white text-sm font-bold rounded-xl btn-press transition accent-bg-gradient"
                     >
                         {t('btn.ok')}
                     </button>

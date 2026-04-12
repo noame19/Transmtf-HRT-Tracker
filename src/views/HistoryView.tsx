@@ -27,13 +27,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
   return (
     <div className="relative space-y-5 pt-6 pb-16">
       <div className="px-4">
-        <div className="w-full p-4 rounded-2xl bg-white flex items-center justify-between shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900 tracking-tight flex items-center gap-3">
-            <Activity size={22} className="text-[#f6c4d7]" /> {t('timeline.title')}
+        <div className="w-full p-4 rounded-2xl border flex items-center justify-between"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+          <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
+            style={{ color: 'var(--text-primary)' }}>
+            <Activity size={22} style={{ color: 'var(--accent-300)' }} /> {t('timeline.title')}
           </h2>
           <button
             onClick={onAddEvent}
-            className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl bg-gray-900 text-white text-sm font-bold shadow-sm hover:shadow-md transition"
+            className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
           >
             <Plus size={16} />
             <span>{t('btn.add')}</span>
@@ -42,51 +44,61 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
       </div>
 
       {Object.keys(groupedEvents).length === 0 && (
-        <div className="mx-4 text-center py-12 text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200 shadow-sm">
+        <div className="mx-4 text-center py-12 rounded-3xl border border-dashed"
+          style={{ color: 'var(--text-tertiary)', background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
           <p>{t('timeline.empty')}</p>
         </div>
       )}
 
       {Object.entries(groupedEvents).map(([date, items]) => (
-        <div key={date} className="relative mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="sticky top-0 bg-white/95 backdrop-blur py-3 px-4 z-0 flex items-center gap-2 border-b border-gray-100">
-            <div className="w-2 h-2 rounded-full bg-pink-200"></div>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{date}</span>
+        <div key={date} className="relative mx-4 rounded-2xl border overflow-hidden"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+          <div className="sticky top-0 py-3 px-4 z-0 flex items-center gap-2 border-b glass"
+            style={{ borderColor: 'var(--border-secondary)' }}>
+            <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-300)' }}></div>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{date}</span>
           </div>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y" style={{ divideColor: 'var(--border-secondary)' }}>
             {(items as DoseEvent[]).map(ev => (
               <div
                 key={ev.id}
                 onClick={() => onEditEvent(ev)}
-                className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-all cursor-pointer group relative"
+                className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative btn-press"
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${ev.route === RouteEnum.injection ? 'bg-pink-50' : 'bg-gray-50'} border border-gray-100`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border`}
+                  style={{
+                    background: ev.route === RouteEnum.injection ? 'var(--accent-50)' : 'var(--bg-card-hover)',
+                    borderColor: ev.route === RouteEnum.injection ? 'var(--accent-200)' : 'var(--border-primary)',
+                  }}>
                   {getRouteIcon(ev.route)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-gray-900 text-sm truncate">
+                    <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
                       {ev.route === RouteEnum.patchRemove ? t('route.patchRemove') : t(`ester.${ev.ester}`)}
                     </span>
-                    <span className="font-mono text-[11px] font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+                    <span className="font-mono text-[11px] font-medium px-2 py-1 rounded-md border"
+                      style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
                       {formatTime(new Date(ev.timeH * 3600000))}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500 font-medium space-y-1">
+                  <div className="text-xs font-medium space-y-1" style={{ color: 'var(--text-secondary)' }}>
                     <div className="flex items-center gap-2">
                       <span className="truncate">{t(`route.${ev.route}`)}</span>
                       {ev.extras[ExtraKey.releaseRateUGPerDay] && (
                         <>
-                          <span className="text-gray-300">•</span>
-                          <span className="text-gray-700">{`${ev.extras[ExtraKey.releaseRateUGPerDay]} µg/d`}</span>
+                          <span style={{ color: 'var(--text-tertiary)' }}>•</span>
+                          <span style={{ color: 'var(--text-primary)' }}>{`${ev.extras[ExtraKey.releaseRateUGPerDay]} µg/d`}</span>
                         </>
                       )}
                     </div>
                     {ev.route !== RouteEnum.patchRemove && !ev.extras[ExtraKey.releaseRateUGPerDay] && (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-gray-700">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: 'var(--text-primary)' }}>
                         <span>{`${t('timeline.dose_label')}: ${ev.doseMG.toFixed(2)} mg`}</span>
                         {ev.ester !== Ester.E2 && ev.ester !== Ester.CPA && (
-                          <span className="text-gray-500 text-[11px]">
+                          <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                             {`(${ (ev.doseMG * getToE2Factor(ev.ester)).toFixed(2) } mg E2)`}
                           </span>
                         )}

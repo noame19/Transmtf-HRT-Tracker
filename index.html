@@ -12,21 +12,113 @@
     <title>HRT Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        /* ─── CSS Custom Properties (Theme System) ─── */
+        :root {
+            /* Default: Sakura (rose) */
+            --accent-50: #fff1f2;
+            --accent-100: #ffe4e6;
+            --accent-200: #fecdd3;
+            --accent-300: #fda4af;
+            --accent-400: #fb7185;
+            --accent-500: #f43f5e;
+            --accent-600: #e11d48;
+
+            /* Light mode layout colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f8fafc;
+            --bg-overlay: rgba(0, 0, 0, 0.4);
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-tertiary: #94a3b8;
+            --border-primary: #e2e8f0;
+            --border-secondary: #f1f5f9;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+            --shadow-lg: 0 12px 32px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Dark mode overrides */
+        .dark {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --bg-overlay: rgba(0, 0, 0, 0.6);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-tertiary: #64748b;
+            --border-primary: #334155;
+            --border-secondary: #1e293b;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.15);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.25), 0 2px 4px rgba(0,0,0,0.2);
+            --shadow-lg: 0 12px 32px rgba(0,0,0,0.35), 0 4px 8px rgba(0,0,0,0.2);
+            --glass-bg: rgba(30, 41, 59, 0.85);
+            --glass-border: rgba(51, 65, 85, 0.6);
+            color-scheme: dark;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
         .safe-area-pb { padding-bottom: env(safe-area-inset-bottom); }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        
+
+        /* ─── Accent utility classes ─── */
+        .accent-text { color: var(--accent-500); }
+        .accent-text-light { color: var(--accent-400); }
+        .accent-bg { background: var(--accent-500); }
+        .accent-bg-light { background: var(--accent-50); }
+        .accent-bg-gradient { background: linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 50%, var(--accent-600) 100%); }
+        .accent-border { border-color: var(--accent-200); }
+        .accent-ring:focus { --tw-ring-color: var(--accent-300); }
+
+        /* ─── Glass-morphism ─── */
+        .glass { background: var(--glass-bg); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%); border: 1px solid var(--glass-border); }
+        .glass-card { background: var(--bg-card); border: 1px solid var(--border-primary); box-shadow: var(--shadow-sm); border-radius: 16px; transition: all 0.2s ease; }
+        .glass-card:hover { box-shadow: var(--shadow-md); }
+
+        /* ─── Animations ─── */
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideInBottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes pageForward { from { opacity: 0; transform: translateX(16px) translateY(4px) scale(0.995); } to { opacity: 1; transform: translateX(0) translateY(0) scale(1); } }
         @keyframes pageBackward { from { opacity: 0; transform: translateX(-16px) translateY(4px) scale(0.995); } to { opacity: 1; transform: translateX(0) translateY(0) scale(1); } }
-        
+        @keyframes modalSpring { from { opacity: 0; transform: scale(0.92) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes modalSlideUp { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes navTap { 0% { transform: scale(1); } 50% { transform: scale(0.92); } 100% { transform: scale(1); } }
+        @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+        @keyframes pulseAccent { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-300); } 50% { box-shadow: 0 0 0 8px transparent; } }
+
         .animate-in.fade-in { animation: fadeIn 0.2s ease-out forwards; }
         .animate-in.slide-in-from-bottom { animation: slideInBottom 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .modal-spring { animation: modalSpring 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        .modal-slide-up { animation: modalSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .page-transition { animation-duration: 0.32s; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); animation-fill-mode: both; will-change: transform, opacity; }
         .page-transition.page-forward { animation-name: pageForward; }
         .page-transition.page-backward { animation-name: pageBackward; }
+
+        /* Button press feedback */
+        .btn-press { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .btn-press:active { transform: scale(0.97); }
+
+        /* Card hover lift */
+        .card-lift { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .card-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+        /* Accent spinner */
+        .accent-spinner { width: 16px; height: 16px; border: 2px solid var(--accent-200); border-top-color: var(--accent-500); border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Skeleton shimmer */
+        .skeleton { background: linear-gradient(90deg, var(--border-secondary) 25%, var(--bg-card-hover) 50%, var(--border-secondary) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: 8px; }
     </style>
 <script type="importmap">
 {
@@ -44,7 +136,7 @@
 }
 </script>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

@@ -71,7 +71,8 @@ const LearningPanel: React.FC<{
   const clrFactor = lastDiagnostics?.thetaK ?? (hasModel ? Math.exp(personalModel!.thetaMean[1]) : null);
 
   return (
-    <div className="mx-4 bg-white rounded-2xl border border-rose-100 shadow-sm overflow-hidden">
+    <div className="mx-4 rounded-2xl border overflow-hidden"
+      style={{ background: 'var(--bg-card)', borderColor: 'var(--accent-200)', boxShadow: 'var(--shadow-sm)' }}>
       {/* Header – always visible */}
       <button
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-rose-50/30 transition-colors"
@@ -211,21 +212,21 @@ const ModelOption: React.FC<{
       onClick={onSelect}
       className={`w-full text-left p-3 rounded-xl border transition-all ${
         selected
-          ? 'border-rose-300 bg-rose-50/60'
+          ? 'border-[var(--accent-300)] bg-[var(--accent-50)]'
           : 'border-gray-100 bg-gray-50/60 hover:border-gray-200 hover:bg-gray-50'
       }`}
     >
       <div className="flex items-start gap-2.5">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border ${
-          selected ? 'bg-rose-100 border-rose-200' : 'bg-white border-gray-200'
+          selected ? 'bg-[var(--accent-100)] border-[var(--accent-200)]' : 'bg-white border-gray-200'
         }`}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-[13px] font-bold ${selected ? 'text-rose-700' : 'text-gray-800'}`}>{label}</span>
+            <span className={`text-[13px] font-bold ${selected ? 'text-[var(--accent-600)]' : 'text-gray-800'}`}>{label}</span>
             {selected && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--accent-100)] text-[var(--accent-600)] text-[9px] font-bold">
                 <CheckCircle2 size={9} />
                 {t('lab.model_active')}
               </span>
@@ -246,7 +247,7 @@ const ModelOption: React.FC<{
           </div>
         </div>
         <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-1 flex items-center justify-center ${
-          selected ? 'border-rose-500 bg-rose-500' : 'border-gray-300 bg-white'
+          selected ? 'border-[var(--accent-500)] bg-[var(--accent-500)]' : 'border-gray-300 bg-white'
         }`}>
           {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
         </div>
@@ -274,14 +275,16 @@ const LabView: React.FC<LabViewProps> = ({
   return (
     <div className="relative space-y-5 pt-6 pb-8">
       <div className="px-4">
-        <div className="w-full p-4 rounded-2xl bg-white flex items-center justify-between shadow-sm">
-          <h2 className="text-xl font-semibold text-gray-900 tracking-tight flex items-center gap-3">
+        <div className="w-full p-4 rounded-2xl flex items-center justify-between"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', border: '1px solid var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+          <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
+            style={{ color: 'var(--text-primary)' }}>
             <FlaskConical size={22} className="text-teal-500" /> {t('lab.title')}
           </h2>
           <div className="flex items-center gap-3">
             <button
               onClick={onAddLabResult}
-              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl bg-gray-900 text-white text-sm font-bold shadow-sm hover:shadow-md transition"
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
             >
               <Plus size={16} />
               <span>{t('lab.add_title')}</span>
@@ -304,7 +307,7 @@ const LabView: React.FC<LabViewProps> = ({
         </div>
         <div className="space-y-2">
           <ModelOption
-            icon={<Cpu size={14} className={calibrationModel === 'ekf' ? 'text-rose-500' : 'text-gray-500'} />}
+            icon={<Cpu size={14} className={calibrationModel === 'ekf' ? 'text-[var(--accent-500)]' : 'text-gray-500'} />}
             label={t('lab.model_ekf_label')}
             desc={t('lab.model_ekf_desc')}
             pros={[t('lab.model_ekf_pro1'), t('lab.model_ekf_pro2')]}
@@ -313,7 +316,7 @@ const LabView: React.FC<LabViewProps> = ({
             onSelect={() => onSetCalibrationModel('ekf')}
           />
           <ModelOption
-            icon={<Waves size={14} className={calibrationModel === 'ou-kalman' ? 'text-rose-500' : 'text-gray-500'} />}
+            icon={<Waves size={14} className={calibrationModel === 'ou-kalman' ? 'text-[var(--accent-500)]' : 'text-gray-500'} />}
             label={t('lab.model_ou_label')}
             desc={t('lab.model_ou_desc')}
             pros={[t('lab.model_ou_pro1'), t('lab.model_ou_pro2')]}
@@ -340,9 +343,10 @@ const LabView: React.FC<LabViewProps> = ({
             onClick={() => onSetApplyE2LearningToCPA(!applyE2LearningToCPA)}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
               applyE2LearningToCPA
-                ? 'bg-rose-500 border-rose-500'
-                : 'bg-gray-200 border-gray-200'
+                ? ''
+                : 'bg-gray-200 dark:bg-gray-600 border-gray-200 dark:border-gray-600'
             }`}
+            style={applyE2LearningToCPA ? { background: 'var(--accent-500)', borderColor: 'var(--accent-500)' } : undefined}
           >
             <span
               className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
@@ -372,9 +376,10 @@ const LabView: React.FC<LabViewProps> = ({
             onClick={() => onSetApplyCPAInhibitionToE2(!applyCPAInhibitionToE2)}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
               applyCPAInhibitionToE2
-                ? 'bg-rose-500 border-rose-500'
-                : 'bg-gray-200 border-gray-200'
+                ? ''
+                : 'bg-gray-200 dark:bg-gray-600 border-gray-200 dark:border-gray-600'
             }`}
+            style={applyCPAInhibitionToE2 ? { background: 'var(--accent-500)', borderColor: 'var(--accent-500)' } : undefined}
           >
             <span
               className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${

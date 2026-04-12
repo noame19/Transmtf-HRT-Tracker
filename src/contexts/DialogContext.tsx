@@ -7,7 +7,7 @@ type DialogType = 'alert' | 'confirm';
 interface DialogOptions {
   confirmText?: string;
   cancelText?: string;
-  thirdOption?: string; // For three-button dialogs
+  thirdOption?: string;
 }
 
 interface DialogContextType {
@@ -35,7 +35,6 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
     message: string,
     opts?: DialogOptions | (() => void)
   ): Promise<'confirm' | 'cancel' | 'third'> => {
-    // Support old callback API
     if (typeof opts === 'function') {
       const onConfirm = opts;
       setType(type);
@@ -50,7 +49,6 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
       });
     }
 
-    // New Promise API
     setType(type);
     setMessage(message);
     setOptions(opts || {});
@@ -77,7 +75,7 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
           className="fixed inset-0 flex items-center justify-center z-[100] p-5"
           style={{
             animation: 'dialogFadeIn 0.18s ease-out forwards',
-            background: 'rgba(0, 0, 0, 0.35)',
+            background: 'var(--bg-overlay)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
           }}
@@ -94,53 +92,53 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
               aria-labelledby="dialog-title"
               aria-describedby="dialog-msg"
               style={{
-                background: 'rgba(255, 255, 255, 0.92)',
+                background: 'var(--glass-bg)',
                 backdropFilter: 'blur(24px) saturate(180%)',
                 WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-                border: '1px solid rgba(255, 255, 255, 0.7)',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.14), 0 1px 0 rgba(255,255,255,0.9) inset',
+                border: `1px solid var(--glass-border)`,
+                boxShadow: 'var(--shadow-lg)',
                 borderRadius: '24px',
                 padding: '24px',
               }}
             >
-              <h3 id="dialog-title" className="text-base font-bold text-gray-900 mb-1.5">
+              <h3 id="dialog-title" className="text-base font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>
                 {type === 'confirm' ? t('dialog.confirm_title') : t('dialog.alert_title')}
               </h3>
-              <p id="dialog-msg" className="text-gray-500 mb-5 leading-relaxed text-sm">{message}</p>
+              <p id="dialog-msg" className="mb-5 leading-relaxed text-sm" style={{ color: 'var(--text-secondary)' }}>{message}</p>
 
-              {/* Alert: single full-width button */}
               {type === 'alert' && (
                 <button
                   onClick={() => handleChoice('confirm')}
+                  className="btn-press"
                   style={{
                     width: '100%',
                     padding: '13px',
                     borderRadius: '14px',
-                    background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 100%)',
+                    background: `linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%)`,
                     border: 'none',
                     color: 'white',
                     fontWeight: 700,
                     fontSize: '14px',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(236,72,153,0.25)',
+                    boxShadow: `0 4px 14px color-mix(in srgb, var(--accent-500) 25%, transparent)`,
                   }}
                 >
                   {options.confirmText || t('btn.ok')}
                 </button>
               )}
 
-              {/* Confirm: side-by-side cancel + confirm */}
               {type === 'confirm' && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleChoice('cancel')}
+                    className="btn-press"
                     style={{
                       flex: 1,
                       padding: '13px',
                       borderRadius: '14px',
-                      background: 'rgba(0,0,0,0.06)',
+                      background: 'var(--bg-card-hover)',
                       border: 'none',
-                      color: '#374151',
+                      color: 'var(--text-primary)',
                       fontWeight: 600,
                       fontSize: '14px',
                       cursor: 'pointer',
@@ -150,17 +148,18 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
                   </button>
                   <button
                     onClick={() => handleChoice('confirm')}
+                    className="btn-press"
                     style={{
                       flex: 1,
                       padding: '13px',
                       borderRadius: '14px',
-                      background: 'linear-gradient(135deg, #f9a8d4 0%, #ec4899 100%)',
+                      background: `linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%)`,
                       border: 'none',
                       color: 'white',
                       fontWeight: 700,
                       fontSize: '14px',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(236,72,153,0.25)',
+                      boxShadow: `0 4px 14px color-mix(in srgb, var(--accent-500) 25%, transparent)`,
                     }}
                   >
                     {options.confirmText || t('btn.ok')}
@@ -168,18 +167,18 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
                 </div>
               )}
 
-              {/* Third option */}
               {options.thirdOption && (
                 <button
                   onClick={() => handleChoice('third')}
+                  className="btn-press"
                   style={{
                     width: '100%',
                     marginTop: '8px',
                     padding: '13px',
                     borderRadius: '14px',
-                    background: 'rgba(0,0,0,0.04)',
-                    border: '1px solid rgba(0,0,0,0.07)',
-                    color: '#6b7280',
+                    background: 'var(--bg-card-hover)',
+                    border: `1px solid var(--border-primary)`,
+                    color: 'var(--text-secondary)',
                     fontWeight: 500,
                     fontSize: '14px',
                     cursor: 'pointer',

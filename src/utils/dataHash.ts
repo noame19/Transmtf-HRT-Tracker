@@ -6,6 +6,8 @@ type HashableData = {
     calibrationModel?: string;
     applyE2LearningToCPA?: boolean;
     applyCPAInhibitionToE2?: boolean;
+    themeColor?: string;
+    darkMode?: boolean;
 };
 
 const stableStringify = (value: unknown): string => {
@@ -41,6 +43,8 @@ export const computeDataHash = (data: HashableData): string => {
         calibrationModel: data.calibrationModel || '',
         applyE2LearningToCPA: data.applyE2LearningToCPA ?? false,
         applyCPAInhibitionToE2: data.applyCPAInhibitionToE2 ?? false,
+        themeColor: data.themeColor || '',
+        darkMode: data.darkMode ?? false,
     };
     return hashString(stableStringify(payload));
 };

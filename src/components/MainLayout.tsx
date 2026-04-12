@@ -104,23 +104,21 @@ const MainLayout: React.FC = () => {
     };
 
     return (
-        <div className="h-screen w-full flex flex-col bg-white text-gray-900 select-none font-sans">
+        <div className="h-screen w-full flex flex-col select-none font-sans"
+            style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
 
             {/* ── Desktop top bar ── */}
-            <header className="hidden md:flex shrink-0 items-center justify-between px-6 h-16 sticky top-0 z-20"
+            <header className="hidden md:flex shrink-0 items-center justify-between px-6 h-16 sticky top-0 z-20 glass"
                 style={{
-                    background: 'rgba(255, 255, 255, 0.88)',
-                    borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
-                    boxShadow: '0 1px 20px rgba(0,0,0,0.06), 0 1px 0 rgba(255,255,255,1) inset',
-                    backdropFilter: 'blur(20px) saturate(160%)',
-                    WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                    boxShadow: 'var(--shadow-sm)',
                 }}
             >
                 <div className="flex items-center gap-3 min-w-[220px]">
-                    <div className="h-9 w-9 rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="h-9 w-9 rounded-xl border overflow-hidden"
+                        style={{ borderColor: 'var(--border-primary)' }}>
                         <img src="/favicon.ico" alt="logo" className="h-full w-full object-cover" />
                     </div>
-                    <p className="text-sm font-black tracking-tight text-gray-900">Transmtf HRT Tracker</p>
+                    <p className="text-sm font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Transmtf HRT Tracker</p>
                 </div>
 
                 <nav aria-label={t('nav.aria_primary')} className="flex items-center gap-1">
@@ -131,11 +129,17 @@ const MainLayout: React.FC = () => {
                                 key={id}
                                 onClick={() => handleViewChange(id)}
                                 aria-current={active ? 'page' : undefined}
-                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold btn-press transition-all duration-200 ${
                                     active
-                                        ? 'bg-gray-900 text-white'
-                                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                                        ? 'text-white'
+                                        : 'hover:bg-[var(--bg-card-hover)]'
                                 }`}
+                                style={active ? {
+                                    background: `linear-gradient(135deg, var(--accent-400), var(--accent-500))`,
+                                    boxShadow: `0 2px 8px ${`var(--accent-300)`}40`,
+                                } : {
+                                    color: 'var(--text-secondary)',
+                                }}
                             >
                                 <Icon size={15} />
                                 <span>{label}</span>
@@ -145,14 +149,20 @@ const MainLayout: React.FC = () => {
                 </nav>
 
                 <div className="flex items-center gap-3 min-w-[260px] justify-end">
-                    <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-700">
+                    <div className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
+                        style={{
+                            borderColor: 'var(--border-primary)',
+                            background: 'var(--bg-card)',
+                            color: 'var(--text-secondary)',
+                        }}>
                         <span>{formatDate(currentTime, lang)}</span>
-                        <span className="text-gray-300">·</span>
+                        <span style={{ color: 'var(--accent-300)' }}>·</span>
                         <span className="font-mono">{formatTime(currentTime)}</span>
                     </div>
                     <button
                         onClick={handleAddEvent}
-                        className="flex items-center gap-2 rounded-xl bg-gray-900 px-3.5 py-2 text-sm font-bold text-white hover:bg-gray-800 transition"
+                        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold text-white btn-press transition accent-bg-gradient"
+                        style={{ boxShadow: `0 2px 8px var(--accent-300)` }}
                     >
                         <Plus size={15} />
                         <span>{t('btn.add')}</span>
@@ -160,13 +170,17 @@ const MainLayout: React.FC = () => {
                     <button
                         onClick={() => navigate('/profile')}
                         aria-label={t('nav.account') || 'Profile'}
-                        className="h-9 w-9 rounded-full border-2 border-gray-200 overflow-hidden hover:border-pink-400 transition"
+                        className="h-9 w-9 rounded-full border-2 overflow-hidden transition"
+                        style={{ borderColor: 'var(--border-primary)' }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = `var(--accent-400)`}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = `var(--border-primary)`}
                     >
                         {isAuthenticated && avatarUrl && !avatarError ? (
                             <img src={avatarUrl} alt="" aria-hidden="true" className="h-full w-full object-cover" onError={() => setAvatarError(true)} />
                         ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-50">
-                                <User size={17} className="text-gray-500" aria-hidden="true" />
+                            <div className="flex h-full w-full items-center justify-center"
+                                style={{ background: 'var(--bg-card-hover)' }}>
+                                <User size={17} style={{ color: 'var(--text-tertiary)' }} aria-hidden="true" />
                             </div>
                         )}
                     </button>
@@ -176,7 +190,8 @@ const MainLayout: React.FC = () => {
             {/* ── Scrollable content ── */}
             <main
                 ref={mainScrollRef}
-                className="flex-1 overflow-y-auto bg-gray-50"
+                className="flex-1 overflow-y-auto"
+                style={{ background: 'var(--bg-secondary)' }}
             >
                 <div
                     key={location.pathname}
@@ -196,16 +211,13 @@ const MainLayout: React.FC = () => {
                 </div>
             </main>
 
-            {/* ── Mobile bottom nav — iOS 26 Liquid Glass ── */}
-            <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3 bg-gray-50" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+            {/* ── Mobile bottom nav — Glass Pill ── */}
+            <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', background: 'var(--bg-secondary)' }}>
                 <div
-                    className="rounded-3xl px-1.5 py-1.5"
+                    className="rounded-3xl px-1.5 py-1.5 glass"
                     style={{
-                        background: 'rgba(255, 255, 255, 0.88)',
-                        border: '1px solid rgba(0, 0, 0, 0.08)',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,1) inset',
-                        backdropFilter: 'blur(16px) saturate(150%)',
-                        WebkitBackdropFilter: 'blur(16px) saturate(150%)',
+                        boxShadow: 'var(--shadow-md)',
                     }}
                 >
                     <div className="grid grid-cols-5">
@@ -216,20 +228,25 @@ const MainLayout: React.FC = () => {
                                     key={id}
                                     onClick={() => handleViewChange(id)}
                                     aria-current={active ? 'page' : undefined}
-                                    className="relative flex flex-col items-center gap-0.5 py-2 px-1 rounded-2xl transition-all duration-200"
+                                    className="relative flex flex-col items-center gap-0.5 py-2.5 px-1 rounded-2xl transition-all duration-200 btn-press"
                                     style={active ? {
-                                        background: 'rgba(255,255,255,0.95)',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+                                        background: 'var(--bg-card)',
+                                        boxShadow: 'var(--shadow-sm)',
                                     } : undefined}
                                 >
                                     <Icon
                                         size={22}
-                                        className={active ? 'text-pink-600' : 'text-gray-500'}
-                                        style={{ transition: 'color 0.2s' }}
+                                        style={{
+                                            color: active ? 'var(--accent-500)' : 'var(--text-tertiary)',
+                                            transition: 'color 0.2s',
+                                        }}
                                     />
                                     <span
                                         className="text-[10px] font-semibold leading-none"
-                                        style={{ color: active ? '#db2777' : '#6b7280', transition: 'color 0.2s' }}
+                                        style={{
+                                            color: active ? 'var(--accent-500)' : 'var(--text-tertiary)',
+                                            transition: 'color 0.2s',
+                                        }}
                                     >
                                         {label}
                                     </span>
