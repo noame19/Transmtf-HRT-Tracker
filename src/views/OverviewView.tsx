@@ -23,6 +23,9 @@ interface OverviewViewProps {
   simulation: SimulationResult | null;
   currentTime: Date;
   simCI?: SimCI | null;
+  /** Endogenous baseline E2 (pg/mL) from pre-dose labs. Non-null once at least
+   *  one pre-dose observation has been accumulated by the personal model. */
+  baselineE2PGmL?: number | null;
   onEditEvent: (event: DoseEvent) => void;
   onOpenWeightModal: () => void;
 }
@@ -51,6 +54,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   simulation,
   currentTime,
   simCI,
+  baselineE2PGmL,
   onEditEvent,
   onOpenWeightModal,
 }) => {
@@ -63,16 +67,31 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   const rawLevel = useMemo(() => {
     if (!simulation) return 0;
-    return interpolateConcentration_E2(simulation, h) || 0;
-  }, [simulation, h]);
+    const drugE2 = interpolateConcentration_E2(simulation, h) || 0;
+    // When no personal model is active but a pre-dose baseline exists, shift the
+    // raw drug curve by the known endogenous contribution so the headline value
+    // reflects the full expected plasma E2 (drug + endogenous).
+    const shift = (!hasPersonalModel && baselineE2PGmL && baselineE2PGmL > 0)
+      ? baselineE2PGmL
+      : 0;
+    return drugE2 + shift;
+  }, [simulation, h, hasPersonalModel, baselineE2PGmL]);
 
   // No dose history: use latest lab value as baseline observation for the headline card.
+  // Also shown when there is dose history but no post-dose labs yet (pre-dose baseline only).
   const baselineLevel = useMemo(() => {
-    if (hasDoseHistory || labResults.length === 0) return null;
-    const latest = [...labResults].sort((a, b) => b.timeH - a.timeH)[0];
-    const v = convertToPgMl(latest.concValue, latest.unit);
-    return Number.isFinite(v) && v > 0 ? v : null;
-  }, [hasDoseHistory, labResults]);
+    // Case 1: no medication recorded at all — show latest lab value directly
+    if (!hasDoseHistory && labResults.length > 0) {
+      const latest = [...labResults].sort((a, b) => b.timeH - a.timeH)[0];
+      const v = convertToPgMl(latest.concValue, latest.unit);
+      return Number.isFinite(v) && v > 0 ? v : null;
+    }
+    // Case 2: medication recorded but only pre-dose labs (no personal model yet)
+    if (hasDoseHistory && !hasPersonalModel && baselineE2PGmL && baselineE2PGmL > 0) {
+      return baselineE2PGmL;
+    }
+    return null;
+  }, [hasDoseHistory, hasPersonalModel, baselineE2PGmL, labResults]);
 
   const personalLevel = useMemo(() => {
     if (!hasPersonalModel) return null;
@@ -205,6 +224,14 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     </span>
                   </div>
                 )}
+                {hasDoseHistory && !hasPersonalModel && baselineE2PGmL != null && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold text-teal-400 uppercase tracking-wide">Endogenous</span>
+                    <span className="text-[10px] font-semibold text-teal-500">
+                      {baselineE2PGmL.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
                 {currentStatus && (
                   <div className={`px-2.5 py-1 rounded-lg border ${currentStatus.bg} ${currentStatus.border} flex items-center gap-1.5 mt-1 w-fit`}>
                     <Info size={10} className={currentStatus.color} />
@@ -307,6 +334,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           onPointClick={onEditEvent}
           labResults={labResults}
           simCI={simCI}
+          baselineE2PGmL={baselineE2PGmL}
         />
       </main>
     </>

@@ -45,6 +45,13 @@ interface AppDataContextType {
     calibrationModel: CalibrationModel;
     setCalibrationModel: React.Dispatch<React.SetStateAction<CalibrationModel>>;
     resetPersonalModel: () => void;
+    /**
+     * Endogenous baseline E2 in pg/mL derived from pre-dose lab results.
+     * Non-null when the personal model has accumulated at least one pre-dose
+     * observation. Used to offset the simulated curve even before any post-dose
+     * data is available.
+     */
+    baselineE2PGmL: number | null;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -67,6 +74,12 @@ function loadPersonalModel(): PersonalModelState | null {
             typeof parsed.observationCount === 'number' &&
             Array.isArray(parsed.anchors)
         ) {
+            // Backward-compat: old stored models lack postDoseObservationCount.
+            // Fall back to observationCount so existing calibrated models keep
+            // their CI bands rather than silently resetting to uncalibrated state.
+            if (typeof parsed.postDoseObservationCount !== 'number') {
+                parsed.postDoseObservationCount = parsed.observationCount;
+            }
             return parsed as PersonalModelState;
         }
     } catch { /* ignore */ }
@@ -307,15 +320,26 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         savePersonalModel(newModel);
     }, [events, weight, labResults]);
 
-    // Recompute CI bands whenever relevant state changes
+    // Recompute CI bands whenever relevant state changes.
+    // CI bands require at least one post-dose lab result — pre-dose labs only
+    // provide a baseline offset and carry no PK parameter information.
     useEffect(() => {
-        if (!simulation || !personalModel || personalModel.observationCount === 0 || labResults.length === 0) {
+        if (!simulation || !personalModel || personalModel.postDoseObservationCount === 0 || labResults.length === 0) {
             setSimCI(null);
             return;
         }
         const ci = computeSimulationWithCI(simulation, events, weight, personalModel, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
         setSimCI(ci);
     }, [simulation, personalModel, events, weight, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
+
+    // Expose baseline from pre-dose labs so UI can offset the raw sim curve
+    // even when no post-dose learning has occurred yet.
+    const baselineE2PGmL = useMemo<number | null>(() => {
+        if (!personalModel) return null;
+        const v = personalModel.baselinePGmL;
+        if (v === undefined || !Number.isFinite(v) || v <= 0) return null;
+        return v;
+    }, [personalModel]);
 
     // Create calibration function (legacy ratio-based, still used for current-scale display)
     const calibrationFn = useMemo(() => {
@@ -349,6 +373,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         calibrationModel,
         setCalibrationModel,
         resetPersonalModel,
+        baselineE2PGmL,
     };
 
     return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

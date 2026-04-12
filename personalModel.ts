@@ -27,8 +27,22 @@ export interface PersonalModelState {
     Q: [[number, number], [number, number]];
     Rlog: number;
     anchors: ResidualAnchor[];
+    /** Total number of lab results processed (pre-dose + post-dose). */
     observationCount: number;
+    /**
+     * Number of lab results recorded **after** the first medication dose.
+     * Only post-dose observations drive EKF parameter learning; this counter
+     * is therefore the correct gate for enabling personalised CI bands.
+     */
+    postDoseObservationCount: number;
     updatedAt: string;
+    /**
+     * Endogenous / pre-treatment baseline E2 in pg/mL derived from lab results
+     * that were recorded before the first medication dose. When non-zero this
+     * value is added to every drug-derived E2 estimate so the simulated curve
+     * sits on top of the individual's background level rather than zero.
+     */
+    baselinePGmL?: number;
 }
 
 export interface EKFDiagnostics {
@@ -72,6 +86,7 @@ export function initPersonalModel(): PersonalModelState {
         Rlog: EKF_RLOG,
         anchors: [],
         observationCount: 0,
+        postDoseObservationCount: 0,
         updatedAt: new Date().toISOString(),
     };
 }
@@ -216,7 +231,6 @@ export function ekfUpdatePersonalModel(
     );
 
     const obsPGmL = convertToPgMl(labResult.concValue, labResult.unit);
-    const y = Math.log(Math.max(obsPGmL, EKF_EPS));
 
     const theta = state.thetaMean.slice() as [number, number];
     const dtH = prevLabTimeH !== undefined
@@ -236,8 +250,22 @@ export function ekfUpdatePersonalModel(
         const currentTrace = state.thetaCov[0][0] + state.thetaCov[1][1];
         const convergenceScore = Math.max(0, Math.min(1, 1 - currentTrace / initialTrace));
 
+        // Accumulate baseline estimates using an online mean so multiple pre-dose
+        // labs all contribute. Use observationCount (total, not post-dose) as the
+        // running count of pre-dose observations already accumulated.
+        const prevBaseline = state.baselinePGmL ?? 0;
+        const prevCount = state.observationCount;
+        const newBaselinePGmL = prevCount === 0
+            ? obsPGmL
+            : (prevBaseline * prevCount + obsPGmL) / (prevCount + 1);
+
         const baselineState: PersonalModelState = {
             ...state,
+            baselinePGmL: newBaselinePGmL,
+            observationCount: state.observationCount + 1,
+            // postDoseObservationCount intentionally NOT incremented:
+            // pre-dose labs carry no PK information and must not unlock CI bands.
+            postDoseObservationCount: state.postDoseObservationCount,
             updatedAt: new Date().toISOString(),
         };
         const diagnostics: EKFDiagnostics = {
@@ -259,6 +287,17 @@ export function ekfUpdatePersonalModel(
     const predPerturbed = computeE2AtTimeWithTheta(events, weight, labResult.timeH, thetaKPerturbed);
     const yhatPerturbed = Math.log(Math.max(predPerturbed, EKF_EPS));
     const H: [number, number] = [1.0, (yhatPerturbed - yhat) / EKF_DELTA_K];
+
+    // Subtract the endogenous baseline before computing the innovation so that
+    // EKF only learns from the drug-derived portion of the measured concentration.
+    // Without this correction the baseline would be absorbed into theta (biasing
+    // PK parameters upward) and then added again in computeSimulationWithCI,
+    // causing a double-count of the endogenous contribution.
+    const baseline = (state.baselinePGmL !== undefined && Number.isFinite(state.baselinePGmL))
+        ? Math.max(0, state.baselinePGmL)
+        : 0;
+    const obsDrugPGmL = Math.max(obsPGmL - baseline, EKF_EPS);
+    const y = Math.log(obsDrugPGmL);
 
     const innovation = y - yhat;
     const S = H[0] * H[0] * P[0][0] + 2 * H[0] * H[1] * P[0][1] + H[1] * H[1] * P[1][1] + state.Rlog;
@@ -288,7 +327,9 @@ export function ekfUpdatePersonalModel(
     PNew[1][1] = Math.max(PNew[1][1], 1e-6);
 
     const newPredPGmL = computeE2AtTimeWithTheta(events, weight, labResult.timeH, thetaNew);
-    const logRatioPost = Math.log(Math.max(obsPGmL, EKF_EPS)) - Math.log(Math.max(newPredPGmL, EKF_EPS));
+    // Use the baseline-subtracted observation for the residual anchor so that
+    // the anchor only captures drug-model mismatch, not endogenous E2.
+    const logRatioPost = Math.log(obsDrugPGmL) - Math.log(Math.max(newPredPGmL, EKF_EPS));
     const anchor: ResidualAnchor = {
         timeH: labResult.timeH,
         logRatio: logRatioPost,
@@ -302,6 +343,8 @@ export function ekfUpdatePersonalModel(
     const hK = H[1];
     const varYhat = PNew[0][0] + 2 * PNew[0][1] * hK + PNew[1][1] * hK * hK;
     const std95 = Math.sqrt(Math.max(0, varYhat + Reff));
+    // Diagnostics CI is in drug-only space (matches what EKF was trained on).
+    // The caller can add baseline on top if needed for display purposes.
     const logPredNew = Math.log(Math.max(newPredPGmL, EKF_EPS));
     const ci95Low = Math.exp(logPredNew - 1.96 * std95);
     const ci95High = Math.exp(logPredNew + 1.96 * std95);
@@ -318,6 +361,9 @@ export function ekfUpdatePersonalModel(
         Rlog: state.Rlog,
         anchors: updatedAnchors,
         observationCount: state.observationCount + 1,
+        postDoseObservationCount: state.postDoseObservationCount + 1,
+        // Preserve any baseline that was set by pre-dose labs.
+        baselinePGmL: state.baselinePGmL,
         updatedAt: new Date().toISOString(),
     };
 
@@ -413,6 +459,10 @@ export function computeSimulationWithCI(
 
     const theta = state.thetaMean;
     const P = state.thetaCov;
+    // Baseline endogenous E2 from pre-dose calibration; 0 if none available.
+    const baselinePGmL = (state.baselinePGmL !== undefined && Number.isFinite(state.baselinePGmL))
+        ? Math.max(0, state.baselinePGmL)
+        : 0;
 
     const clampCI = (low: number, high: number, hardMax: number): [number, number] => {
         const lo = Number.isFinite(low) ? Math.max(0, low) : 0;
@@ -434,19 +484,19 @@ export function computeSimulationWithCI(
             const mean = ou.m[i];
             const std = Math.sqrt(Math.max(0, ou.P[i]));
 
-            e2Adjusted[i] = Math.min(c0 * Math.exp(mean + 0.5 * ou.P[i]), EKF_CI_MAX_E2);
+            e2Adjusted[i] = Math.min(baselinePGmL + c0 * Math.exp(mean + 0.5 * ou.P[i]), EKF_CI_MAX_E2);
 
             const [lo95, hi95] = clampCI(
-                c0 * Math.exp(mean - 1.96 * std),
-                c0 * Math.exp(mean + 1.96 * std),
+                baselinePGmL + c0 * Math.exp(mean - 1.96 * std),
+                baselinePGmL + c0 * Math.exp(mean + 1.96 * std),
                 EKF_CI_MAX_E2
             );
             ci95Low[i] = lo95;
             ci95High[i] = hi95;
 
             const [lo68, hi68] = clampCI(
-                c0 * Math.exp(mean - std),
-                c0 * Math.exp(mean + std),
+                baselinePGmL + c0 * Math.exp(mean - std),
+                baselinePGmL + c0 * Math.exp(mean + std),
                 EKF_CI_MAX_E2
             );
             ci68Low[i] = lo68;
@@ -477,15 +527,15 @@ export function computeSimulationWithCI(
             const rawSigma2Param = P[0][0] + 2 * H1 * P[0][1] + H1 * H1 * P[1][1];
             const sigma2Param = Number.isFinite(rawSigma2Param) && rawSigma2Param > 0 ? rawSigma2Param : 0;
             const sigmaTotal = Math.sqrt(sigma2Param + EKF_SIGMA_RESIDUAL_LOG * EKF_SIGMA_RESIDUAL_LOG);
-            const e2AdjMean = Math.min(e2Base * Math.exp(0.5 * sigma2Param), EKF_CI_MAX_E2);
+            const e2AdjMean = Math.min(baselinePGmL + e2Base * Math.exp(0.5 * sigma2Param), EKF_CI_MAX_E2);
             const [lo95, hi95] = clampCI(
-                e2Base * Math.exp(-1.96 * sigmaTotal),
-                e2Base * Math.exp(1.96 * sigmaTotal),
+                baselinePGmL + e2Base * Math.exp(-1.96 * sigmaTotal),
+                baselinePGmL + e2Base * Math.exp(1.96 * sigmaTotal),
                 EKF_CI_MAX_E2
             );
             const [lo68, hi68] = clampCI(
-                e2Base * Math.exp(-sigmaTotal),
-                e2Base * Math.exp(sigmaTotal),
+                baselinePGmL + e2Base * Math.exp(-sigmaTotal),
+                baselinePGmL + e2Base * Math.exp(sigmaTotal),
                 EKF_CI_MAX_E2
             );
             ekfSamples.push({ idx, e2Adj: e2AdjMean, ci95Lo: lo95, ci95Hi: hi95, ci68Lo: lo68, ci68Hi: hi68 });

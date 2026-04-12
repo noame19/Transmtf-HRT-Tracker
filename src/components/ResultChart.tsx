@@ -271,11 +271,14 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
     return null;
 };
 
-const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
+const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPointClick }: {
     sim: SimulationResult | null;
     events: DoseEvent[];
     labResults?: LabResult[];
     simCI?: SimCI | null;
+    /** Endogenous baseline E2 (pg/mL) to add to the raw E2 curve when no
+     *  personal model is active. Derived from pre-dose lab results. */
+    baselineE2PGmL?: number | null;
     onPointClick: (e: DoseEvent) => void;
 }) => {
     const { t, lang } = useTranslation();
@@ -351,10 +354,19 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
 
     const rawData = useMemo<ChartPoint[]>(() => {
         if (!sim || sim.timeH.length === 0) return [];
+        // Apply endogenous baseline offset to the raw E2 curve when no personal
+        // model is active (i.e. no post-dose lab results processed yet). This
+        // makes the chart visually consistent with the "drug + endogenous" value
+        // shown in the headline card.
+        const hasPersonalModelCurve = !!simCI;
+        const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
+            ? baselineE2PGmL
+            : 0;
+
         return sim.timeH.map((t, i) => {
             const timeMs = t * 3600000;
             // E2: raw simulation (no calibrationFn; personal model curve shows the calibrated view)
-            const baseE2 = sim.concPGmL_E2[i]; // pg/mL
+            const baseE2 = sim.concPGmL_E2[i] + baseShift; // pg/mL (+ endogenous if no personal model)
             const rawCPA_ngmL = sim.concPGmL_CPA[i]; // ng/mL
 
             // Personal model CI data (from OU-Kalman calibration)
@@ -396,7 +408,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                 cpaCi95High,
             };
         });
-    }, [sim, ciMap]);
+    }, [sim, ciMap, simCI, baselineE2PGmL]);
 
     const data = useMemo(() => downsampleSeries(rawData, MAX_RENDER_POINTS), [rawData]);
     const overviewData = useMemo(() => downsampleSeries(rawData, MAX_OVERVIEW_POINTS), [rawData]);
@@ -456,6 +468,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         for (const l of labPoints) {
             if (l.time >= visibleMin && l.time <= visibleMax) includeBase(l.conc);
         }
+        // Ensure the endogenous baseline reference line is always within the axis range.
+        // Use !simCI (not hasPersonalModel which is declared after the early return).
+        if (!simCI && baselineE2PGmL && baselineE2PGmL > 0) {
+            includeBase(baselineE2PGmL);
+        }
 
         const minVal = hasBase ? baseMin : 0;
         const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 20) : E2_AXIS_FALLBACK_MAX;
@@ -466,7 +483,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
-    }, [data, labPoints, xDomain, minTime, maxTime]);
+    }, [data, labPoints, xDomain, minTime, maxTime, simCI, baselineE2PGmL]);
 
     // Compute right-axis Y domain from visible CPA-related series in current viewport.
     const yDomainRight = useMemo((): [number, number | string] => {
@@ -503,7 +520,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
         if (!sim || data.length === 0) return null;
         const h = now / 3600000;
 
-        const concE2 = interpolateConcentration_E2(sim, h);
+        const concE2Raw = interpolateConcentration_E2(sim, h);
         const concCPA = interpolateConcentration_CPA(sim, h);
         const concPersonal = simCI ? interpAt(simCI.timeH, simCI.e2Adjusted, h) : undefined;
         const ci95Low = simCI ? interpAt(simCI.timeH, simCI.ci95Low, h) : undefined;
@@ -520,15 +537,23 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             ? interpAt(simCI!.timeH, simCI!.cpaCi95High, h)
             : undefined;
 
-        const hasE2 = concE2 !== null && !Number.isNaN(concE2);
+        const hasE2 = concE2Raw !== null && !Number.isNaN(concE2Raw);
         const hasCPA = concCPA !== null && !Number.isNaN(concCPA);
 
         if (!hasE2 && !hasCPA) return null;
 
+        // Apply the same baseline shift used in rawData so the "now" dot is
+        // consistent with the underlying curve.
+        // Use !simCI directly — hasPersonalModel is declared after the early return.
+        const baseShift = (!simCI && baselineE2PGmL && baselineE2PGmL > 0)
+            ? baselineE2PGmL
+            : 0;
+        const concE2 = hasE2 ? (concE2Raw! + baseShift) : 0;
+
         return {
             time: now,
-            concE2: hasE2 ? concE2 : 0,   // pg/mL, raw
-            concCPA: hasCPA ? concCPA : 0, // ng/mL, raw
+            concE2,                            // pg/mL, raw (+ endogenous offset if needed)
+            concCPA: hasCPA ? concCPA : 0,     // ng/mL, raw
             concPersonal,
             ci95Low,
             ci95High,
@@ -538,7 +563,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
             cpaCi95Low,
             cpaCi95High,
         };
-    }, [sim, simCI, data, now, hasPersonalCpaModel, hasPersonalCpaCI]);
+    }, [sim, simCI, data, now, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL]);
 
     // Slider helpers for quick panning (helps mobile users)
     // Initialize view: center on "now" with a reasonable window (e.g. 14 days)
@@ -756,6 +781,18 @@ const ResultChart = ({ sim, events, labResults = [], simCI, onPointClick }: {
                             trigger="hover"
                         />
                         <ReferenceLine x={now} stroke="#f6c4d7" strokeDasharray="3 3" strokeWidth={1.2} yAxisId="left" />
+                        {/* Endogenous baseline reference line — shown when a pre-dose baseline is
+                            known but no personal model (post-dose learning) is active yet. */}
+                        {!hasPersonalModel && baselineE2PGmL != null && baselineE2PGmL > 0 && (
+                            <ReferenceLine
+                                y={baselineE2PGmL}
+                                yAxisId="left"
+                                stroke="#14b8a6"
+                                strokeDasharray="4 3"
+                                strokeWidth={1.2}
+                                label={{ value: `Endogenous ${baselineE2PGmL.toFixed(1)}`, position: 'insideTopLeft', fontSize: 9, fill: '#14b8a6', fontWeight: 600 }}
+                            />
+                        )}
 
                         {/* 95% CI band (stacked area: ci95Low base + ci95Band on top) */}
                         {hasPersonalModel && (
