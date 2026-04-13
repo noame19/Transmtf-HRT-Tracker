@@ -57,6 +57,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved === '1' || saved === 'true';
   });
 
+  // Track whether the change came from cloud/cross-tab to avoid re-triggering sync
+  const isExternalThemeUpdate = React.useRef(false);
+  const isExternalDarkUpdate = React.useRef(false);
+  const isInitialTheme = React.useRef(true);
+  const isInitialDark = React.useRef(true);
+
   const colors = THEME_PRESETS[themeColor].colors;
 
   // Apply CSS variables whenever theme changes
@@ -82,21 +88,43 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [isDark]);
 
-  // Persist
+  // Persist & notify cloud sync (skip on initial mount and external updates)
   useEffect(() => {
+    if (isInitialTheme.current) {
+      isInitialTheme.current = false;
+      return;
+    }
     localStorage.setItem('hrt-theme-color', themeColor);
+    if (isExternalThemeUpdate.current) {
+      isExternalThemeUpdate.current = false;
+      return;
+    }
+    localStorage.setItem('hrt-last-modified', new Date().toISOString());
+    window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-theme-color' } }));
   }, [themeColor]);
   useEffect(() => {
+    if (isInitialDark.current) {
+      isInitialDark.current = false;
+      return;
+    }
     localStorage.setItem('hrt-dark-mode', isDark ? '1' : '0');
+    if (isExternalDarkUpdate.current) {
+      isExternalDarkUpdate.current = false;
+      return;
+    }
+    localStorage.setItem('hrt-last-modified', new Date().toISOString());
+    window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-dark-mode' } }));
   }, [isDark]);
 
   // Listen for storage changes (cross-tab / cloud sync)
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === 'hrt-theme-color' && e.newValue && e.newValue in THEME_PRESETS) {
+        isExternalThemeUpdate.current = true;
         setThemeColorState(e.newValue as ThemeColorId);
       }
       if (e.key === 'hrt-dark-mode') {
+        isExternalDarkUpdate.current = true;
         setIsDarkState(e.newValue === '1' || e.newValue === 'true');
       }
     };

@@ -38,11 +38,8 @@ import Toggle from '../components/ui/Toggle';
 import type { Lang } from '../i18n/translations';
 import flagCN from '../flag_svg/🇨🇳.svg';
 import flagTW from '../flag_svg/🇹🇼.svg';
-import flagHK from '../flag_svg/🇭🇰.svg';
 import flagUS from '../flag_svg/🇺🇸.svg';
 import flagJP from '../flag_svg/🇯🇵.svg';
-import flagRU from '../flag_svg/🇷🇺.svg';
-import flagUA from '../flag_svg/🇺🇦.svg';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -75,11 +72,8 @@ const SettingsPage: React.FC = () => {
     const languageOptions = useMemo(() => ([
         { value: 'zh', label: '简体中文', icon: <img src={flagCN} alt="CN" className="w-5 h-5 rounded-sm object-contain" /> },
         { value: 'zh-TW', label: '正體中文（台湾）', icon: <img src={flagTW} alt="TW" className="w-5 h-5 rounded-sm object-contain" /> },
-        { value: 'yue', label: '廣東話', icon: <img src={flagHK} alt="HK" className="w-5 h-5 rounded-sm object-contain" /> },
         { value: 'en', label: 'English', icon: <img src={flagUS} alt="US" className="w-5 h-5 rounded-sm object-contain" /> },
         { value: 'ja', label: '日本語', icon: <img src={flagJP} alt="JP" className="w-5 h-5 rounded-sm object-contain" /> },
-        { value: 'ru', label: 'Русский', icon: <img src={flagRU} alt="RU" className="w-5 h-5 rounded-sm object-contain" /> },
-        { value: 'uk', label: 'Українська', icon: <img src={flagUA} alt="UA" className="w-5 h-5 rounded-sm object-contain" /> },
     ]), []);
 
     const sanitizeImportedEvents = (raw: unknown): DoseEvent[] => {

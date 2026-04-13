@@ -12,26 +12,30 @@ const PasswordInputModal = ({ isOpen, onClose, onConfirm }: { isOpen: boolean, o
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-md shadow-gray-900/10 w-full max-w-lg md:max-w-xl p-6 md:p-8 animate-in slide-in-from-bottom duration-300 safe-area-pb">
-                <h3 className="text-xl font-semibold text-gray-900 mb-2 text-center">{t('import.password_title')}</h3>
-                <p className="text-sm text-gray-500 mb-6 text-center">{t('import.password_desc')}</p>
-                
+        <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+            <div className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up md:modal-spring md:animate-none safe-area-pb"
+                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}>
+                <h3 className="text-xl font-semibold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>{t('import.password_title')}</h3>
+                <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-secondary)' }}>{t('import.password_desc')}</p>
+
                 <input
                     type="text"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-center text-lg mb-6"
+                    className="w-full p-4 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-center text-lg mb-6"
+                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                     placeholder="..."
                     autoFocus
                 />
 
                 <div className="flex gap-3">
-                    <button onClick={onClose} className="flex-1 py-3.5 text-gray-600 font-bold bg-gray-100 rounded-xl hover:bg-gray-200 transition">{t('btn.cancel')}</button>
-                    <button 
-                        onClick={() => onConfirm(password)} 
+                    <button onClick={onClose} className="flex-1 py-3.5 font-bold rounded-xl transition"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}>{t('btn.cancel')}</button>
+                    <button
+                        onClick={() => onConfirm(password)}
                         disabled={!password}
-                        className="flex-1 py-3.5 bg-[#f6c4d7] text-white font-bold rounded-xl hover:bg-[#f3b4cb] transition disabled:opacity-50"
+                        className="flex-1 py-3.5 text-white font-bold rounded-xl transition disabled:opacity-50 accent-bg-gradient"
                     >
                         {t('btn.ok')}
                     </button>

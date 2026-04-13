@@ -83,6 +83,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     calibrationModel?: string;
     applyE2LearningToCPA?: boolean;
     applyCPAInhibitionToE2?: boolean;
+    themeColor?: string;
+    darkMode?: boolean;
     lastModified: string;
   }) => {
     const response = await apiClient.updateUserData({
@@ -100,6 +102,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         calibrationModel: localData.calibrationModel,
         applyE2LearningToCPA: localData.applyE2LearningToCPA,
         applyCPAInhibitionToE2: localData.applyCPAInhibitionToE2,
+        themeColor: localData.themeColor,
+        darkMode: localData.darkMode,
       });
       setLastSyncTime(now);
       localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
@@ -291,6 +295,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             calibrationModel: cloudData.calibrationModel || '',
             applyE2LearningToCPA: cloudData.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
             applyCPAInhibitionToE2: cloudData.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
+            themeColor: cloudData.themeColor || localData.themeColor,
+            darkMode: cloudData.darkMode ?? localData.darkMode,
           });
           const localHash = localData.dataHash;
 

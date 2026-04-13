@@ -117,12 +117,14 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                 <div className="flex-1 overflow-y-auto min-h-0">
                     {activeTab === 'qr' && (
                         <div className="space-y-4">
-                            <div className="p-8 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-center hover:bg-gray-50 transition cursor-pointer" onClick={() => qrFileInputRef.current?.click()}>
-                                <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4">
+                            <div className="p-8 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center transition cursor-pointer"
+                                style={{ borderColor: 'var(--border-primary)' }}
+                                onClick={() => qrFileInputRef.current?.click()}>
+                                <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-500 rounded-full flex items-center justify-center mb-4">
                                     <ImageIcon size={32} />
                                 </div>
-                                <p className="text-sm font-bold text-gray-900">{t('qr.import.file')}</p>
-                                <p className="text-xs text-gray-400 mt-1">{t('qr.upload.hint')}</p>
+                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('qr.import.file')}</p>
+                                <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{t('qr.upload.hint')}</p>
                             </div>
                             <input type="file" accept="image/*" ref={qrFileInputRef} onChange={handleQrImageUpload} className="hidden" />
                             
@@ -138,9 +140,10 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                     {activeTab === 'json' && (
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">{t('import.text')}</label>
+                                <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>{t('import.text')}</label>
                                 <textarea
-                                    className="w-full h-32 p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-xs"
+                                    className="w-full h-32 p-3 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-xs"
+                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                     placeholder={t('import.paste_hint')}
                                     value={text}
                                     onChange={e => setText(e.target.value)}
@@ -155,14 +158,15 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                             </div>
 
                             <div className="relative flex py-2 items-center">
-                                <div className="flex-grow border-t border-gray-200"></div>
-                                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase font-bold">OR</span>
-                                <div className="flex-grow border-t border-gray-200"></div>
+                                <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
+                                <span className="flex-shrink-0 mx-4 text-xs uppercase font-bold" style={{ color: 'var(--text-tertiary)' }}>OR</span>
+                                <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
                             </div>
 
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 font-bold rounded-xl hover:border-pink-300 hover:bg-pink-50 hover:text-pink-500 transition flex items-center justify-center gap-2"
+                                className="w-full py-3 border-2 border-dashed font-bold rounded-xl transition flex items-center justify-center gap-2"
+                                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)' }}
                             >
                                 <Upload size={20} />
                                 {t('import.file_btn')}

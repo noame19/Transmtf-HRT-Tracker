@@ -58,7 +58,8 @@ const AnnouncementModal: React.FC = () => {
           <h2 className="text-base font-bold flex-1" style={{ color: 'var(--text-primary)' }}>公告 · Announcement</h2>
           <button
             onClick={() => setVisible(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+            className="w-8 h-8 flex items-center justify-center rounded-xl transition"
+            style={{ color: 'var(--text-tertiary)' }}
             aria-label="Close"
           >
             <X size={18} />
@@ -67,7 +68,8 @@ const AnnouncementModal: React.FC = () => {
 
         {/* Content */}
         <div
-          className="px-6 py-5 max-h-[60vh] overflow-y-auto text-sm text-gray-700 leading-relaxed announcement-content"
+          className="px-6 py-5 max-h-[60vh] overflow-y-auto text-sm leading-relaxed announcement-content"
+          style={{ color: 'var(--text-secondary)' }}
           dangerouslySetInnerHTML={{ __html: content }}
         />
 
@@ -91,13 +93,13 @@ const AnnouncementModal: React.FC = () => {
           animation: announcement-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .announcement-content a {
-          color: #ec4899;
+          color: var(--accent-500);
           text-decoration: underline;
         }
         .announcement-content h1, .announcement-content h2, .announcement-content h3 {
           font-weight: 700;
           margin-bottom: 0.5rem;
-          color: #111827;
+          color: var(--text-primary);
         }
         .announcement-content h1 { font-size: 1.25rem; }
         .announcement-content h2 { font-size: 1.1rem; }
@@ -108,11 +110,11 @@ const AnnouncementModal: React.FC = () => {
           margin-bottom: 0.75rem;
         }
         .announcement-content li { margin-bottom: 0.25rem; }
-        .announcement-content strong { font-weight: 600; color: #111827; }
-        .announcement-content hr { border-color: #e5e7eb; margin: 1rem 0; }
+        .announcement-content strong { font-weight: 600; color: var(--text-primary); }
+        .announcement-content hr { border-color: var(--border-secondary); margin: 1rem 0; }
         .announcement-content img { max-width: 100%; border-radius: 0.5rem; }
         .announcement-content code {
-          background: #f3f4f6;
+          background: var(--bg-card-hover);
           padding: 0.1rem 0.4rem;
           border-radius: 0.25rem;
           font-size: 0.85em;

@@ -213,7 +213,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY];
+            const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -276,6 +276,24 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 markExternalUpdate('applyCPAInhibitionToE2');
                 const savedCPA = localStorage.getItem(APPLY_CPA_INHIBITION_TO_E2_KEY);
                 if (savedCPA !== null) setApplyCPAInhibitionToE2(savedCPA === '1' || savedCPA.toLowerCase() === 'true');
+
+                // Notify ThemeContext about cloud-synced theme/dark mode changes
+                const savedTheme = localStorage.getItem(THEME_COLOR_KEY);
+                if (savedTheme) {
+                    window.dispatchEvent(new StorageEvent('storage', {
+                        key: THEME_COLOR_KEY,
+                        newValue: savedTheme,
+                        storageArea: localStorage,
+                    }));
+                }
+                const savedDark = localStorage.getItem(DARK_MODE_KEY);
+                if (savedDark !== null) {
+                    window.dispatchEvent(new StorageEvent('storage', {
+                        key: DARK_MODE_KEY,
+                        newValue: savedDark,
+                        storageArea: localStorage,
+                    }));
+                }
             }
         };
 

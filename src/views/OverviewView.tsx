@@ -1,8 +1,16 @@
 import React, { useMemo } from 'react';
 import { Activity, Settings, Info } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
 import { DoseEvent, SimulationResult, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
+
+/** Convert hex color string to "r,g,b" for use in rgba() */
+function hexToRgb(hex: string): string {
+  const h = hex.replace('#', '');
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
 
 interface SimCI {
     timeH: number[];
@@ -56,6 +64,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   onOpenWeightModal,
 }) => {
   const { t, lang } = useTranslation();
+  const { isDark, colors } = useTheme();
   const h = currentTime.getTime() / 3600000;
 
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
@@ -125,17 +134,17 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   const getLevelStatus = (conc: number) => {
     if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--accent-50)', border: 'var(--accent-200)' };
-    if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' };
-    if (conc >= 70 && conc <= 300) return { label: 'status.level.luteal', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' };
-    if (conc >= 30 && conc < 70) return { label: 'status.level.follicular', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe' };
+    if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(5,150,105,0.15)' : '#ecfdf5', border: isDark ? 'rgba(5,150,105,0.3)' : '#a7f3d0' };
+    if (conc >= 70 && conc <= 300) return { label: 'status.level.luteal', color: isDark ? '#60a5fa' : '#2563eb', bg: isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff', border: isDark ? 'rgba(37,99,235,0.3)' : '#bfdbfe' };
+    if (conc >= 30 && conc < 70) return { label: 'status.level.follicular', color: isDark ? '#818cf8' : '#4f46e5', bg: isDark ? 'rgba(79,70,229,0.15)' : '#eef2ff', border: isDark ? 'rgba(79,70,229,0.3)' : '#c7d2fe' };
     if (conc >= 8 && conc < 30) return { label: 'status.level.male', color: 'var(--text-secondary)', bg: 'var(--bg-card-hover)', border: 'var(--border-primary)' };
-    return { label: 'status.level.low', color: '#d97706', bg: '#fffbeb', border: '#fde68a' };
+    return { label: 'status.level.low', color: isDark ? '#fbbf24' : '#d97706', bg: isDark ? 'rgba(217,119,6,0.15)' : '#fffbeb', border: isDark ? 'rgba(217,119,6,0.3)' : '#fde68a' };
   };
 
   const currentStatus = useMemo(() => {
     if (currentLevel > 0) return getLevelStatus(currentLevel);
     return null;
-  }, [currentLevel]);
+  }, [currentLevel, isDark]);
 
   const formatHeadlineE2 = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
   const formatHeadlineCPA = (v: number) => (v >= 10 ? v.toFixed(1) : v.toFixed(2));
@@ -147,7 +156,9 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           {/* Main level card */}
           <div className="md:col-span-2 rounded-2xl border px-5 py-5"
             style={{
-              background: `linear-gradient(135deg, var(--accent-50), var(--bg-card))`,
+              background: isDark
+                ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.10), var(--bg-card))`
+                : `linear-gradient(135deg, var(--accent-50), var(--bg-card))`,
               borderColor: 'var(--border-primary)',
               boxShadow: 'var(--shadow-sm)',
             }}>
@@ -258,16 +269,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
               {/* CPA Display */}
               <div className="space-y-1">
-                <div className="text-[10px] md:text-xs font-bold text-purple-400 uppercase tracking-wider">
+                <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
+                  style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
                   CPA
                 </div>
                 <div className="flex items-end gap-2">
                   {currentCPA > 0 ? (
                     <>
-                      <span className="text-4xl md:text-5xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
+                      <span className="text-4xl md:text-5xl font-black tracking-tight"
+                        style={{ color: isDark ? '#c084fc' : '#9333ea' }}>
                         {formatHeadlineCPA(currentCPA)}
                       </span>
-                      <span className="text-sm md:text-base font-bold text-purple-300 mb-1">ng/mL</span>
+                      <span className="text-sm md:text-base font-bold mb-1"
+                        style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>ng/mL</span>
                     </>
                   ) : (
                     <span className="text-4xl md:text-5xl font-black tracking-tight"
@@ -280,19 +294,24 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   <>
                     {currentCPACI && (
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wide">{t('chart.cpa_pop_range')}</span>
-                        <span className="text-[11px] font-semibold text-purple-400">
+                        <span className="text-[9px] font-bold uppercase tracking-wide"
+                          style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>{t('chart.cpa_pop_range')}</span>
+                        <span className="text-[11px] font-semibold"
+                          style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
                           {currentCPACI.lo.toFixed(2)} – {currentCPACI.hi.toFixed(2)}
-                          <span className="text-[9px] font-normal text-purple-300 ml-0.5">ng/mL</span>
+                          <span className="text-[9px] font-normal ml-0.5"
+                            style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>ng/mL</span>
                         </span>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wide">
+                      <span className="text-[9px] font-bold uppercase tracking-wide"
+                        style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>
                         {t('chart.cpa_adherence')}
                       </span>
                       {personalCPA !== null && (
-                        <span className="text-[10px] font-semibold text-purple-500">
+                        <span className="text-[10px] font-semibold"
+                          style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
                           {personalCPA.toFixed(2)} ng/mL
                         </span>
                       )}

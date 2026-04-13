@@ -105,7 +105,7 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
     return (
         <div className="space-y-2" ref={containerRef}>
             {label && (
-                <label id={labelId} className="block text-sm font-bold text-gray-700">
+                <label id={labelId} className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>
                     {label}
                 </label>
             )}

@@ -105,8 +105,8 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                 <div className="flex-1 overflow-y-auto min-h-0">
                     {activeTab === 'qr' && (
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl">
-                                <label id="encrypt-label" className="text-sm font-bold text-gray-700">{t('qr.encrypt_label')}</label>
+                            <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--bg-card-hover)' }}>
+                                <label id="encrypt-label" className="text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('qr.encrypt_label')}</label>
                                 <button
                                     role="switch"
                                     aria-checked={isEncrypted}
@@ -120,7 +120,7 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
 
                             {displayData && !isTooLargeForQr ? (
                                 <div className="flex flex-col items-center gap-4">
-                                    <div className="bg-white p-4 rounded-2xl border border-gray-100 relative">
+                                    <div className="p-4 rounded-2xl border relative" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-secondary)' }}>
                                         <QRCodeCanvas value={displayData} size={200} includeMargin level="M" />
                                         {isEncrypted && (
                                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -130,9 +130,9 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                     </div>
                                     
                                     {isEncrypted && password && (
-                                        <div className="w-full bg-pink-50 border border-pink-100 p-3 rounded-xl text-center">
-                                            <p className="text-xs text-pink-400 font-bold uppercase mb-1">{t('export.password_title')}</p>
-                                            <p className="font-mono font-bold text-gray-800 text-lg select-all">{password}</p>
+                                        <div className="w-full p-3 rounded-xl text-center" style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)' }}>
+                                            <p className="text-xs font-bold uppercase mb-1" style={{ color: 'var(--accent-400)' }}>{t('export.password_title')}</p>
+                                            <p className="font-mono font-bold text-lg select-all" style={{ color: 'var(--text-primary)' }}>{password}</p>
                                         </div>
                                     )}
 
@@ -157,21 +157,23 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-8 text-gray-600 space-y-3">
+                                <div className="text-center py-8 space-y-3" style={{ color: 'var(--text-secondary)' }}>
                                     {isTooLargeForQr ? (
-                                        <div className="mx-auto max-w-md text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
-                                            <p className="text-base font-bold text-gray-900">{t('qr.too_large')}</p>
-                                            <p className="text-sm text-gray-700">{t('qr.too_large_desc') || t('drawer.save_hint')}</p>
+                                        <div className="mx-auto max-w-md text-sm rounded-xl p-4 space-y-3"
+                                            style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-secondary)' }}>
+                                            <p className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>{t('qr.too_large')}</p>
+                                            <p className="text-sm">{t('qr.too_large_desc') || t('drawer.save_hint')}</p>
                                             <div className="flex flex-col gap-2">
                                                 <button
                                                     onClick={handleCopy}
-                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-bold hover:bg-gray-800 transition"
+                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg text-white text-sm font-bold transition accent-bg-gradient"
                                                 >
                                                     <Copy size={16} /> {copyState === 'copied' ? t('qr.copied') : t('qr.copy')}
                                                 </button>
                                                 <button
                                                     onClick={() => setActiveTab('json')}
-                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg bg-gray-50 border border-gray-200 text-sm font-bold text-gray-800 hover:border-gray-300 transition"
+                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg text-sm font-bold transition"
+                                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                                 >
                                                     {t('qr.go_json')}
                                                 </button>
@@ -197,7 +199,7 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                 <Lock size={20} />
                                 JSON ({t('qr.encrypt_label')})
                             </button>
-                            <p className="text-xs text-gray-400 text-center mt-4 leading-relaxed">
+                            <p className="text-xs text-center mt-4 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
                                 {t('drawer.save_hint')}
                             </p>
                         </div>

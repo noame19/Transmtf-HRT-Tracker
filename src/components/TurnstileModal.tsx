@@ -211,16 +211,19 @@ const TurnstileModal: React.FC<TurnstileModalProps> = ({
   if (import.meta.env.DEV) console.log('[TurnstileModal] Rendering modal - isOpen:', isOpen);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in slide-in-from-bottom">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in"
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+      <div className="rounded-2xl w-full max-w-md p-6 modal-spring"
+        style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-            <p className="text-sm text-gray-600 mt-1">{description}</p>
+            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{description}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100"
+            className="p-1 rounded-lg transition"
+            style={{ color: 'var(--text-tertiary)' }}
             aria-label="Close"
           >
             <X size={20} />
@@ -231,7 +234,7 @@ const TurnstileModal: React.FC<TurnstileModalProps> = ({
           <div ref={containerRef} className="flex justify-center" />
         </div>
 
-        <div className="mt-4 text-center text-xs text-gray-500">
+        <div className="mt-4 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
           Protected by Cloudflare Turnstile
         </div>
       </div>

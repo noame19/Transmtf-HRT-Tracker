@@ -4,7 +4,7 @@ import { formatDate, formatTime } from '../utils/helpers';
 import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateConcentration_CPA, LabResult, convertToPgMl } from '../../logic';
 import { Activity, RotateCcw, Info, FlaskConical } from 'lucide-react';
 import {
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, AreaChart, ComposedChart, Scatter, Brush
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
 } from 'recharts';
 
 interface SimCI {
@@ -161,8 +161,8 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
         if (payload[0].payload.isLabResult) {
             const data = payload[0].payload;
             return (
-                <div className="bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-teal-100/50 shadow-sm">
-                    <p className="text-[10px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
+                <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-teal-100/50 dark:border-teal-800/50 shadow-sm">
+                    <p className="text-[10px] font-medium mb-0.5 flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
                         <FlaskConical size={10} />
                         {formatDate(new Date(label), lang)} {formatTime(new Date(label))}
                     </p>
@@ -173,7 +173,7 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                         <span className="text-[10px] font-bold text-teal-400">{data.originalUnit}</span>
                     </div>
                     {data.originalUnit === 'pmol/l' && (
-                        <div className="text-[9px] text-gray-400 mt-0.5">
+                        <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
                             ≈ {data.conc.toFixed(1)} pg/mL
                         </div>
                     )}
@@ -194,8 +194,8 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
         const cpaCiHigh = dataPoint.cpaCi95High;
 
         return (
-            <div className="bg-white/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-pink-100/50 shadow-sm">
-                <p className="text-[10px] font-medium text-gray-400 mb-0.5">
+            <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-pink-100/50 dark:border-pink-800/50 shadow-sm">
+                <p className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
                     {formatDate(new Date(label), lang)} {formatTime(new Date(label))}
                 </p>
                 {concE2 > 0 && (
@@ -227,10 +227,10 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                         )}
                         {ciLow !== undefined && ciHigh !== undefined && (
                             <div className="flex items-center gap-1 ml-1 mt-0.5">
-                                <span className="text-[8px] font-bold text-gray-400 uppercase w-8">{t('chart.ci_band')}</span>
-                                <span className="text-[9px] text-gray-500 font-medium">
+                                <span className="text-[8px] font-bold uppercase w-8" style={{ color: 'var(--text-tertiary)' }}>{t('chart.ci_band')}</span>
+                                <span className="text-[9px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                                     {ciLow.toFixed(0)} – {ciHigh.toFixed(0)}
-                                    <span className="text-[8px] font-normal text-gray-400 ml-0.5">pg/mL</span>
+                                    <span className="text-[8px] font-normal ml-0.5" style={{ color: 'var(--text-tertiary)' }}>pg/mL</span>
                                 </span>
                             </div>
                         )}
@@ -256,10 +256,10 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                         </div>
                         {cpaCiLow !== undefined && cpaCiHigh !== undefined && (
                             <div className="flex items-center gap-1 ml-1 mt-0.5">
-                                <span className="text-[8px] font-bold text-gray-400 uppercase w-8">{t('chart.ci_band')}</span>
-                                <span className="text-[9px] text-gray-500 font-medium">
+                                <span className="text-[8px] font-bold uppercase w-8" style={{ color: 'var(--text-tertiary)' }}>{t('chart.ci_band')}</span>
+                                <span className="text-[9px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                                     {cpaCiLow.toFixed(2)} – {cpaCiHigh.toFixed(2)}
-                                    <span className="text-[8px] font-normal text-gray-400 ml-0.5">ng/mL</span>
+                                    <span className="text-[8px] font-normal ml-0.5" style={{ color: 'var(--text-tertiary)' }}>ng/mL</span>
                                 </span>
                             </div>
                         )}
@@ -281,6 +281,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     baselineE2PGmL?: number | null;
     onPointClick: (e: DoseEvent) => void;
 }) => {
+    // Determine whether any CPA dosing events exist
+    const hasCPADoses = useMemo(() => {
+        return events.some(e => e.ester === 'CPA');
+    }, [events]);
     const { t, lang } = useTranslation();
     const [xDomain, setXDomain] = useState<[number, number] | null>(null);
     const initializedRef = useRef(false);
@@ -288,7 +292,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     const rafUpdateRef = useRef<number | null>(null);
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
-    const MAX_RENDER_POINTS = 480;
+    const MAX_RENDER_POINTS = 1200;
     const MAX_OVERVIEW_POINTS = 180;
 
     const niceCeil = (value: number, fallback: number): number => {
@@ -424,6 +428,30 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             id: l.id
         }));
     }, [labResults]);
+
+    // Build dose event scatter points for marking on the chart
+    const dosePoints = useMemo(() => {
+        if (!sim || !events || events.length === 0) return [];
+        return events.map(e => {
+            const timeMs = e.timeH * 3600000;
+            // Interpolate E2 at dose time for y-position
+            const concE2Raw = interpolateConcentration_E2(sim, e.timeH);
+            const hasPersonalModelCurve = !!simCI;
+            const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
+                ? baselineE2PGmL
+                : 0;
+            const concE2 = concE2Raw !== null && !Number.isNaN(concE2Raw)
+                ? concE2Raw + baseShift
+                : 0;
+            return {
+                time: timeMs,
+                concE2,
+                isDoseEvent: true,
+                ester: e.ester,
+            };
+        });
+    }, [events, sim, simCI, baselineE2PGmL]);
+
     const { minTime, maxTime, now } = useMemo(() => {
         const series = rawData.length ? rawData : data;
         const n = new Date().getTime();
@@ -674,8 +702,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     };
 
     if (!sim || sim.timeH.length === 0) return (
-        <div className="h-72 md:h-96 flex flex-col items-center justify-center text-gray-400 bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-            <Activity className="w-12 h-12 mb-4 text-gray-200" strokeWidth={1.5} />
+        <div className="h-72 md:h-96 flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-8" style={{ color: 'var(--text-tertiary)' }}>
+            <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
             <p className="text-sm font-medium">{t('timeline.empty')}</p>
         </div>
     );
@@ -683,10 +711,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     const hasPersonalModel = !!simCI;
 
     return (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-gray-100">
-                <h2 className="text-sm md:text-base font-semibold text-gray-800 tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif' }}>
-                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl bg-pink-50 border border-pink-100">
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] relative overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-secondary)]">
+                <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif', color: 'var(--text-primary)' }}>
+                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30">
                         <Activity size={16} className="text-[#f6c4d7] md:w-5 md:h-5" />
                     </span>
                     {t('chart.title')}
@@ -697,23 +725,23 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                     )}
                 </h2>
 
-                <div className="flex bg-gray-50 rounded-xl p-1 gap-1 border border-gray-100">
+                <div className="flex bg-[var(--bg-secondary)] rounded-xl p-1 gap-1 border border-[var(--border-primary)]">
                     <button
                         onClick={() => zoomToDuration(30)}
-                        className="px-3 py-1.5 text-xs md:text-sm font-bold text-gray-600 rounded-lg hover:bg-white transition-all">
+                        className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
                         1M
                     </button>
                     <button
                         onClick={() => zoomToDuration(7)}
-                        className="px-3 py-1.5 text-xs md:text-sm font-bold text-gray-600 rounded-lg hover:bg-white transition-all">
+                        className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
                         1W
                     </button>
-                    <div className="w-px h-4 bg-gray-200 self-center mx-1"></div>
+                    <div className="w-px h-4 self-center mx-1" style={{ background: 'var(--border-primary)' }}></div>
                     <button
                         onClick={() => {
                             zoomToDuration(7);
                         }}
-                        className="p-1.5 text-gray-600 rounded-lg hover:bg-white transition-all"
+                        className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}
                     >
                         <RotateCcw size={14} className="md:w-4 md:h-4" />
                     </button>
@@ -722,7 +750,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
 
             <div className="h-64 md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={data} margin={{ top: 12, right: 10, bottom: 0, left: 10 }}>
+                    <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 0, left: 10 }}>
                         <defs>
                             <linearGradient id="colorConc" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#f6c4d7" stopOpacity={0.18}/>
@@ -763,6 +791,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             width={50}
                             label={{ value: 'E2 (pg/mL)', angle: -90, position: 'left', offset: 0, style: { fontSize: 11, fill: '#ec4899', fontWeight: 700, textAnchor: 'middle' } }}
                         />
+                        {hasCPADoses && (
                         <YAxis
                             yAxisId="right"
                             orientation="right"
@@ -775,6 +804,16 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             width={50}
                             label={{ value: 'CPA (ng/mL)', angle: 90, position: 'right', offset: 0, style: { fontSize: 11, fill: '#8b5cf6', fontWeight: 700, textAnchor: 'middle' } }}
                         />
+                        )}
+                        {/* Hidden right axis when no CPA data — Recharts requires at least one yAxisId="right" */}
+                        {!hasCPADoses && (
+                        <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            hide={true}
+                            domain={[0, 1]}
+                        />
+                        )}
                         <Tooltip
                             content={<CustomTooltip t={t} lang={lang} />}
                             cursor={{ stroke: '#f6c4d7', strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -858,7 +897,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 />
                             </>
                         )}
-                        {hasPersonalModel && hasPersonalCpaModel && hasPersonalCpaCI && (
+                        {hasPersonalModel && hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
                             <>
                                 <Area
                                     data={data}
@@ -902,6 +941,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             isAnimationActive={false}
                             activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: '#ec4899' }}
                         />
+                        {hasCPADoses && (
                         <Area
                             data={data}
                             type="monotone"
@@ -914,6 +954,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             isAnimationActive={false}
                             activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: '#7c3aed' }}
                         />
+                        )}
 
                         {/* Personal model E2 curve (dashed rose line) */}
                         {hasPersonalModel && (
@@ -933,7 +974,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                         )}
 
                         {/* Personal model CPA curve (dashed purple line) */}
-                        {hasPersonalModel && hasPersonalCpaModel && (
+                        {hasPersonalModel && hasPersonalCpaModel && hasCPADoses && (
                             <Area
                                 data={data}
                                 type="monotone"
@@ -968,6 +1009,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 );
                             }}
                         />
+                        {hasCPADoses && (
                         <Scatter
                             data={nowPoint ? [nowPoint] : []}
                             yAxisId="right"
@@ -987,17 +1029,74 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 );
                             }}
                         />
+                        )}
+                        {labPoints.map((point) => (
+                            <ReferenceDot
+                                key={`lab-visible-${point.id}`}
+                                x={point.time}
+                                y={point.conc}
+                                yAxisId="left"
+                                ifOverflow="extendDomain"
+                                isFront={true}
+                                r={9}
+                                shape={({ cx, cy }: any) => {
+                                    const x = cx ?? 0;
+                                    const y = cy ?? 0;
+                                    const iconSize = 10;
+                                    const iconY = y - iconSize / 2 + 1;
+                                    return (
+                                        <g style={{ overflow: 'visible' }}>
+                                            <circle cx={x} cy={y} r={9} fill="#14b8a6" stroke="white" strokeWidth={2} />
+                                            <svg
+                                                x={x - iconSize / 2}
+                                                y={iconY}
+                                                width={iconSize}
+                                                height={iconSize}
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="white"
+                                                strokeWidth={2.25}
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                overflow="visible"
+                                            >
+                                                <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2" />
+                                                <path d="M8.5 2h7" />
+                                                <path d="M7 16h10" />
+                                            </svg>
+                                        </g>
+                                    );
+                                }}
+                            />
+                        ))}
                         {labPoints.length > 0 && (
                             <Scatter
                                 data={labPoints}
+                                dataKey="conc"
                                 yAxisId="left"
                                 isAnimationActive={false}
                                 shape={({ cx, cy }: any) => (
+                                    <circle cx={cx} cy={cy} r={10} fill="transparent" />
+                                )}
+                            />
+                        )}
+                        {/* Dose event markers — small dots on the E2 curve */}
+                        {dosePoints.length > 0 && (
+                            <Scatter
+                                data={dosePoints}
+                                dataKey="concE2"
+                                yAxisId="left"
+                                isAnimationActive={false}
+                                shape={({ cx, cy, payload }: any) => (
                                     <g>
-                                        <circle cx={cx} cy={cy} r={6} fill="#14b8a6" stroke="white" strokeWidth={2} />
-                                        <g transform={`translate(${(cx ?? 0) - 6}, ${(cy ?? 0) - 6})`}>
-                                            <FlaskConical size={12} color="white" />
-                                        </g>
+                                        <circle
+                                            cx={cx}
+                                            cy={cy}
+                                            r={3}
+                                            fill={payload?.ester === 'CPA' ? '#8b5cf6' : '#ec4899'}
+                                            stroke="white"
+                                            strokeWidth={1.5}
+                                        />
                                     </g>
                                 )}
                             />
@@ -1008,7 +1107,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             {/* Overview mini-map with draggable handles */}
             {overviewData.length > 1 && (
                 <div className="px-3 pb-4 mt-1">
-                    <div className="w-full h-16 bg-gray-50/80 border border-gray-100 rounded-none shadow-inner overflow-hidden">
+                    <div className="w-full h-16 bg-[var(--bg-secondary)] border border-[var(--border-secondary)] rounded-none shadow-inner overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={overviewData} margin={{ top: 6, right: 8, left: -6, bottom: 6 }}>
                                 <defs>
@@ -1062,4 +1161,3 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
 };
 
 export default ResultChart;
-

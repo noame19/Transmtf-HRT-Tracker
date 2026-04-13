@@ -4,7 +4,7 @@ import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, E
 import { Lang } from '../i18n/translations';
 
 export const formatDate = (date: Date, lang: Lang) => {
-    const locale = lang === 'zh' ? 'zh-CN' : (lang === 'ru' ? 'ru-RU' : 'en-US');
+    const locale = lang === 'zh' ? 'zh-CN' : (lang === 'zh-TW' ? 'zh-TW' : (lang === 'ja' ? 'ja-JP' : 'en-US'));
     return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 };
 

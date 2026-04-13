@@ -30,25 +30,25 @@ const ConvergenceBar: React.FC<{ score: number }> = ({ score }) => {
 
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-secondary)' }}>
         <div
           className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-[10px] font-bold text-gray-500 w-8 text-right">{pct}%</span>
+      <span className="text-[10px] font-bold w-8 text-right" style={{ color: 'var(--text-tertiary)' }}>{pct}%</span>
     </div>
   );
 };
 
 // One row in the learning panel
 const StatRow: React.FC<{ label: string; value: React.ReactNode; hint?: string }> = ({ label, value, hint }) => (
-  <div className="flex items-start justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
+  <div className="flex items-start justify-between gap-2 py-1.5 border-b last:border-0" style={{ borderColor: 'var(--border-secondary)' }}>
     <div className="min-w-0">
-      <span className="text-[11px] font-semibold text-gray-500">{label}</span>
-      {hint && <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{hint}</p>}
+      <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      {hint && <p className="text-[10px] mt-0.5 leading-tight" style={{ color: 'var(--text-tertiary)' }}>{hint}</p>}
     </div>
-    <div className="text-[11px] font-bold text-gray-800 shrink-0">{value}</div>
+    <div className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-primary)' }}>{value}</div>
   </div>
 );
 
@@ -75,24 +75,27 @@ const LearningPanel: React.FC<{
       style={{ background: 'var(--bg-card)', borderColor: 'var(--accent-200)', boxShadow: 'var(--shadow-sm)' }}>
       {/* Header – always visible */}
       <button
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-rose-50/30 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 transition-colors"
+        style={{ }}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center">
-            <Brain size={15} className="text-rose-400" />
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-100)' }}>
+            <Brain size={15} style={{ color: 'var(--accent-400)' }} />
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-gray-800">{t('lab.learning_title')}</p>
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.learning_title')}</p>
             {hasModel ? (
-              <p className="text-[10px] text-gray-400">
+              <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                 {personalModel!.observationCount} {t('lab.learning_obs')}
                 {lastDiagnostics?.isOutlier && (
                   <span className="ml-2 text-amber-500 font-semibold">⚠</span>
                 )}
               </p>
             ) : (
-              <p className="text-[10px] text-gray-400">{t('lab.learning_conv_none')}</p>
+              <p className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{t('lab.learning_conv_none')}</p>
             )}
           </div>
         </div>
@@ -102,25 +105,25 @@ const LearningPanel: React.FC<{
               <ConvergenceBar score={conv} />
             </div>
           )}
-          {expanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+          {expanded ? <ChevronUp size={14} style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />}
         </div>
       </button>
 
       {/* Expanded detail section */}
       {expanded && (
-        <div className="border-t border-rose-50 px-4 py-3 space-y-1">
+        <div className="border-t px-4 py-3 space-y-1" style={{ borderColor: 'var(--border-secondary)' }}>
           {/* Description */}
-          <p className="text-[10px] text-gray-400 pb-2 leading-relaxed">{t('lab.learning_desc')}</p>
+          <p className="text-[10px] pb-2 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>{t('lab.learning_desc')}</p>
 
           {!hasModel ? (
-            <p className="text-[11px] text-gray-400 text-center py-4 leading-relaxed px-2">{t('lab.learning_conv_none')}</p>
+            <p className="text-[11px] text-center py-4 leading-relaxed px-2" style={{ color: 'var(--text-tertiary)' }}>{t('lab.learning_conv_none')}</p>
           ) : (
             <>
               {/* Outlier warning */}
               {lastDiagnostics?.isOutlier && (
-                <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
+                <div className="flex items-start gap-2 rounded-xl px-3 py-2 mb-2" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
                   <AlertTriangle size={13} className="text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-[10px] font-medium text-amber-700">{t('lab.learning_outlier')}</p>
+                  <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{t('lab.learning_outlier')}</p>
                 </div>
               )}
 
@@ -137,13 +140,13 @@ const LearningPanel: React.FC<{
               />
 
               {/* Convergence */}
-              <div className="py-1.5 border-b border-gray-50">
+              <div className="py-1.5 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-semibold text-gray-500">{t('lab.learning_convergence')}</span>
-                  <span className="text-[10px] font-bold text-gray-600">{convLabel}</span>
+                  <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('lab.learning_convergence')}</span>
+                  <span className="text-[10px] font-bold" style={{ color: 'var(--text-secondary)' }}>{convLabel}</span>
                 </div>
                 <ConvergenceBar score={conv} />
-                <p className="text-[10px] text-gray-400 mt-1">{t('lab.learning_convergence_tip')}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{t('lab.learning_convergence_tip')}</p>
               </div>
 
               {/* Last NIS */}
@@ -213,18 +216,19 @@ const ModelOption: React.FC<{
       className={`w-full text-left p-3 rounded-xl border transition-all ${
         selected
           ? 'border-[var(--accent-300)] bg-[var(--accent-50)]'
-          : 'border-gray-100 bg-gray-50/60 hover:border-gray-200 hover:bg-gray-50'
+          : 'border-[var(--border-secondary)] hover:border-[var(--border-primary)]'
       }`}
+      style={!selected ? { background: 'var(--bg-secondary)' } : undefined}
     >
       <div className="flex items-start gap-2.5">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border ${
-          selected ? 'bg-[var(--accent-100)] border-[var(--accent-200)]' : 'bg-white border-gray-200'
+          selected ? 'bg-[var(--accent-100)] border-[var(--accent-200)]' : 'bg-[var(--bg-card)] border-[var(--border-primary)]'
         }`}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-[13px] font-bold ${selected ? 'text-[var(--accent-600)]' : 'text-gray-800'}`}>{label}</span>
+            <span className={`text-[13px] font-bold ${selected ? 'text-[var(--accent-600)]' : ''}`} style={!selected ? { color: 'var(--text-primary)' } : undefined}>{label}</span>
             {selected && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--accent-100)] text-[var(--accent-600)] text-[9px] font-bold">
                 <CheckCircle2 size={9} />
@@ -232,7 +236,7 @@ const ModelOption: React.FC<{
               </span>
             )}
           </div>
-          <p className="text-[10px] text-gray-500 leading-relaxed mb-1.5">{desc}</p>
+          <p className="text-[10px] leading-relaxed mb-1.5" style={{ color: 'var(--text-secondary)' }}>{desc}</p>
           <div className="space-y-0.5">
             {pros.map((pro, i) => (
               <p key={i} className="text-[10px] font-medium text-emerald-600 flex items-start gap-1">
@@ -247,7 +251,7 @@ const ModelOption: React.FC<{
           </div>
         </div>
         <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-1 flex items-center justify-center ${
-          selected ? 'border-[var(--accent-500)] bg-[var(--accent-500)]' : 'border-gray-300 bg-white'
+          selected ? 'border-[var(--accent-500)] bg-[var(--accent-500)]' : 'border-[var(--border-primary)] bg-[var(--bg-card)]'
         }`}>
           {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
         </div>
@@ -300,14 +304,14 @@ const LabView: React.FC<LabViewProps> = ({
       />
 
       {/* E2 Calibration Model Selector */}
-      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
+      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4 space-y-3">
         <div>
-          <p className="text-sm font-bold text-gray-800">{t('lab.model_selector')}</p>
-          <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{t('lab.model_selector_desc')}</p>
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.model_selector')}</p>
+          <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{t('lab.model_selector_desc')}</p>
         </div>
         <div className="space-y-2">
           <ModelOption
-            icon={<Cpu size={14} className={calibrationModel === 'ekf' ? 'text-[var(--accent-500)]' : 'text-gray-500'} />}
+            icon={<Cpu size={14} className={calibrationModel === 'ekf' ? 'text-[var(--accent-500)]' : ''} style={calibrationModel !== 'ekf' ? { color: 'var(--text-tertiary)' } : undefined} />}
             label={t('lab.model_ekf_label')}
             desc={t('lab.model_ekf_desc')}
             pros={[t('lab.model_ekf_pro1'), t('lab.model_ekf_pro2')]}
@@ -316,7 +320,7 @@ const LabView: React.FC<LabViewProps> = ({
             onSelect={() => onSetCalibrationModel('ekf')}
           />
           <ModelOption
-            icon={<Waves size={14} className={calibrationModel === 'ou-kalman' ? 'text-[var(--accent-500)]' : 'text-gray-500'} />}
+            icon={<Waves size={14} className={calibrationModel === 'ou-kalman' ? 'text-[var(--accent-500)]' : ''} style={calibrationModel !== 'ou-kalman' ? { color: 'var(--text-tertiary)' } : undefined} />}
             label={t('lab.model_ou_label')}
             desc={t('lab.model_ou_desc')}
             pros={[t('lab.model_ou_pro1'), t('lab.model_ou_pro2')]}
@@ -328,11 +332,11 @@ const LabView: React.FC<LabViewProps> = ({
       </div>
 
       {/* CPA adherence toggle */}
-      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-gray-800">{t('lab.learning_apply_cpa')}</p>
-            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.learning_apply_cpa')}</p>
+            <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {t('lab.learning_apply_cpa_desc')}
             </p>
           </div>
@@ -355,17 +359,17 @@ const LabView: React.FC<LabViewProps> = ({
             />
           </button>
         </div>
-        <p className="mt-2 text-[10px] font-semibold text-gray-400">
+        <p className="mt-2 text-[10px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           {applyE2LearningToCPA ? t('lab.learning_apply_cpa_on') : t('lab.learning_apply_cpa_off')}
         </p>
       </div>
 
       {/* CPA→E2 clearance inhibition toggle */}
-      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-gray-800">{t('lab.apply_cpa_inhibition')}</p>
-            <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.apply_cpa_inhibition')}</p>
+            <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {t('lab.apply_cpa_inhibition_desc')}
             </p>
           </div>
@@ -388,17 +392,17 @@ const LabView: React.FC<LabViewProps> = ({
             />
           </button>
         </div>
-        <p className="mt-2 text-[10px] font-semibold text-gray-400">
+        <p className="mt-2 text-[10px] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
           {applyCPAInhibitionToE2 ? t('lab.apply_cpa_inhibition_on') : t('lab.apply_cpa_inhibition_off')}
         </p>
       </div>
 
       {labResults.length === 0 ? (
-        <div className="mx-4 text-center py-12 text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200 shadow-sm">
+        <div className="mx-4 text-center py-12 bg-[var(--bg-card)] rounded-3xl border border-dashed border-[var(--border-primary)] shadow-[var(--shadow-sm)]" style={{ color: 'var(--text-tertiary)' }}>
           <p>{t('lab.empty')}</p>
         </div>
       ) : (
-        <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden">
+        <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] divide-y divide-[var(--border-secondary)] overflow-hidden">
           {labResults
             .slice()
             .sort((a, b) => b.timeH - a.timeH)
@@ -407,22 +411,25 @@ const LabView: React.FC<LabViewProps> = ({
               return (
                 <div
                   key={res.id}
-                  className="p-4 flex items-center gap-4 hover:bg-gray-50 transition-all cursor-pointer group relative"
+                  className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative"
+                  style={{}}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   onClick={() => onEditLabResult(res)}
                 >
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-teal-50 border border-teal-100">
-                    <FlaskConical className="text-teal-500" size={18} />
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-100)' }}>
+                    <FlaskConical style={{ color: 'var(--accent-500)' }} size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-gray-900 text-sm truncate">
+                      <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
                         {res.concValue} {res.unit}
                       </span>
-                      <span className="font-mono text-[11px] font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+                      <span className="font-mono text-[11px] font-medium bg-[var(--bg-secondary)] px-2 py-1 rounded-md border border-[var(--border-secondary)]">
                         {formatTime(d)}
                       </span>
                     </div>
-                    <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                       {formatDate(d, lang)}
                     </div>
                   </div>
@@ -432,13 +439,14 @@ const LabView: React.FC<LabViewProps> = ({
         </div>
       )}
 
-      <div className="mx-4 bg-white rounded-2xl border border-gray-200 shadow-sm flex items-center justify-end px-4 py-3">
+      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] flex items-center justify-end px-4 py-3">
         <button
           onClick={onClearLabResults}
           disabled={!labResults.length}
           className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
-            labResults.length ? 'text-red-500 hover:bg-red-50' : 'text-gray-300 cursor-not-allowed'
+            labResults.length ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed'
           }`}
+          style={!labResults.length ? { color: 'var(--text-tertiary)' } : undefined}
         >
           {t('lab.clear_all')}
         </button>

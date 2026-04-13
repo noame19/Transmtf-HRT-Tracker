@@ -16,51 +16,52 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                     <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.title')}</h3>
                     <button
                         onClick={onClose}
-                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition"
+                        className="w-8 h-8 flex items-center justify-center rounded-full transition"
+                        style={{ color: 'var(--text-tertiary)' }}
                     >
-                        <X size={16} className="text-gray-500" />
+                        <X size={16} />
                     </button>
                 </div>
 
                 <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[70vh]">
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-pink-50 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-pink-50 dark:bg-pink-900/30 flex items-center justify-center">
                                 <FlaskConical size={14} className="text-pink-500" />
                             </div>
-                            <p className="text-sm font-bold text-gray-800">{t('model.e2.title')}</p>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.e2.title')}</p>
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.e2.body')}</p>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.e2.body')}</p>
                     </div>
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
                                 <Pill size={14} className="text-purple-500" />
                             </div>
-                            <p className="text-sm font-bold text-gray-800">{t('model.cpa.title')}</p>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.cpa.title')}</p>
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.cpa.body')}</p>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.cpa.body')}</p>
                     </div>
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
                                 <BrainCircuit size={14} className="text-blue-500" />
                             </div>
-                            <p className="text-sm font-bold text-gray-800">{t('model.ekf.title')}</p>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.ekf.title')}</p>
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.ekf.body')}</p>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.ekf.body')}</p>
                     </div>
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center">
                                 <TrendingUp size={14} className="text-rose-500" />
                             </div>
-                            <p className="text-sm font-bold text-gray-800">{t('model.ou.title')}</p>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.ou.title')}</p>
                         </div>
-                        <p className="text-xs text-gray-600 leading-relaxed pl-9">{t('model.ou.body')}</p>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.ou.body')}</p>
                     </div>
                 </div>
 

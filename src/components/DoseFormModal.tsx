@@ -40,20 +40,20 @@ const DOSE_GUIDE_CONFIG: Partial<Record<Route, DoseGuideConfig>> = {
 };
 
 const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
-    low: 'bg-emerald-100 text-emerald-800',
-    medium: 'bg-sky-100 text-sky-800',
-    high: 'bg-amber-100 text-amber-800',
-    very_high: 'bg-rose-100 text-rose-800',
-    above: 'bg-red-100 text-red-800'
+    low: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
+    medium: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
+    high: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+    very_high: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
+    above: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
 };
 
 const LEVEL_CONTAINER_STYLES: Record<DoseLevelKey | 'neutral', string> = {
-    low: 'bg-emerald-50 border-emerald-100',
-    medium: 'bg-sky-50 border-sky-100',
-    high: 'bg-amber-50 border-amber-100',
-    very_high: 'bg-rose-50 border-rose-100',
-    above: 'bg-red-50 border-red-100',
-    neutral: 'bg-gray-50 border-gray-200'
+    low: 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800/40',
+    medium: 'bg-sky-50 border-sky-100 dark:bg-sky-900/20 dark:border-sky-800/40',
+    high: 'bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-800/40',
+    very_high: 'bg-rose-50 border-rose-100 dark:bg-rose-900/20 dark:border-rose-800/40',
+    above: 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-800/40',
+    neutral: 'bg-gray-50 border-gray-200 dark:bg-gray-800/40 dark:border-gray-700'
 };
 
 const formatGuideNumber = (val: number) => {
@@ -483,19 +483,21 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto">
                     {/* Time */}
                     <div className="space-y-2">
-                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('field.time')}</label>
+                        <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.time')}</label>
                         <div className="flex items-center gap-3">
-                            <input 
+                            <input
                                 ref={dateInputRef}
-                                type="datetime-local" 
-                                value={dateStr} 
-                                onChange={e => setDateStr(e.target.value)} 
-                                className="text-xl font-bold text-gray-900 font-mono bg-transparent border-none p-0 focus:ring-0 focus:outline-none"
+                                type="datetime-local"
+                                value={dateStr}
+                                onChange={e => setDateStr(e.target.value)}
+                                className="text-xl font-bold font-mono bg-transparent border-none p-0 focus:ring-0 focus:outline-none"
+                                style={{ color: 'var(--text-primary)' }}
                             />
                             <button
                                 onClick={() => dateInputRef.current?.focus()}
                                 aria-label={t('field.time')}
-                                className="p-2 bg-gray-100 hover:bg-pink-100 text-gray-600 hover:text-pink-600 rounded-lg transition-colors"
+                                className="p-2 rounded-lg transition-colors"
+                                style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
                             >
                                 <Calendar size={18} />
                             </button>
@@ -515,7 +517,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     />
 
                     {route === Route.patchRemove && (
-                        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
                             {t('beta.patch_remove')}
                         </div>
                     )}
@@ -538,11 +540,11 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                             {/* Gel Site Selector */}
                             {route === Route.gel && (
                                 <div className="mb-4 space-y-2">
-                                    <label className="block text-sm font-bold text-gray-700">{t('field.gel_site')}</label>
-                                    <div className="p-4 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-gray-400 text-sm font-medium select-none">
+                                    <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_site')}</label>
+                                    <div className="p-4 border border-dashed rounded-xl text-sm font-medium select-none" style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-tertiary)' }}>
                                         {t('gel.site_disabled')}
                                     </div>
-                                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                                    <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
                                         {t('beta.gel')}
                                     </div>
                                 </div>
@@ -551,21 +553,23 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                             {/* Patch Mode */}
                             {route === Route.patchApply && (
                                 <div className="space-y-2">
-                                    <div className="p-1 bg-gray-100 rounded-xl flex">
-                                        <button 
-                                            onClick={() => setPatchMode("dose")} 
-                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${patchMode === "dose" ? "bg-white shadow text-gray-800" : "text-gray-500"}`}
+                                    <div className="p-1 rounded-xl flex" style={{ background: 'var(--bg-card-hover)' }}>
+                                        <button
+                                            onClick={() => setPatchMode("dose")}
+                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all`}
+                                            style={patchMode === "dose" ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: 'var(--shadow-sm)' } : { color: 'var(--text-tertiary)' }}
                                         >
                                             {t('field.patch_total')}
                                         </button>
-                                        <button 
-                                            onClick={() => setPatchMode("rate")} 
-                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${patchMode === "rate" ? "bg-white shadow text-gray-800" : "text-gray-500"}`}
+                                        <button
+                                            onClick={() => setPatchMode("rate")}
+                                            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all`}
+                                            style={patchMode === "rate" ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: 'var(--shadow-sm)' } : { color: 'var(--text-tertiary)' }}
                                         >
                                             {t('field.patch_rate')}
                                         </button>
                                     </div>
-                                    <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                                    <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
                                         {t('beta.patch')}
                                     </div>
                                 </div>
@@ -577,13 +581,14 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                     <div className="grid grid-cols-2 gap-4">
                                         {(ester !== Ester.E2) && (
                                             <div className={`space-y-2 ${ (ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || ester === Ester.CPA ? 'col-span-2' : '' }`}>
-                                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">{t('field.dose_raw')}</label>
+                                                <label className="block text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.dose_raw')}</label>
                                                 <input
                                                     type="number" inputMode="decimal"
                                                     min="0"
                                                     step="0.001"
                                                     value={rawDose} onChange={e => handleRawChange(e.target.value)}
-                                                    className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono"
+                                                    className="w-full p-4 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono"
+                                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                                     placeholder="0.0"
                                                 />
                                             </div>
@@ -606,7 +611,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                         )}
                                     </div>
                                     {(ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) && (
-                                        <p className="text-xs text-gray-500 mt-1">
+                                        <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
                                             {t('field.dose_e2')}: {e2Dose ? `${e2Dose} mg` : '--'}
                                         </p>
                                     )}
@@ -615,7 +620,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
                             {route === Route.patchApply && patchMode === "rate" && (
                                 <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-gray-700">{t('field.patch_rate')}</label>
+                                    <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.patch_rate')}</label>
                                     <input
                                         type="number"
                                         inputMode="decimal"
@@ -623,7 +628,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                         step="1"
                                         value={patchRate}
                                         onChange={e => setPatchRate(e.target.value)}
-                                        className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none"
+                                        className="w-full p-4 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none"
+                                        style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                         placeholder="e.g. 50"
                                     />
                                 </div>
@@ -631,26 +637,26 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
                             {doseGuide && (
                                 <div className={`p-4 rounded-2xl border ${guideContainerClass} flex gap-3`}>
-                                    <Info className="w-5 h-5 text-gray-600 shrink-0 mt-0.5" />
+                                    <Info className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--text-tertiary)' }} />
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm font-bold text-gray-800">{t('dose.guide.title')}</span>
+                                            <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('dose.guide.title')}</span>
                                             {doseGuide.level && (
                                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${guideBadgeClass}`}>
                                                     {t(`dose.guide.level.${doseGuide.level}`)}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-gray-700">
+                                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                                             {t('dose.guide.current')}: {doseGuide.value !== null ? `${formatGuideNumber(doseGuide.value)} ${guideUnitLabel}` : t('dose.guide.current_blank')}
                                         </p>
                                         {guideRangeText && (
-                                            <p className="text-[11px] text-gray-600 leading-relaxed">
+                                            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
                                                 {t('dose.guide.reference')}: {guideRangeText}
                                             </p>
                                         )}
                                         {doseGuide.showRateHint && (
-                                            <p className="text-xs text-amber-700 leading-relaxed">
+                                            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                                                 {t('dose.guide.patch_rate_hint')}
                                             </p>
                                         )}
@@ -660,48 +666,48 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
                             {/* Sublingual Specifics */}
                             {route === Route.sublingual && (
-                                <div className="bg-teal-50 p-4 rounded-2xl border border-teal-100 space-y-4">
+                                <div className="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-2xl border border-teal-100 dark:border-teal-800/40 space-y-4">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-sm font-bold text-teal-800 flex items-center gap-2">
+                                        <label className="text-sm font-bold text-teal-800 dark:text-teal-300 flex items-center gap-2">
                                             <Clock size={16} /> {t('field.sl_duration')}
                                         </label>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-teal-600">{t('field.sl_custom')}</span>
-                                            <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-gray-300'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
+                                            <span className="text-xs font-medium text-teal-600 dark:text-teal-400">{t('field.sl_custom')}</span>
+                                            <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
                                                 <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomTheta ? 'translate-x-4' : ''}`} />
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     {!useCustomTheta ? (
                                         <div className="space-y-3">
-                                            <input 
-                                                type="range" min="0" max="3" step="1" 
-                                                value={slTier} onChange={e => setSlTier(parseInt(e.target.value))} 
-                                                className="w-full h-2 bg-teal-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                            <input
+                                                type="range" min="0" max="3" step="1"
+                                                value={slTier} onChange={e => setSlTier(parseInt(e.target.value))}
+                                                className="w-full h-2 bg-teal-200 dark:bg-teal-700 rounded-lg appearance-none cursor-pointer accent-teal-600"
                                             />
-                                            <div className="flex justify-between text-xs font-medium text-teal-700">
+                                            <div className="flex justify-between text-xs font-medium text-teal-700 dark:text-teal-400">
                                                 <span>{t('sl.mode.quick')}</span>
                                                 <span>{t('sl.mode.casual')}</span>
                                                 <span>{t('sl.mode.standard')}</span>
                                                 <span>{t('sl.mode.strict')}</span>
                                             </div>
-                                            <div className="text-xs text-teal-600 bg-white/50 p-2 rounded-lg flex justify-between items-center">
+                                            <div className="text-xs text-teal-600 dark:text-teal-400 bg-white/50 dark:bg-teal-900/30 p-2 rounded-lg flex justify-between items-center">
                                                 <span>Absorption θ ≈ {currentTheta.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" placeholder="0.0 - 1.0" />
-                                            <div className="text-xs text-teal-600 bg-white/50 p-2 rounded-lg flex justify-between items-center">
+                                            <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-teal-200 dark:border-teal-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }} placeholder="0.0 - 1.0" />
+                                            <div className="text-xs text-teal-600 dark:text-teal-400 bg-white/50 dark:bg-teal-900/30 p-2 rounded-lg flex justify-between items-center">
                                                 <span>Absorption θ ≈ {activeTheta.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="flex gap-3 items-start p-3 bg-white rounded-xl border border-teal-100">
+                                    <div className="flex gap-3 items-start p-3 bg-white dark:bg-teal-900/30 rounded-xl border border-teal-100 dark:border-teal-800/40">
                                         <Info className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
-                                        <p className="text-xs text-teal-700 leading-relaxed text-justify">
+                                        <p className="text-xs text-teal-700 dark:text-teal-300 leading-relaxed text-justify">
                                             {t('sl.instructions')}
                                         </p>
                                     </div>
@@ -713,16 +719,17 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
 
                     {/* Template panel (new-record mode only) */}
                 {!eventToEdit && showPanel && (
-                    <div className="absolute inset-x-0 bottom-[88px] bg-white border-t border-gray-200 shadow-lg rounded-b-none z-10 flex flex-col max-h-72">
-                        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
-                            <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">{t('template.title')}</span>
-                            <button onClick={() => setShowPanel(false)} className="p-1 rounded-full hover:bg-gray-100">
-                                <X size={16} className="text-gray-400" />
+                    <div className="absolute inset-x-0 bottom-[88px] border-t shadow-lg rounded-b-none z-10 flex flex-col max-h-72"
+                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
+                        <div className="flex items-center justify-between px-5 py-3 border-b shrink-0" style={{ borderColor: 'var(--border-secondary)' }}>
+                            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('template.title')}</span>
+                            <button onClick={() => setShowPanel(false)} className="p-1 rounded-full" style={{ color: 'var(--text-tertiary)' }}>
+                                <X size={16} />
                             </button>
                         </div>
                         <div className="overflow-y-auto flex-1 px-4 py-2 space-y-1">
                             {templates.length === 0 ? (
-                                <p className="text-xs text-gray-400 text-center py-4">{t('template.empty')}</p>
+                                <p className="text-xs text-center py-4" style={{ color: 'var(--text-tertiary)' }}>{t('template.empty')}</p>
                             ) : templates.map(tpl => renamingId === tpl.id ? (
                                 <div key={tpl.id} className="flex items-center gap-2 py-1.5 px-2">
                                     <input
@@ -743,7 +750,8 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                                 setRenamingId(null);
                                             }
                                         }}
-                                        className="flex-1 text-sm px-2 py-1 border border-pink-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                        className="flex-1 text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-2"
+                                        style={{ border: '1px solid var(--accent-200)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
                                     />
                                     <button
                                         onClick={() => {
@@ -755,13 +763,15 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                             }
                                             setRenamingId(null);
                                         }}
-                                        className="p-1.5 rounded-lg text-pink-400 hover:bg-pink-50 transition-colors"
+                                        className="p-1.5 rounded-lg transition-colors"
+                                        style={{ color: 'var(--accent-400)' }}
                                     >
                                         <Check size={14} />
                                     </button>
                                     <button
                                         onClick={() => setRenamingId(null)}
-                                        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+                                        className="p-1.5 rounded-lg transition-colors"
+                                        style={{ color: 'var(--text-tertiary)' }}
                                     >
                                         <X size={14} />
                                     </button>
@@ -770,34 +780,38 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                                 <button
                                     key={tpl.id}
                                     onClick={() => applyTemplate(tpl)}
-                                    className="w-full flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-pink-50 group text-left transition-colors"
+                                    className="w-full flex items-center gap-2 py-1.5 px-2 rounded-lg group text-left transition-colors"
+                                    style={{ color: 'var(--text-primary)' }}
                                 >
-                                    <span className="flex-1 text-sm text-gray-700 truncate group-hover:text-pink-600">{tpl.name}</span>
+                                    <span className="flex-1 text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{tpl.name}</span>
                                     <span
                                         role="button"
                                         onClick={e => { e.stopPropagation(); setRenamingId(tpl.id); setRenameValue(tpl.name); }}
-                                        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+                                        className="p-1.5 rounded-lg transition-colors"
+                                        style={{ color: 'var(--text-tertiary)' }}
                                     >
                                         <Pencil size={14} />
                                     </span>
                                     <span
                                         role="button"
                                         onClick={e => { e.stopPropagation(); deleteTemplate(tpl.id); }}
-                                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                                        className="p-1.5 rounded-lg transition-colors hover:text-red-400"
+                                        style={{ color: 'var(--text-tertiary)' }}
                                     >
                                         <X size={14} />
                                     </span>
                                 </button>
                             ))}
                         </div>
-                        <div className="flex gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
+                        <div className="flex gap-2 px-4 py-3 border-t shrink-0" style={{ borderColor: 'var(--border-secondary)' }}>
                             <input
                                 type="text"
                                 value={newTemplateName}
                                 onChange={e => setNewTemplateName(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && saveTemplate()}
                                 placeholder={t('template.name_placeholder')}
-                                className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-200"
+                                className="flex-1 text-sm px-3 py-2 rounded-lg focus:outline-none focus:ring-2"
+                                style={{ border: '1px solid var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                             />
                             <button
                                 onClick={saveTemplate}
@@ -829,7 +843,11 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                             onClick={() => setShowPanel(p => !p)}
                             aria-label={t('template.title')}
                             aria-expanded={showPanel}
-                            className={`w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0 ${showPanel ? 'bg-pink-50 border-pink-200 text-pink-400' : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-pink-50 hover:text-pink-400 hover:border-pink-200'}`}
+                            className="w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0"
+                            style={showPanel
+                                ? { background: 'var(--accent-50)', borderColor: 'var(--accent-200)', color: 'var(--accent-400)' }
+                                : { background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-tertiary)' }
+                            }
                         >
                             <Bookmark size={18} fill={showPanel ? 'currentColor' : 'none'} />
                         </button>

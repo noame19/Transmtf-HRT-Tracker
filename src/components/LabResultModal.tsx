@@ -81,30 +81,34 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200">
+        <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="lab-modal-title"
-                className="bg-white rounded-t-3xl md:rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] animate-in slide-in-from-bottom duration-300"
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] modal-slide-up md:modal-spring md:animate-none"
+                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
             >
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
-                    <h2 id="lab-modal-title" className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <div className="px-6 py-4 border-b flex items-center justify-between shrink-0"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
+                    <h2 id="lab-modal-title" className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                         <FlaskConical className="text-teal-500" size={20} />
                         {resultToEdit ? t('lab.edit_title') : t('lab.add_title')}
                     </h2>
-                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <X size={20} className="text-gray-500" />
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 rounded-full transition-colors"
+                        style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}>
+                        <X size={20} />
                     </button>
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6">
                     {/* Date & Time */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                            <Calendar size={16} className="text-gray-400" />
+                        <label className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                            <Calendar size={16} style={{ color: 'var(--text-tertiary)' }} />
                             {t('lab.date')}
                         </label>
                         <div className="flex gap-3">
@@ -112,21 +116,23 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                                 type="date"
                                 value={date}
                                 onChange={(e) => setDate(e.target.value)}
-                                className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block w-full p-3 font-medium"
+                                className="flex-1 text-sm rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block w-full p-3 font-medium"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                             />
                             <input
                                 type="time"
                                 value={time}
                                 onChange={(e) => setTime(e.target.value)}
-                                className="w-32 bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block p-3 font-medium text-center"
+                                className="w-32 text-sm rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block p-3 font-medium text-center"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                             />
                         </div>
                     </div>
 
                     {/* Value & Unit */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                            <Activity size={16} className="text-gray-400" />
+                        <label className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                            <Activity size={16} style={{ color: 'var(--text-tertiary)' }} />
                             {t('lab.value')}
                         </label>
                         <div className="flex gap-3">
@@ -137,19 +143,22 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                                     placeholder="0.0"
                                     value={value}
                                     onChange={(e) => setValue(e.target.value)}
-                                    className="bg-gray-50 border border-gray-200 text-gray-900 text-lg rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block w-full p-3 font-bold placeholder-gray-300"
+                                    className="text-lg rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-transparent block w-full p-3 font-bold"
+                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                 />
                             </div>
-                            <div className="flex bg-gray-100 rounded-xl p-1 border border-gray-200">
+                            <div className="flex rounded-xl p-1" style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)' }}>
                                 <button
                                     onClick={() => setUnit('pmol/l')}
-                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${unit === 'pmol/l' ? 'bg-white shadow-sm text-teal-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all`}
+                                    style={unit === 'pmol/l' ? { background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)', color: 'var(--accent-500)' } : { color: 'var(--text-tertiary)' }}
                                 >
                                     pmol/L
                                 </button>
                                 <button
                                     onClick={() => setUnit('pg/ml')}
-                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${unit === 'pg/ml' ? 'bg-white shadow-sm text-teal-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all`}
+                                    style={unit === 'pg/ml' ? { background: 'var(--bg-card)', boxShadow: 'var(--shadow-sm)', color: 'var(--accent-500)' } : { color: 'var(--text-tertiary)' }}
                                 >
                                     pg/mL
                                 </button>
@@ -159,12 +168,13 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex gap-3 shrink-0 safe-area-pb">
+                <div className="p-4 border-t flex gap-3 shrink-0 safe-area-pb"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
                     {resultToEdit && onDelete && (
                         <button
                             onClick={handleDelete}
                             aria-label={t('btn.delete')}
-                            className="p-4 text-red-500 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+                            className="p-4 text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl transition-colors"
                         >
                             <Trash2 size={20} />
                         </button>
@@ -172,7 +182,7 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                     <button
                         onClick={handleSave}
                         disabled={!value || !date || !time}
-                        className="flex-1 bg-gray-900 text-white font-bold py-4 rounded-xl hover:bg-gray-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100"
+                        className="flex-1 text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100 accent-bg-gradient"
                     >
                         <Check size={20} />
                         {t('btn.save')}
