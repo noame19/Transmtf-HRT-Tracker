@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Activity, Plus } from 'lucide-react';
+import { Activity, Plus, Layers } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime, getRouteIcon } from '../utils/helpers';
 import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor } from '../../logic';
@@ -8,9 +8,10 @@ interface HistoryViewProps {
   events: DoseEvent[];
   onAddEvent: () => void;
   onEditEvent: (event: DoseEvent) => void;
+  onBatchAdd: () => void;
 }
 
-const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEvent }) => {
+const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEvent, onBatchAdd }) => {
   const { t, lang } = useTranslation();
 
   const groupedEvents = useMemo(() => {
@@ -33,13 +34,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
             style={{ color: 'var(--text-primary)' }}>
             <Activity size={22} style={{ color: 'var(--accent-300)' }} /> {t('timeline.title')}
           </h2>
-          <button
-            onClick={onAddEvent}
-            className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
-          >
-            <Plus size={16} />
-            <span>{t('btn.add')}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onBatchAdd}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 h-11 rounded-xl text-sm font-bold btn-press transition"
+              style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
+            >
+              <Layers size={15} />
+              <span>{t('batch.title')}</span>
+            </button>
+            <button
+              onClick={onAddEvent}
+              className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
+            >
+              <Plus size={16} />
+              <span>{t('btn.add')}</span>
+            </button>
+          </div>
         </div>
       </div>
 

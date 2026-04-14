@@ -7,10 +7,11 @@ import HistoryView from '../views/HistoryView';
 interface OutletContext {
     onAddEvent: () => void;
     onEditEvent: (event: DoseEvent) => void;
+    onBatchAdd: () => void;
 }
 
 const HistoryPage: React.FC = () => {
-    const { onAddEvent, onEditEvent } = useOutletContext<OutletContext>();
+    const { onAddEvent, onEditEvent, onBatchAdd } = useOutletContext<OutletContext>();
     const { events } = useAppData();
 
     return (
@@ -18,6 +19,7 @@ const HistoryPage: React.FC = () => {
             events={events}
             onAddEvent={onAddEvent}
             onEditEvent={onEditEvent}
+            onBatchAdd={onBatchAdd}
         />
     );
 };

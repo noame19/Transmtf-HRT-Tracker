@@ -11,6 +11,7 @@ import { DoseEvent, LabResult } from '../../logic';
 
 import WeightEditorModal from './WeightEditorModal';
 import DoseFormModal from './DoseFormModal';
+import BatchDoseModal from './BatchDoseModal';
 import LabResultModal from './LabResultModal';
 
 type ViewKey = 'home' | 'history' | 'lab' | 'settings' | 'profile';
@@ -28,6 +29,7 @@ const MainLayout: React.FC = () => {
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
     const [isLabModalOpen, setIsLabModalOpen] = useState(false);
     const [editingLab, setEditingLab] = useState<LabResult | null>(null);
+    const [isBatchOpen, setIsBatchOpen] = useState(false);
 
     const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
     const [avatarError, setAvatarError] = useState(false);
@@ -55,10 +57,10 @@ const MainLayout: React.FC = () => {
     };
 
     useEffect(() => {
-        const shouldLock = isWeightModalOpen || isFormOpen || isLabModalOpen;
+        const shouldLock = isWeightModalOpen || isFormOpen || isLabModalOpen || isBatchOpen;
         document.body.style.overflow = shouldLock ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
-    }, [isWeightModalOpen, isFormOpen, isLabModalOpen]);
+    }, [isWeightModalOpen, isFormOpen, isLabModalOpen, isBatchOpen]);
 
     useEffect(() => {
         const el = mainScrollRef.current;
@@ -101,6 +103,9 @@ const MainLayout: React.FC = () => {
         showDialog('confirm', t('timeline.delete_confirm'), () => {
             setEvents(prev => prev.filter(e => e.id !== id));
         });
+    };
+    const handleSaveBatch = (newEvents: DoseEvent[]) => {
+        setEvents(prev => [...prev, ...newEvents]);
     };
 
     return (
@@ -202,6 +207,7 @@ const MainLayout: React.FC = () => {
                         onEditEvent: handleEditEvent,
                         onOpenWeightModal: () => setIsWeightModalOpen(true),
                         onAddEvent: handleAddEvent,
+                        onBatchAdd: () => setIsBatchOpen(true),
                         onAddLabResult: handleAddLabResult,
                         onEditLabResult: handleEditLabResult,
                         onClearLabResults: handleClearLabResults,
@@ -293,6 +299,11 @@ const MainLayout: React.FC = () => {
                     });
                 }}
                 resultToEdit={editingLab}
+            />
+            <BatchDoseModal
+                isOpen={isBatchOpen}
+                onClose={() => setIsBatchOpen(false)}
+                onSaveBatch={handleSaveBatch}
             />
         </div>
     );
