@@ -41,8 +41,6 @@ const SecurityPasswordGate: React.FC = () => {
       if (result.success) {
         setIsSuccess(true);
         setPassword('');
-      } else if (result.authExpired) {
-        setPassword('');
       } else {
         const msg = result.error || t('auth.error.invalidPassword') || 'Invalid password';
         if (msg.includes('Too many requests') || msg.includes('rate limit') || msg.includes('too many')) {

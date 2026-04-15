@@ -2,13 +2,6 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useAuth } from './AuthContext';
 import apiClient from '../api/client';
 import { getSecurityPassword, clearSecurityPassword, saveSecurityPassword } from '../utils/crypto';
-import { isAuthExpiredResponse } from '../utils/authSession';
-
-interface VerifySecurityPasswordResult {
-  success: boolean;
-  error?: string;
-  authExpired?: boolean;
-}
 
 interface SecurityPasswordContextType {
   hasSecurityPassword: boolean | null; // null = loading, true/false = has/hasn't
@@ -17,7 +10,7 @@ interface SecurityPasswordContextType {
   passwordVerificationFailed: boolean; // True if auto-verification from cookie failed
   isAutoVerifying: boolean; // True if currently attempting auto-verification from cookie
   checkSecurityPassword: () => Promise<void>;
-  verifySecurityPassword: (password: string) => Promise<VerifySecurityPasswordResult>;
+  verifySecurityPassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   clearVerification: () => void;
 }
 
@@ -59,14 +52,6 @@ export const SecurityPasswordProvider: React.FC<{ children: React.ReactNode }> =
     try {
       const response = await apiClient.getSecurityPasswordStatus();
 
-      if (isAuthExpiredResponse(response)) {
-        setHasSecurityPassword(null);
-        setIsVerified(false);
-        setSecurityPassword(null);
-        setPasswordVerificationFailed(false);
-        return;
-      }
-
       // CRITICAL FIX: Check LIVE auth state after async call (race condition guard)
       if (!isAuthenticatedRef.current) {
         console.log('User logged out during checkSecurityPassword, aborting');
@@ -94,11 +79,6 @@ export const SecurityPasswordProvider: React.FC<{ children: React.ReactNode }> =
 
             // Auto-verify with saved password
             const verifyResponse = await apiClient.getUserData({ password: savedPassword });
-
-            if (isAuthExpiredResponse(verifyResponse)) {
-              setIsAutoVerifying(false);
-              return;
-            }
 
             // Final LIVE auth check after verification
             if (!isAuthenticatedRef.current) {
@@ -142,7 +122,7 @@ export const SecurityPasswordProvider: React.FC<{ children: React.ReactNode }> =
   }, [isAuthenticated, user, passwordVerificationFailed]);
 
   // Verify security password
-  const verifySecurityPassword = useCallback(async (password: string): Promise<VerifySecurityPasswordResult> => {
+  const verifySecurityPassword = useCallback(async (password: string): Promise<{ success: boolean; error?: string }> => {
     if (password.length !== 6 || !/^\d{6}$/.test(password)) {
       return { success: false, error: 'Password must be 6 digits' };
     }
@@ -150,10 +130,6 @@ export const SecurityPasswordProvider: React.FC<{ children: React.ReactNode }> =
     try {
       // Verify by attempting to get user data with this password
       const response = await apiClient.getUserData({ password });
-
-      if (isAuthExpiredResponse(response)) {
-        return { success: false, authExpired: true };
-      }
 
       if (response.success) {
         // Save password to cookie for auto-login next time FIRST

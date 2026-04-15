@@ -267,8 +267,6 @@ export const TRANSLATIONS_BASE = {
         "auth.login": "登录",
         "auth.register": "注册",
         "auth.logout": "退出登录",
-        "auth.sessionExpiredMessage": "您的登录状态失效,为保证数据同步,建议您立即重新登陆",
-        "auth.reloginNow": "立即重新登录",
 
         // Login page
         "login.error.emptyFields": "请填写所有字段",
@@ -901,8 +899,6 @@ export const TRANSLATIONS_BASE = {
         "auth.login": "Login",
         "auth.register": "Register",
         "auth.logout": "Logout",
-        "auth.sessionExpiredMessage": "Your sign-in session has expired. To keep data syncing working, please sign in again now.",
-        "auth.reloginNow": "Sign In Again",
 
         // Login page
         "login.error.emptyFields": "Please fill in all fields",
@@ -1508,8 +1504,6 @@ export const TRANSLATIONS = {
         "auth.loginPrompt": "登入後可使用雲端同步功能",
         "auth.login": "登入",
         "auth.register": "註冊",
-        "auth.sessionExpiredMessage": "您的登入狀態已失效,為了確保資料同步,建議您立即重新登入",
-        "auth.reloginNow": "立即重新登入",
 
         // Login page
         "login.error.emptyFields": "請填寫所有欄位",
@@ -1907,8 +1901,6 @@ export const TRANSLATIONS = {
         "auth.loginPrompt": "ログインしてクラウド同期機能を使用",
         "auth.login": "ログイン",
         "auth.register": "登録",
-        "auth.sessionExpiredMessage": "ログイン状態が失効しました。データ同期を維持するため、すぐに再ログインしてください。",
-        "auth.reloginNow": "再ログイン",
 
         // Login page
         "login.error.emptyFields": "すべてのフィールドを入力してください",

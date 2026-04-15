@@ -5,11 +5,10 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import apiClient from '../api/client';
 import type { OIDCBindStatusResponse } from '../api/types';
-import { isAuthExpiredResponse } from '../utils/authSession';
 import { ArrowLeft, Link2, Loader2, Lock, Shield, Unlink } from 'lucide-react';
 
 const AccountOIDC: React.FC = () => {
-  const { logout } = useAuth();
+  const { accessToken, logout } = useAuth();
   const { t } = useTranslation();
   const { showDialog } = useDialog();
   const navigate = useNavigate();
@@ -39,10 +38,6 @@ const AccountOIDC: React.FC = () => {
     setLoading(true);
     setError('');
     const response = await apiClient.getOIDCBindStatus();
-    if (isAuthExpiredResponse(response)) {
-      setLoading(false);
-      return;
-    }
     if (response.success && response.data) {
       setStatus(response.data);
     } else {
@@ -65,10 +60,6 @@ const AccountOIDC: React.FC = () => {
     setBindingInProgress(true);
     const response = await apiClient.getOIDCBindAuthorizeUrl();
     setBindingInProgress(false);
-
-    if (isAuthExpiredResponse(response)) {
-      return;
-    }
 
     if (response.success && response.data) {
       const { auth_url, state } = response.data;
@@ -100,13 +91,6 @@ const AccountOIDC: React.FC = () => {
     const response = await apiClient.setLoginPassword({ password: newPassword });
     setSettingPassword(false);
 
-    if (isAuthExpiredResponse(response)) {
-      setShowSetPasswordModal(false);
-      setNewPassword('');
-      setSetPasswordError('');
-      return;
-    }
-
     if (response.success) {
       showDialog('alert', t('oidc.setPasswordSuccess') || 'Login password set successfully.');
       setShowSetPasswordModal(false);
@@ -128,13 +112,6 @@ const AccountOIDC: React.FC = () => {
     setRemovingPassword(true);
     const response = await apiClient.removeLoginPassword({ password: currentPassword });
     setRemovingPassword(false);
-
-    if (isAuthExpiredResponse(response)) {
-      setShowRemovePasswordModal(false);
-      setCurrentPassword('');
-      setRemovePasswordError('');
-      return;
-    }
 
     if (response.success) {
       await showDialog('alert', t('oidc.removePasswordSuccess') || 'Login password removed. Please sign in with Transmtf.');

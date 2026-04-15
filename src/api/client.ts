@@ -140,7 +140,6 @@ class ApiClient {
           success: false,
           error: 'Authentication failed',
           status: 401,
-          authExpired: true,
         };
 
         queue.forEach((queuedRequest) => {
@@ -254,7 +253,6 @@ class ApiClient {
                 success: false,
                 error: 'Authentication failed',
                 status: 401,
-                authExpired: true,
               } as ApiResponse<T>;
             }
           } catch (error) {
@@ -479,7 +477,6 @@ class ApiClient {
                 success: false,
                 error: 'Authentication failed',
                 status: 401,
-                authExpired: true,
               };
             }
           } catch (error) {

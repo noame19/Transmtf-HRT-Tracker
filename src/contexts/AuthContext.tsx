@@ -15,13 +15,11 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isLoggingOut: boolean;
-  sessionExpiredNotice: { id: number } | null;
   login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string; status?: number }>;
   register: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
   loginWithTokens: (tokens: AuthTokens, username: string) => void;
   logout: (clearLocalData?: boolean) => Promise<void>;
   refreshAccessToken: () => Promise<boolean>;
-  clearSessionExpiredNotice: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,68 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<{ id: number } | null>(null);
   const refreshPromiseRef = React.useRef<Promise<boolean> | null>(null);
-  const sessionExpiredHandledRef = React.useRef(false);
-  const sessionExpiredNoticeIdRef = React.useRef(0);
-
-  const clearLocalSession = useCallback(async (clearLocalData: boolean = false) => {
-    setAccessToken(null);
-    setUser(null);
-    apiClient.setAccessToken(null);
-
-    clearStoredValue(TOKEN_STORAGE_KEY);
-    clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
-    clearStoredValue(USERNAME_STORAGE_KEY);
-
-    try {
-      await clearSecurityPassword();
-    } catch (error) {
-      console.error('Failed to clear security password during logout:', error);
-    }
-
-    if (clearLocalData) {
-      localStorage.removeItem('hrt-events');
-      localStorage.removeItem('hrt-weight');
-      localStorage.removeItem('hrt-lab-results');
-      localStorage.removeItem('hrt-lang');
-      localStorage.removeItem('hrt-last-modified');
-      localStorage.removeItem('hrt-last-data-updated');
-      localStorage.removeItem('hrt-last-sync-time');
-      localStorage.removeItem('hrt-last-pull-time');
-    }
-  }, []);
-
-  const clearSessionExpiredNotice = useCallback(() => {
-    setSessionExpiredNotice(null);
-  }, []);
-
-  const invalidateSessionDueToExpiration = useCallback(async (): Promise<boolean> => {
-    const hasPersistedSession = Boolean(
-      accessToken ||
-      user ||
-      getStoredValue(TOKEN_STORAGE_KEY) ||
-      getStoredValue(REFRESH_TOKEN_STORAGE_KEY) ||
-      getStoredValue(USERNAME_STORAGE_KEY)
-    );
-
-    if (isLoggingOut || !hasPersistedSession || sessionExpiredHandledRef.current) {
-      return false;
-    }
-
-    sessionExpiredHandledRef.current = true;
-    setIsLoggingOut(true);
-    setLogoutInProgress(true);
-
-    try {
-      await clearLocalSession();
-      setSessionExpiredNotice({ id: ++sessionExpiredNoticeIdRef.current });
-      return true;
-    } finally {
-      setLogoutInProgress(false);
-      setIsLoggingOut(false);
-    }
-  }, [accessToken, clearLocalSession, isLoggingOut, user]);
 
   const logout = useCallback(async (clearLocalData: boolean = false) => {
     if (isLoggingOut) {
@@ -126,12 +63,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setIsLoggingOut(true);
     setLogoutInProgress(true);
-    sessionExpiredHandledRef.current = false;
-    setSessionExpiredNotice(null);
+
+    setAccessToken(null);
+    setUser(null);
+    apiClient.setAccessToken(null);
+
+    // Always clear auth tokens before touching local data so sync can no longer authenticate.
+    clearStoredValue(TOKEN_STORAGE_KEY);
+    clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
+    clearStoredValue(USERNAME_STORAGE_KEY);
 
     try {
-      await clearLocalSession(clearLocalData);
-
       try {
         if (tokenToRevoke) {
           await apiClient.logout(tokenToRevoke);
@@ -139,11 +81,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (error) {
         console.error('Failed to logout from server:', error);
       }
+
+      // Always clear security password cookie
+      try {
+        await clearSecurityPassword();
+      } catch (error) {
+        console.error('Failed to clear security password during logout:', error);
+      }
+
+      // Optionally clear local user data
+      if (clearLocalData) {
+        localStorage.removeItem('hrt-events');
+        localStorage.removeItem('hrt-weight');
+        localStorage.removeItem('hrt-lab-results');
+        localStorage.removeItem('hrt-lang');
+        localStorage.removeItem('hrt-last-modified');
+        localStorage.removeItem('hrt-last-data-updated');
+        localStorage.removeItem('hrt-last-sync-time');
+        localStorage.removeItem('hrt-last-pull-time');
+      }
     } finally {
       setLogoutInProgress(false);
       setIsLoggingOut(false);
     }
-  }, [accessToken, clearLocalSession, isLoggingOut]);
+  }, [accessToken, isLoggingOut]);
 
   const refreshAccessToken = useCallback(async (): Promise<boolean> => {
     // Prevent multiple simultaneous refresh attempts
@@ -154,13 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshPromiseRef.current = (async () => {
       try {
         const refreshToken = getStoredValue(REFRESH_TOKEN_STORAGE_KEY);
-        if (!refreshToken) {
-          const expired = await invalidateSessionDueToExpiration();
-          if (expired) {
-            return false;
-          }
-          throw new Error('Refresh token missing');
-        }
+        if (!refreshToken) return false;
 
         const response = await apiClient.refreshToken({ refresh_token: refreshToken });
 
@@ -174,19 +129,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (response.status === 401) {
-          await invalidateSessionDueToExpiration();
-          return false;
+          // Refresh token is invalid/expired - logout
+          logout();
+        } else {
+          console.warn('Refresh token failed, keeping session for retry:', response.error);
         }
-
-        console.warn('Refresh token failed, keeping session for retry:', response.error);
-        throw new Error(response.error || 'Token refresh failed');
+        return false;
       } finally {
         refreshPromiseRef.current = null;
       }
     })();
 
     return refreshPromiseRef.current;
-  }, [invalidateSessionDueToExpiration]);
+  }, [logout]);
 
   // Initialize auth state from cookies, with silent refresh fallback
   useEffect(() => {
@@ -195,40 +150,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedRefreshToken = getStoredValue(REFRESH_TOKEN_STORAGE_KEY);
 
     if (storedAccessToken && storedUsername) {
-      sessionExpiredHandledRef.current = false;
-      setSessionExpiredNotice(null);
+      // Access token present — restore session immediately
       setAccessToken(storedAccessToken);
       setUser({ username: storedUsername });
       apiClient.setAccessToken(storedAccessToken);
       setIsLoading(false);
     } else if (storedRefreshToken && storedUsername) {
+      // No access token (expired / cleared) but refresh token exists — try silent refresh
+      // Keep isLoading=true until refresh completes so ProtectedRoute doesn't flash /login
       apiClient.refreshToken({ refresh_token: storedRefreshToken }).then((response) => {
         if (response.success && response.data) {
           const { access_token, refresh_token } = response.data;
-          sessionExpiredHandledRef.current = false;
-          setSessionExpiredNotice(null);
           setAccessToken(access_token);
           setUser({ username: storedUsername });
           apiClient.setAccessToken(access_token);
           setStoredValue(TOKEN_STORAGE_KEY, access_token);
           setStoredValue(REFRESH_TOKEN_STORAGE_KEY, refresh_token);
-          setStoredValue(USERNAME_STORAGE_KEY, storedUsername);
-          setIsLoading(false);
-        } else if (response.status === 401) {
-          invalidateSessionDueToExpiration().finally(() => {
-            setIsLoading(false);
-          });
         } else {
-          console.warn('Startup refresh failed, keeping session for retry:', response.error);
-          setIsLoading(false);
+          // Refresh token also invalid — clear all stored tokens
+          clearStoredValue(TOKEN_STORAGE_KEY);
+          clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
+          clearStoredValue(USERNAME_STORAGE_KEY);
         }
+        setIsLoading(false);
       }).catch(() => {
+        // Network error during startup refresh — keep tokens, let user retry later
         setIsLoading(false);
       });
     } else {
       setIsLoading(false);
     }
-  }, [invalidateSessionDueToExpiration]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set refresh token callback
   useEffect(() => {
@@ -277,8 +229,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (response.success && response.data) {
       const { access_token, refresh_token } = response.data;
 
-      sessionExpiredHandledRef.current = false;
-      setSessionExpiredNotice(null);
       setAccessToken(access_token);
       setUser({ username });
       apiClient.setAccessToken(access_token);
@@ -303,8 +253,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (response.success && response.data) {
       const { access_token, refresh_token } = response.data;
 
-      sessionExpiredHandledRef.current = false;
-      setSessionExpiredNotice(null);
       setAccessToken(access_token);
       setUser({ username });
       apiClient.setAccessToken(access_token);
@@ -322,8 +270,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithTokens = (tokens: AuthTokens, username: string) => {
     const { access_token, refresh_token } = tokens;
 
-    sessionExpiredHandledRef.current = false;
-    setSessionExpiredNotice(null);
     setAccessToken(access_token);
     setUser({ username });
     apiClient.setAccessToken(access_token);
@@ -341,13 +287,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user && !!accessToken,
         isLoading,
         isLoggingOut,
-        sessionExpiredNotice,
         login,
         register,
         loginWithTokens,
         logout,
         refreshAccessToken,
-        clearSessionExpiredNotice,
       }}
     >
       {children}
