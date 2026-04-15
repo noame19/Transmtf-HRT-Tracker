@@ -630,6 +630,7 @@ export const TRANSLATIONS_BASE = {
         "sync.conflict.merge_select": "为每个冲突字段选择要保留的版本：",
         "sync.conflict.on": "开",
         "sync.conflict.off": "关",
+        "sync.conflict.order_only": "仅排序不同",
     },
 
     en: {
@@ -1261,6 +1262,7 @@ export const TRANSLATIONS_BASE = {
         "sync.conflict.merge_select": "Select which version to keep for each conflicting field:",
         "sync.conflict.on": "On",
         "sync.conflict.off": "Off",
+        "sync.conflict.order_only": "Order differs only",
     },
 };
 
