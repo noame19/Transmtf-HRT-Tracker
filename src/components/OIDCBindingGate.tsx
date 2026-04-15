@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import apiClient from '../api/client';
+import { isAuthExpiredResponse } from '../utils/authSession';
 import { AlertTriangle, Loader2, ShieldAlert } from 'lucide-react';
 
 // Pages where the gate must not block (exact match)
@@ -46,6 +47,11 @@ const OIDCBindingGate: React.FC = () => {
 
       hasCheckedRef.current = true;
 
+      if (isAuthExpiredResponse(statusRes)) {
+        setPhase('off');
+        return;
+      }
+
       if (statusRes.success && statusRes.data) {
         const { bound } = statusRes.data;
         setPhase(bound ? 'off' : 'binding_required');
@@ -86,6 +92,9 @@ const OIDCBindingGate: React.FC = () => {
     setBindError('');
     try {
       const response = await apiClient.getOIDCBindAuthorizeUrl();
+      if (isAuthExpiredResponse(response)) {
+        return;
+      }
       if (response.success && response.data) {
         const { auth_url, state } = response.data;
         sessionStorage.setItem('oidc_state', state);

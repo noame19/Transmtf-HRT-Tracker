@@ -72,7 +72,7 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
       {children}
       {isOpen && (
         <div
-          className="fixed inset-0 flex items-center justify-center z-[100] p-5"
+          className="fixed inset-0 flex items-center justify-center z-[11000] p-5"
           style={{
             animation: 'dialogFadeIn 0.18s ease-out forwards',
             background: 'var(--bg-overlay)',

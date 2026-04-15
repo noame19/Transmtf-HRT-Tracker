@@ -9,6 +9,7 @@ import MainLayout from './components/MainLayout';
 import SecurityPasswordGate from './components/SecurityPasswordGate';
 import OIDCBindingGate from './components/OIDCBindingGate';
 import AnnouncementModal from './components/AnnouncementModal';
+import SessionExpiredDialog from './components/SessionExpiredDialog';
 import SyncConflictModal from './components/SyncConflictModal';
 import OverviewPage from './pages/OverviewPage';
 import HistoryPage from './pages/HistoryPage';
@@ -59,6 +60,7 @@ const App = () => (
                 <SecurityPasswordGate />
                 <OIDCBindingGate />
                 <AnnouncementModal />
+                <SessionExpiredDialog />
                 <SyncConflictOverlay />
                 <Routes>
                     {/* All routes use MainLayout for unified layout */}

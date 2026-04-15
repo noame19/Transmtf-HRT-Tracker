@@ -18,6 +18,7 @@ import {
   Link2,
 } from 'lucide-react';
 import apiClient from '../api/client';
+import { isAuthExpiredResponse } from '../utils/authSession';
 
 const Account: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -105,6 +106,13 @@ const Account: React.FC = () => {
     const response = await apiClient.uploadAvatar(file);
     setUploadingAvatar(false);
 
+    if (isAuthExpiredResponse(response)) {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     if (response.success && response.data) {
       showDialog('alert', t('account.avatarUploaded') || 'Avatar uploaded successfully');
       setAvatarKey(Date.now());
@@ -120,6 +128,9 @@ const Account: React.FC = () => {
 
   const handleDeleteAvatar = async () => {
     const response = await apiClient.deleteAvatar();
+    if (isAuthExpiredResponse(response)) {
+      return;
+    }
     if (response.success) {
       showDialog('alert', t('account.avatarDeleted') || 'Avatar deleted successfully');
       setAvatarKey(Date.now());
@@ -163,6 +174,15 @@ const Account: React.FC = () => {
       new_password: newPassword,
     });
     setChangingPassword(false);
+
+    if (isAuthExpiredResponse(response)) {
+      setShowPasswordModal(false);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError('');
+      return;
+    }
 
     if (response.success && response.data) {
       showDialog(

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import apiClient from '../api/client';
+import { isAuthExpiredResponse } from '../utils/authSession';
 import { Smartphone, Monitor, Tablet, ArrowLeft, Trash2, Shield } from 'lucide-react';
 
 interface Session {
@@ -36,6 +37,10 @@ const AccountDevices: React.FC = () => {
     setLoading(true);
     setError('');
     const response = await apiClient.getSessions();
+    if (isAuthExpiredResponse(response)) {
+      setLoading(false);
+      return;
+    }
     if (response.success && response.data) {
       setSessions(response.data.sessions || []);
     } else {
@@ -68,6 +73,11 @@ const AccountDevices: React.FC = () => {
 
     if (passwordModal.action === 'revoke' && passwordModal.sessionId) {
       const response = await apiClient.revokeSession(passwordModal.sessionId, { password });
+      if (isAuthExpiredResponse(response)) {
+        setPasswordModal({ show: false, action: null });
+        setPassword('');
+        return;
+      }
       if (response.success) {
         showDialog('alert', t('devices.revokeSuccess') || 'Session revoked successfully');
         loadSessions();
@@ -78,6 +88,11 @@ const AccountDevices: React.FC = () => {
       }
     } else if (passwordModal.action === 'revokeAll') {
       const response = await apiClient.revokeAllOtherSessions({ password });
+      if (isAuthExpiredResponse(response)) {
+        setPasswordModal({ show: false, action: null });
+        setPassword('');
+        return;
+      }
       if (response.success && response.data) {
         showDialog('alert', `${t('devices.revokedCount') || 'Revoked'} ${response.data.revoked_count} ${t('devices.sessions') || 'sessions'}`);
         loadSessions();

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import apiClient from '../api/client';
+import { isAuthExpiredResponse } from '../utils/authSession';
 import { Loader2 } from 'lucide-react';
 
 const OIDCCallback: React.FC = () => {
@@ -52,6 +53,9 @@ const OIDCCallback: React.FC = () => {
           return;
         }
         const response = await apiClient.oidcBindCallback({ code, state });
+        if (isAuthExpiredResponse(response)) {
+          return;
+        }
         if (response.success) {
           navigate('/account/oidc', { replace: true });
         } else {

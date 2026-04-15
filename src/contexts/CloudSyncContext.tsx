@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import { useSecurityPassword } from './SecurityPasswordContext';
 import { computeDataHash } from '../utils/dataHash';
 import { isLogoutInProgress } from '../utils/authSessionState';
+import { isAuthExpiredResponse } from '../utils/authSession';
 import type { ConflictState, FieldDiff } from '../components/SyncConflictModal';
 
 interface CloudSyncContextType {
@@ -175,6 +176,10 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return true;
     }
 
+    if (isAuthExpiredResponse(response)) {
+      return false;
+    }
+
     setSyncError(response.error || 'Failed to sync to cloud');
     return false;
   }, [hasSecurityPassword, securityPassword]);
@@ -192,6 +197,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (lastSync) setLastSyncTime(new Date(lastSync));
     } else {
       setLastSyncTime(null);
+      setSyncError(null);
     }
   }, [isAuthenticated]);
 
@@ -245,9 +251,15 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const now = new Date();
 
       if (!response.success || !response.data) {
+        if (isAuthExpiredResponse(response)) {
+          return;
+        }
+
         // Network / auth error — if we have local changes, still try to push
         if (localData.lastModified) {
-          await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified });
+          if (!(await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified }))) {
+            return;
+          }
         }
         return;
       }
@@ -257,7 +269,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // ② No cloud data exists → push local
       if (!cloudData) {
         if (localData.lastModified) {
-          await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified });
+          if (!(await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified }))) {
+            return;
+          }
         }
         setLastSyncTime(now);
         localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
@@ -284,7 +298,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           localStorage.setItem(LAST_DATA_UPDATED_KEY, cloudData.lastDataUpdated);
         } else if (localData.lastDataUpdated && !cloudData.lastDataUpdated) {
           // Cloud lacks the field, push once so it's recorded
-          await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified || now.toISOString() });
+          if (!(await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified || now.toISOString() }))) {
+            return;
+          }
         }
         setLastSyncTime(now);
         localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
@@ -327,19 +343,25 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (cloudLM && localLM) {
         if (new Date(localLM) > new Date(cloudLM)) {
-          await pushLocalDataToCloud(localData);
+          if (!(await pushLocalDataToCloud(localData))) {
+            return;
+          }
         } else {
           applyCloudToLocal(cloudData, localData);
         }
       } else if (!cloudLM && localLM) {
-        await pushLocalDataToCloud({ ...localData, lastModified: localLM });
+        if (!(await pushLocalDataToCloud({ ...localData, lastModified: localLM }))) {
+          return;
+        }
       } else if (cloudLM && !localLM) {
         applyCloudToLocal(cloudData, localData);
       } else {
         // Neither has timestamps — merge with fallback
         const fallback = now.toISOString();
         applyCloudToLocal(cloudData, localData, fallback);
-        await pushLocalDataToCloud({ ...localData, ...cloudData, lastModified: fallback, lastDataUpdated: fallback });
+        if (!(await pushLocalDataToCloud({ ...localData, ...cloudData, lastModified: fallback, lastDataUpdated: fallback }))) {
+          return;
+        }
       }
 
       setLastSyncTime(now);
@@ -369,7 +391,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setIsSyncing(true);
 
       if (resolution === 'local') {
-        await pushLocalDataToCloud({ ...localData, lastModified: now, lastDataUpdated: now });
+        if (!(await pushLocalDataToCloud({ ...localData, lastModified: now, lastDataUpdated: now }))) {
+          return;
+        }
         localStorage.setItem('hrt-last-modified', now);
         localStorage.setItem(LAST_DATA_UPDATED_KEY, now);
       } else if (resolution === 'cloud') {
@@ -377,13 +401,17 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         localStorage.setItem('hrt-last-modified', now);
         localStorage.setItem(LAST_DATA_UPDATED_KEY, now);
         const updatedLocal = getLocalDataSnapshot();
-        await pushLocalDataToCloud({ ...updatedLocal, lastModified: now, lastDataUpdated: now });
+        if (!(await pushLocalDataToCloud({ ...updatedLocal, lastModified: now, lastDataUpdated: now }))) {
+          return;
+        }
       } else if (resolution === 'merge' && mergedData) {
         applyCloudToLocal({ ...mergedData, lastModified: now, lastDataUpdated: now }, localData);
         localStorage.setItem('hrt-last-modified', now);
         localStorage.setItem(LAST_DATA_UPDATED_KEY, now);
         const updatedLocal = getLocalDataSnapshot();
-        await pushLocalDataToCloud({ ...updatedLocal, lastModified: now, lastDataUpdated: now });
+        if (!(await pushLocalDataToCloud({ ...updatedLocal, lastModified: now, lastDataUpdated: now }))) {
+          return;
+        }
       }
 
       const syncNow = new Date();

@@ -8,6 +8,7 @@ import apiClient from '../api/client';
 import type { Share, ShareType } from '../api/types';
 import { Share2, ArrowLeft, Plus, Copy, Trash2, Lock, Unlock, Eye, Clock, Zap } from 'lucide-react';
 import { getSecurityPassword } from '../utils/crypto';
+import { isAuthExpiredResponse } from '../utils/authSession';
 import PINInput from '../components/PINInput';
 
 const MAX_ATTEMPT_OPTIONS = [0, 5, 10, 20, 50];
@@ -41,6 +42,10 @@ const AccountShares: React.FC = () => {
   const loadShares = async () => {
     setLoading(true);
     const response = await apiClient.getShares();
+    if (isAuthExpiredResponse(response)) {
+      setLoading(false);
+      return;
+    }
     if (response.success && response.data) {
       setShares(response.data);
       setShareMaxAttempts(
@@ -92,6 +97,10 @@ const AccountShares: React.FC = () => {
       max_attempts: shareHasPassword ? parsedMaxAttempts : undefined,
     });
 
+    if (isAuthExpiredResponse(response)) {
+      return;
+    }
+
     if (response.success && response.data) {
       setShowCreateModal(false);
       setShareHasPassword(false);
@@ -134,6 +143,10 @@ const AccountShares: React.FC = () => {
       max_attempts: parsed,
     });
 
+    if (isAuthExpiredResponse(response)) {
+      return;
+    }
+
     if (response.success) {
       showDialog('alert', t('shares.lockSettingsUpdated') || 'Share lock settings updated');
       loadShares();
@@ -145,6 +158,9 @@ const AccountShares: React.FC = () => {
   const handleDeleteShare = (shareId: string) => {
     showDialog('confirm', t('shares.deleteConfirm') || 'Delete this share?', async () => {
       const response = await apiClient.deleteShare(shareId);
+      if (isAuthExpiredResponse(response)) {
+        return;
+      }
       if (response.success) {
         showDialog('alert', t('shares.deleted') || 'Share deleted');
         loadShares();

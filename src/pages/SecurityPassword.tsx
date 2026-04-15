@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import PINInput from '../components/PINInput';
 import { saveSecurityPassword } from '../utils/crypto';
+import { isAuthExpiredResponse } from '../utils/authSession';
 
 const SecurityPassword: React.FC = () => {
   const { t } = useTranslation();
@@ -36,6 +37,11 @@ const SecurityPassword: React.FC = () => {
     setIsLoading(true);
     const response = await apiClient.getSecurityPasswordStatus();
 
+    if (isAuthExpiredResponse(response)) {
+      setIsLoading(false);
+      return;
+    }
+
     if (response.success && response.data) {
       setHasPassword(response.data.has_security_password);
       setMode(response.data.has_security_password ? 'view' : 'set');
@@ -61,6 +67,10 @@ const SecurityPassword: React.FC = () => {
     setIsSubmitting(true);
     const response = await apiClient.setSecurityPassword({ password: newPassword });
     setIsSubmitting(false);
+
+    if (isAuthExpiredResponse(response)) {
+      return;
+    }
 
     if (response.success) {
       setSuccess(t('security.success.set') || 'Security password set successfully');
@@ -106,6 +116,10 @@ const SecurityPassword: React.FC = () => {
       new_password: newPassword,
     });
     setIsSubmitting(false);
+
+    if (isAuthExpiredResponse(response)) {
+      return;
+    }
 
     if (response.success) {
       setSuccess(t('security.success.changed') || 'Security password changed successfully');
