@@ -36,18 +36,27 @@ export const CorePK = {
 };
 
 /**
- * CPA 2-compartment oral PK constants derived from SmPC (Diane-35 / Androcur).
+ * CPA 2-compartment oral PK constants calibrated to high-dose oral tablet SmPC
+ * data (e.g. Androcur / Cyprostat 50 mg tablets), which better matches the
+ * tablet regimens used in this app than the much earlier-peaking 2 mg
+ * Diane-35 formulation.
+ *
+ * Targets used for the calibration:
+ * - absolute bioavailability F ≈ 88%
+ * - single-dose Cmax ≈ 285 ng/mL at Tmax ≈ 3 h after 100 mg oral
+ * - terminal half-life t1/2 ≈ 43.9 h
+ * - total clearance ≈ 3.5 mL/min/kg
  *
  * Exported so higher-level calibration code can reuse the same population
  * variance and central-compartment assumptions without duplicating numbers.
  */
 export const CPA_2COMP_PK = {
     F: 0.88,
-    ka: 0.5,
-    alpha: 0.8660,
-    beta: 0.01031,
-    k21: 0.03034,
-    V1_per_kg: 0.734,
+    ka: 0.60,
+    alpha: 0.20,
+    beta: 0.01579,
+    k21: 0.04,
+    V1_per_kg: 2.666,
     popLogVar: 0.09,
 };
 

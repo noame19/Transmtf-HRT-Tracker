@@ -556,27 +556,20 @@ export function computeSimulationWithCI(
         }
     }
 
-    const step = Math.max(1, Math.floor(n / 100));
-    const sampledIndices: number[] = [];
-    for (let i = 0; i < n; i += step) sampledIndices.push(i);
-    if (sampledIndices[sampledIndices.length - 1] !== n - 1) sampledIndices.push(n - 1);
+    const adherenceScale = applyE2LearningToCPA ? Math.exp(theta[0]) : 1;
+    const adherenceVar = applyE2LearningToCPA ? Math.max(0, P[0][0]) : 0;
+    const varLogCPA = adherenceVar + CPA_2COMP_PK.popLogVar;
+    const stdCPA = Math.sqrt(Math.max(0, varLogCPA));
 
-    const cpaSamples: {
-        idx: number;
-        cpaAdj: number;
-        cpaCi95Low: number;
-        cpaCi95High: number;
-    }[] = [];
+    const cpaAdjusted = new Array<number>(n).fill(0);
+    const cpaCi95Low = new Array<number>(n).fill(0);
+    const cpaCi95High = new Array<number>(n).fill(0);
 
-    for (const idx of sampledIndices) {
-        const timeH = sim.timeH[idx];
-        const cpaPred = applyE2LearningToCPA
-            ? computeCPAAtTimeWithTheta(events, weight, timeH, theta)
-            : computeCPAAtTimeWithTheta(events, weight, timeH, [0, 0]);
-
-        const adherenceVar = applyE2LearningToCPA ? Math.max(0, P[0][0]) : 0;
-        const varLogCPA = adherenceVar + CPA_2COMP_PK.popLogVar;
-        const stdCPA = Math.sqrt(Math.max(0, varLogCPA));
+    // CPA only inherits the learned adherence amplitude, so we can reuse the
+    // population PK curve point-by-point instead of sparsely sampling and
+    // linearly interpolating across sharp oral peaks.
+    for (let i = 0; i < n; i++) {
+        const cpaPred = Math.max(0, sim.concPGmL_CPA[i] * adherenceScale);
         const yhatCPA = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
         const [cpaCiLow, cpaCiHigh] = clampCI(
             Math.exp(yhatCPA - 1.96 * stdCPA),
@@ -584,23 +577,9 @@ export function computeSimulationWithCI(
             EKF_CI_MAX_CPA
         );
 
-        cpaSamples.push({ idx, cpaAdj: cpaPred, cpaCi95Low: cpaCiLow, cpaCi95High: cpaCiHigh });
-    }
-
-    const cpaAdjusted = new Array<number>(n).fill(0);
-    const cpaCi95Low = new Array<number>(n).fill(0);
-    const cpaCi95High = new Array<number>(n).fill(0);
-
-    for (let j = 0; j < cpaSamples.length; j++) {
-        const a = cpaSamples[j];
-        const b = cpaSamples[j + 1] ?? a;
-        const span = b.idx - a.idx;
-        for (let i = a.idx; i <= b.idx; i++) {
-            const frac = span > 0 ? (i - a.idx) / span : 0;
-            cpaAdjusted[i] = a.cpaAdj + (b.cpaAdj - a.cpaAdj) * frac;
-            cpaCi95Low[i] = a.cpaCi95Low + (b.cpaCi95Low - a.cpaCi95Low) * frac;
-            cpaCi95High[i] = a.cpaCi95High + (b.cpaCi95High - a.cpaCi95High) * frac;
-        }
+        cpaAdjusted[i] = cpaPred;
+        cpaCi95Low[i] = cpaCiLow;
+        cpaCi95High[i] = cpaCiHigh;
     }
 
     if (applyCPAInhibitionToE2) {
