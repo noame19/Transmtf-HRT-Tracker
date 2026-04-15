@@ -212,9 +212,8 @@ const TurnstileModal: React.FC<TurnstileModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in"
-      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
-      <div className="rounded-2xl w-full max-w-md p-6 modal-spring"
-        style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}>
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+      <div className="rounded-2xl w-full max-w-md p-6 modal-spring-glass glass-modal glass-noise glass-highlight">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h2>

@@ -25,24 +25,18 @@ const Card: React.FC<CardProps> = ({
   onClick,
 }) => {
   const base = glass
-    ? 'glass rounded-2xl'
-    : 'rounded-2xl border transition-all duration-200';
-
-  const colors = glass
-    ? ''
-    : 'bg-[var(--bg-card)] border-[var(--border-primary)]';
-
-  const shadow = 'shadow-[var(--shadow-sm)]';
+    ? 'glass glass-noise glass-highlight rounded-2xl'
+    : 'glass-card glass-highlight rounded-2xl transition-all duration-200';
 
   const hoverClass = hover
-    ? 'card-lift cursor-pointer hover:shadow-[var(--shadow-md)]'
+    ? 'card-lift-glass cursor-pointer'
     : '';
 
   const Tag = onClick ? 'button' : 'div';
 
   return (
     <Tag
-      className={`${base} ${colors} ${shadow} ${paddingMap[padding]} ${hoverClass} ${className}`}
+      className={`${base} ${paddingMap[padding]} ${hoverClass} ${className}`}
       onClick={onClick}
       {...(onClick ? { type: 'button' as const } : {})}
     >

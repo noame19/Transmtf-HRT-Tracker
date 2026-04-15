@@ -82,14 +82,13 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="lab-modal-title"
-                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] modal-slide-up md:modal-spring md:animate-none"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] md:max-h-[85vh] modal-slide-up-glass md:modal-spring-glass md:animate-none glass-modal glass-noise glass-highlight"
             >
                 {/* Header */}
                 <div className="px-6 py-4 border-b flex items-center justify-between shrink-0"
@@ -182,7 +181,7 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                     <button
                         onClick={handleSave}
                         disabled={!value || !date || !time}
-                        className="flex-1 text-white font-bold py-4 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100 accent-bg-gradient"
+                        className="flex-1 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 glass-btn-primary btn-press-glass"
                     >
                         <Check size={20} />
                         {t('btn.save')}

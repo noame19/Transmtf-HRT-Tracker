@@ -78,14 +78,13 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="import-modal-title"
-                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up md:modal-spring md:animate-none safe-area-pb"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight"
             >
                 <div className="flex justify-between items-center mb-6 shrink-0">
                     <h3 id="import-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('import.title')}</h3>
@@ -151,7 +150,7 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                                 <button
                                     onClick={handleTextImport}
                                     disabled={!text.trim()}
-                                    className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition accent-bg-gradient btn-press"
+                                    className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass"
                                 >
                                     {t('drawer.import')}
                                 </button>

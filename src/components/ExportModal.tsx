@@ -66,14 +66,13 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="export-modal-title"
-                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up md:modal-spring md:animate-none safe-area-pb"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
+                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight"
             >
                 <div className="flex justify-between items-center mb-6 shrink-0">
                     <h3 id="export-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('export.title')}</h3>
@@ -143,13 +142,13 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                     <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-2">
                                         <button
                                             onClick={handleCopy}
-                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-sm font-bold transition accent-bg-gradient btn-press"
+                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-sm font-bold transition glass-btn-primary btn-press-glass"
                                         >
                                             <Copy size={16} /> {copyState === 'copied' ? t('qr.copied') : t('qr.copy')}
                                         </button>
                                         <button
                                             onClick={() => onExport(isEncrypted)}
-                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-bold transition btn-press"
+                                            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-bold transition btn-press-glass"
                                             style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-primary)' }}
                                         >
                                             <Download size={16} /> {t('export.title')}
@@ -166,7 +165,7 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
                                             <div className="flex flex-col gap-2">
                                                 <button
                                                     onClick={handleCopy}
-                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg text-white text-sm font-bold transition accent-bg-gradient"
+                                                    className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-lg text-white text-sm font-bold transition glass-btn-primary btn-press-glass"
                                                 >
                                                     <Copy size={16} /> {copyState === 'copied' ? t('qr.copied') : t('qr.copy')}
                                                 </button>
@@ -189,12 +188,12 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: 
 
                     {activeTab === 'json' && (
                         <div className="space-y-3">
-                            <button onClick={() => onExport(false)} className="w-full py-4 border font-bold rounded-xl transition flex items-center justify-center gap-2 btn-press"
+                            <button onClick={() => onExport(false)} className="w-full py-4 border font-bold rounded-xl transition flex items-center justify-center gap-2 btn-press-glass"
                                 style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-primary)' }}>
                                 <Download size={20} />
                                 JSON
                             </button>
-                            <button onClick={() => onExport(true)} className="w-full py-4 border font-bold rounded-xl transition flex items-center justify-center gap-2 btn-press"
+                            <button onClick={() => onExport(true)} className="w-full py-4 border font-bold rounded-xl transition flex items-center justify-center gap-2 btn-press-glass"
                                 style={{ background: 'var(--accent-50)', borderColor: 'var(--accent-200)', color: 'var(--accent-600)' }}>
                                 <Lock size={20} />
                                 JSON ({t('qr.encrypt_label')})

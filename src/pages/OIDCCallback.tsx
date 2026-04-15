@@ -83,7 +83,7 @@ const OIDCCallback: React.FC = () => {
   if (error) {
     return (
       <div className="w-full min-h-full flex items-center justify-center p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
-        <div className="w-full max-w-sm bg-white rounded-3xl shadow-lg p-6 border border-gray-200 text-center">
+        <div className="glass-card rounded-3xl w-full max-w-sm p-6 text-center">
           <div className="mb-4 text-red-500 text-4xl">✕</div>
           <h2 className="text-lg font-bold text-gray-900 mb-2">
             {t('oidc.callback.error') || 'Sign-in Failed'}
@@ -102,7 +102,7 @@ const OIDCCallback: React.FC = () => {
 
   return (
     <div className="w-full min-h-full flex items-center justify-center p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-lg p-6 border border-gray-200 text-center">
+      <div className="glass-card rounded-3xl w-full max-w-sm p-6 text-center">
         <Loader2 className="mx-auto mb-4 text-pink-500 animate-spin" size={40} />
         <p className="text-sm text-gray-600">
           {t('oidc.callback.processing') || 'Processing sign-in...'}

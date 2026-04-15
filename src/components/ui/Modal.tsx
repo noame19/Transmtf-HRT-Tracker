@@ -47,7 +47,7 @@ const Modal: React.FC<ModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end md:items-center justify-center animate-in fade-in duration-200"
-      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
     >
       <div
         ref={dialogRef}
@@ -56,12 +56,11 @@ const Modal: React.FC<ModalProps> = ({
         aria-labelledby={title ? id : undefined}
         className={`
           w-full ${maxWidth} md:mx-4
-          bg-[var(--bg-card)] border border-[var(--border-primary)]
+          glass-modal glass-noise glass-highlight
           rounded-t-3xl md:rounded-3xl
-          shadow-[var(--shadow-lg)]
           flex flex-col
           ${fullHeight ? 'h-[92vh] md:max-h-[85vh]' : 'max-h-[90vh] md:max-h-[85vh]'}
-          md:modal-spring modal-slide-up md:animate-none
+          md:modal-spring-glass modal-slide-up-glass md:animate-none
           safe-area-pb
         `}
       >
@@ -79,7 +78,7 @@ const Modal: React.FC<ModalProps> = ({
             {!hideClose && (
               <button
                 onClick={onClose}
-                className="p-2 rounded-full bg-[var(--bg-card-hover)] hover:bg-[var(--border-primary)] transition ml-auto"
+                className="p-2 rounded-full glass-btn btn-press-glass transition ml-auto"
                 aria-label="Close"
               >
                 <X size={18} className="text-[var(--text-secondary)]" />

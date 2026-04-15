@@ -71,8 +71,8 @@ const LearningPanel: React.FC<{
   const clrFactor = lastDiagnostics?.thetaK ?? (hasModel ? Math.exp(personalModel!.thetaMean[1]) : null);
 
   return (
-    <div className="mx-4 rounded-2xl border overflow-hidden"
-      style={{ background: 'var(--bg-card)', borderColor: 'var(--accent-200)', boxShadow: 'var(--shadow-sm)' }}>
+    <div className="mx-4 glass-card overflow-hidden"
+      style={{ borderColor: 'var(--accent-200)' }}>
       {/* Header – always visible */}
       <button
         className="w-full flex items-center justify-between px-4 py-3 transition-colors"
@@ -279,8 +279,7 @@ const LabView: React.FC<LabViewProps> = ({
   return (
     <div className="relative space-y-5 pt-6 pb-8">
       <div className="px-4">
-        <div className="w-full p-4 rounded-2xl flex items-center justify-between"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', border: '1px solid var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="w-full p-4 glass-card flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
             style={{ color: 'var(--text-primary)' }}>
             <FlaskConical size={22} className="text-teal-500" /> {t('lab.title')}
@@ -288,7 +287,7 @@ const LabView: React.FC<LabViewProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onAddLabResult}
-              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
             >
               <Plus size={16} />
               <span>{t('lab.add_title')}</span>
@@ -304,7 +303,7 @@ const LabView: React.FC<LabViewProps> = ({
       />
 
       {/* E2 Calibration Model Selector */}
-      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4 space-y-3">
+      <div className="mx-4 glass-card p-4 space-y-3">
         <div>
           <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.model_selector')}</p>
           <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{t('lab.model_selector_desc')}</p>
@@ -332,7 +331,7 @@ const LabView: React.FC<LabViewProps> = ({
       </div>
 
       {/* CPA adherence toggle */}
-      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4">
+      <div className="mx-4 glass-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.learning_apply_cpa')}</p>
@@ -365,7 +364,7 @@ const LabView: React.FC<LabViewProps> = ({
       </div>
 
       {/* CPA→E2 clearance inhibition toggle */}
-      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-4">
+      <div className="mx-4 glass-card p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.apply_cpa_inhibition')}</p>
@@ -398,11 +397,11 @@ const LabView: React.FC<LabViewProps> = ({
       </div>
 
       {labResults.length === 0 ? (
-        <div className="mx-4 text-center py-12 bg-[var(--bg-card)] rounded-3xl border border-dashed border-[var(--border-primary)] shadow-[var(--shadow-sm)]" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="mx-4 text-center py-12 glass-card rounded-3xl border-dashed" style={{ color: 'var(--text-tertiary)' }}>
           <p>{t('lab.empty')}</p>
         </div>
       ) : (
-        <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] divide-y divide-[var(--border-secondary)] overflow-hidden">
+        <div className="mx-4 glass-card divide-y divide-[var(--border-secondary)] overflow-hidden">
           {labResults
             .slice()
             .sort((a, b) => b.timeH - a.timeH)
@@ -439,7 +438,7 @@ const LabView: React.FC<LabViewProps> = ({
         </div>
       )}
 
-      <div className="mx-4 bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] flex items-center justify-end px-4 py-3">
+      <div className="mx-4 glass-card flex items-center justify-end px-4 py-3">
         <button
           onClick={onClearLabResults}
           disabled={!labResults.length}

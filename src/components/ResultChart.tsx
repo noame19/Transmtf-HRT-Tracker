@@ -702,7 +702,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     };
 
     if (!sim || sim.timeH.length === 0) return (
-        <div className="h-72 md:h-96 flex flex-col items-center justify-center bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] p-8" style={{ color: 'var(--text-tertiary)' }}>
+        <div className="h-72 md:h-96 flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
             <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
             <p className="text-sm font-medium">{t('timeline.empty')}</p>
         </div>
@@ -711,7 +711,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     const hasPersonalModel = !!simCI;
 
     return (
-        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] shadow-[var(--shadow-sm)] relative overflow-hidden flex flex-col">
+        <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
             <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-secondary)]">
                 <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif', color: 'var(--text-primary)' }}>
                     <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30">

@@ -9,9 +9,8 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200 p-4"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
-            <div className="rounded-3xl border w-full max-w-lg modal-spring overflow-hidden"
-                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-lg)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+            <div className="rounded-3xl w-full max-w-lg modal-spring-glass overflow-hidden glass-modal glass-noise glass-highlight">
                 <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b" style={{ borderColor: 'var(--border-secondary)' }}>
                     <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.title')}</h3>
                     <button
@@ -68,7 +67,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 <div className="px-6 pb-6 pt-4">
                     <button
                         onClick={onClose}
-                        className="w-full py-3 text-white text-sm font-bold rounded-xl btn-press transition accent-bg-gradient"
+                        className="w-full py-3 text-white text-sm font-bold rounded-xl btn-press-glass transition glass-btn-primary"
                     >
                         {t('btn.ok')}
                     </button>

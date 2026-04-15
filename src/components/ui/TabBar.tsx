@@ -41,12 +41,16 @@ const TabBar: React.FC<TabBarProps> = ({ tabs, activeId, onChange }) => {
   return (
     <div
       ref={containerRef}
-      className="relative flex p-1 rounded-xl bg-[var(--bg-card-hover)] border border-[var(--border-secondary)]"
+      className="relative flex p-1 rounded-xl glass-subtle border border-[var(--glass-border)]"
     >
       {/* Sliding indicator */}
       <div
-        className="absolute top-1 bottom-1 rounded-lg bg-[var(--bg-card)] shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-        style={{ left: indicatorStyle.left, width: indicatorStyle.width }}
+        className="absolute top-1 bottom-1 rounded-lg glass transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+        style={{
+          left: indicatorStyle.left,
+          width: indicatorStyle.width,
+          boxShadow: `inset 0 0 0 1px rgba(var(--accent-rgb),0.15), 0 2px 8px rgba(var(--accent-rgb),0.10)`,
+        }}
       />
 
       {tabs.map(tab => {

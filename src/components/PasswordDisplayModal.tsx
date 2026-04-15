@@ -16,9 +16,8 @@ const PasswordDisplayModal = ({ isOpen, onClose, password }: { isOpen: boolean, 
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
-            <div className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up md:modal-spring md:animate-none safe-area-pb"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+            <div className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight">
                 <h3 className="text-xl font-semibold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>{t('export.password_title')}</h3>
                 <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-secondary)' }}>{t('export.password_desc')}</p>
 
@@ -30,7 +29,7 @@ const PasswordDisplayModal = ({ isOpen, onClose, password }: { isOpen: boolean, 
                     </button>
                 </div>
 
-                <button onClick={onClose} className="w-full py-3.5 text-white font-bold rounded-xl transition accent-bg-gradient">
+                <button onClick={onClose} className="w-full py-3.5 text-white font-bold rounded-xl transition glass-btn-primary btn-press-glass">
                     {t('btn.ok')}
                 </button>
             </div>

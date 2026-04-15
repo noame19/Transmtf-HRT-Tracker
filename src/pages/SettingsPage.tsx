@@ -321,8 +321,7 @@ const SettingsPage: React.FC = () => {
         <div className="min-h-full px-4 py-6 md:px-6">
             <div className="mx-auto w-full max-w-2xl space-y-6">
                 {/* Page title */}
-                <div className="rounded-2xl border p-5"
-                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+                <div className="rounded-2xl glass-card glass-highlight relative overflow-hidden p-5">
                     <h1 className="flex items-center gap-2 text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
                         <SettingsIcon size={24} style={{ color: 'var(--accent-500)' }} />
                         {t('nav.settings') || 'Settings'}
@@ -334,8 +333,7 @@ const SettingsPage: React.FC = () => {
                     <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.appearance') || 'Appearance'}
                     </h2>
-                    <div className="rounded-2xl border p-5 space-y-5"
-                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+                    <div className="rounded-2xl glass-card p-5 space-y-5">
                         {/* Theme Color */}
                         <div>
                             <div className="flex items-start gap-3 mb-4">
@@ -369,8 +367,7 @@ const SettingsPage: React.FC = () => {
                     <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.general') || 'General'}
                     </h2>
-                    <div className="rounded-2xl border p-4"
-                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+                    <div className="rounded-2xl glass-card p-4">
                         <div className="mb-3 flex items-start gap-3">
                             <Languages className="text-blue-500" size={20} />
                             <div>
@@ -392,11 +389,10 @@ const SettingsPage: React.FC = () => {
                     <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.data') || 'Data Management'}
                     </h2>
-                    <div className="overflow-hidden rounded-2xl border divide-y"
-                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)', divideColor: 'var(--border-secondary)' }}>
+                    <div className="overflow-hidden rounded-2xl glass-card divide-y divide-[var(--border-secondary)]">
                         <button
                             onClick={() => setIsImportModalOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -416,7 +412,7 @@ const SettingsPage: React.FC = () => {
                                 }
                                 setIsExportModalOpen(true);
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -430,7 +426,7 @@ const SettingsPage: React.FC = () => {
 
                         <button
                             onClick={handleQuickExport}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -446,7 +442,7 @@ const SettingsPage: React.FC = () => {
                             onClick={handleClearAllEvents}
                             disabled={!events.length}
                             className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
-                                events.length ? 'btn-press hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed opacity-60'
+                                events.length ? 'btn-press-glass hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed opacity-60'
                             }`}
                             style={{ color: 'var(--text-primary)' }}
                         >
@@ -464,11 +460,10 @@ const SettingsPage: React.FC = () => {
                     <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
                         {t('settings.group.about') || 'About'}
                     </h2>
-                    <div className="overflow-hidden rounded-2xl border divide-y"
-                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)', divideColor: 'var(--border-secondary)' }}>
+                    <div className="overflow-hidden rounded-2xl glass-card divide-y divide-[var(--border-secondary)]">
                         <button
                             onClick={() => setIsModelInfoOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -486,7 +481,7 @@ const SettingsPage: React.FC = () => {
                                     window.open('https://github.com/TransmtfTeam/Transmtf-HRT-Tracker', '_blank');
                                 });
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -504,7 +499,7 @@ const SettingsPage: React.FC = () => {
                                     window.open('https://x.com/axzamyzed', '_blank');
                                 });
                             }}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -518,7 +513,7 @@ const SettingsPage: React.FC = () => {
 
                         <button
                             onClick={() => setIsStatisticsOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -532,7 +527,7 @@ const SettingsPage: React.FC = () => {
 
                         <button
                             onClick={() => setIsDisclaimerOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press"
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}

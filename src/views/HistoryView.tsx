@@ -28,8 +28,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
   return (
     <div className="relative space-y-5 pt-6 pb-16">
       <div className="px-4">
-        <div className="w-full p-4 rounded-2xl border flex items-center justify-between"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="w-full p-4 rounded-2xl glass-card glass-highlight relative overflow-hidden flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
             style={{ color: 'var(--text-primary)' }}>
             <Activity size={22} style={{ color: 'var(--accent-300)' }} /> {t('timeline.title')}
@@ -37,7 +36,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
           <div className="flex items-center gap-2">
             <button
               onClick={onBatchAdd}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 h-11 rounded-xl text-sm font-bold btn-press transition"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 h-11 rounded-xl text-sm font-bold btn-press-glass transition"
               style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
             >
               <Layers size={15} />
@@ -45,7 +44,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
             </button>
             <button
               onClick={onAddEvent}
-              className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press transition accent-bg-gradient"
+              className="inline-flex md:hidden items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
             >
               <Plus size={16} />
               <span>{t('btn.add')}</span>
@@ -62,8 +61,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
       )}
 
       {Object.entries(groupedEvents).map(([date, items]) => (
-        <div key={date} className="relative mx-4 rounded-2xl border overflow-hidden"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-sm)' }}>
+        <div key={date} className="relative mx-4 rounded-2xl glass-card overflow-hidden">
           <div className="sticky top-0 py-3 px-4 z-0 flex items-center gap-2 border-b glass"
             style={{ borderColor: 'var(--border-secondary)' }}>
             <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-300)' }}></div>
@@ -74,7 +72,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
               <div
                 key={ev.id}
                 onClick={() => onEditEvent(ev)}
-                className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative btn-press"
+                className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative btn-press-glass"
                 onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >

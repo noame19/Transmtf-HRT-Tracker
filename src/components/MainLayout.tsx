@@ -134,15 +134,12 @@ const MainLayout: React.FC = () => {
                                 key={id}
                                 onClick={() => handleViewChange(id)}
                                 aria-current={active ? 'page' : undefined}
-                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold btn-press transition-all duration-200 ${
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold btn-press-glass transition-all duration-200 ${
                                     active
-                                        ? 'text-white'
-                                        : 'hover:bg-[var(--bg-card-hover)]'
+                                        ? 'glass-btn-primary text-white'
+                                        : 'glass-btn hover:bg-[var(--glass-bg-default)]'
                                 }`}
-                                style={active ? {
-                                    background: `linear-gradient(135deg, var(--accent-400), var(--accent-500))`,
-                                    boxShadow: `0 2px 8px ${`var(--accent-300)`}40`,
-                                } : {
+                                style={active ? {} : {
                                     color: 'var(--text-secondary)',
                                 }}
                             >
@@ -154,10 +151,8 @@ const MainLayout: React.FC = () => {
                 </nav>
 
                 <div className="flex items-center gap-3 min-w-[260px] justify-end">
-                    <div className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold"
+                    <div className="flex items-center gap-2 rounded-full glass-subtle px-3 py-1.5 text-xs font-semibold"
                         style={{
-                            borderColor: 'var(--border-primary)',
-                            background: 'var(--bg-card)',
                             color: 'var(--text-secondary)',
                         }}>
                         <span>{formatDate(currentTime, lang)}</span>
@@ -166,8 +161,7 @@ const MainLayout: React.FC = () => {
                     </div>
                     <button
                         onClick={handleAddEvent}
-                        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold text-white btn-press transition accent-bg-gradient"
-                        style={{ boxShadow: `0 2px 8px var(--accent-300)` }}
+                        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold text-white glass-btn-primary btn-press-glass transition"
                     >
                         <Plus size={15} />
                         <span>{t('btn.add')}</span>
@@ -219,7 +213,7 @@ const MainLayout: React.FC = () => {
 
             {/* ── Mobile bottom nav — Glass Pill ── */}
             <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', background: 'var(--bg-secondary)' }}>
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', background: 'linear-gradient(to top, var(--bg-secondary) 75%, transparent)' }}>
                 <div
                     className="rounded-3xl px-1.5 py-1.5 glass"
                     style={{
@@ -234,11 +228,9 @@ const MainLayout: React.FC = () => {
                                     key={id}
                                     onClick={() => handleViewChange(id)}
                                     aria-current={active ? 'page' : undefined}
-                                    className="relative flex flex-col items-center gap-0.5 py-2.5 px-1 rounded-2xl transition-all duration-200 btn-press"
-                                    style={active ? {
-                                        background: 'var(--bg-card)',
-                                        boxShadow: 'var(--shadow-sm)',
-                                    } : undefined}
+                                    className={`relative flex flex-col items-center gap-0.5 py-2.5 px-1 rounded-2xl transition-all duration-200 btn-press-glass ${
+                                        active ? 'glass-btn' : ''
+                                    }`}
                                 >
                                     <Icon
                                         size={22}

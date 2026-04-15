@@ -13,9 +13,8 @@ const PasswordInputModal = ({ isOpen, onClose, onConfirm }: { isOpen: boolean, o
 
     return (
         <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
-            <div className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up md:modal-spring md:animate-none safe-area-pb"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}>
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+            <div className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight">
                 <h3 className="text-xl font-semibold mb-2 text-center" style={{ color: 'var(--text-primary)' }}>{t('import.password_title')}</h3>
                 <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-secondary)' }}>{t('import.password_desc')}</p>
 
@@ -35,7 +34,7 @@ const PasswordInputModal = ({ isOpen, onClose, onConfirm }: { isOpen: boolean, o
                     <button
                         onClick={() => onConfirm(password)}
                         disabled={!password}
-                        className="flex-1 py-3.5 text-white font-bold rounded-xl transition disabled:opacity-50 accent-bg-gradient"
+                        className="flex-1 py-3.5 text-white font-bold rounded-xl transition disabled:opacity-50 glass-btn-primary btn-press-glass"
                     >
                         {t('btn.ok')}
                     </button>

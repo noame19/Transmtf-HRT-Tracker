@@ -493,7 +493,7 @@ const SyncConflictModal: React.FC<SyncConflictModalProps> = ({ isOpen, conflict,
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => onResolve('local')}
-            className="btn-press py-3 px-4 rounded-xl font-bold text-sm transition-all"
+            className="btn-press-glass py-3 px-4 rounded-xl font-bold text-sm transition-all"
             style={{
               background: 'color-mix(in srgb, #3b82f6 10%, var(--bg-card-hover))',
               border: '1px solid color-mix(in srgb, #3b82f6 30%, var(--border-primary))',
@@ -505,7 +505,7 @@ const SyncConflictModal: React.FC<SyncConflictModalProps> = ({ isOpen, conflict,
           </button>
           <button
             onClick={() => onResolve('cloud')}
-            className="btn-press py-3 px-4 rounded-xl font-bold text-sm transition-all"
+            className="btn-press-glass py-3 px-4 rounded-xl font-bold text-sm transition-all"
             style={{
               background: 'color-mix(in srgb, #8b5cf6 10%, var(--bg-card-hover))',
               border: '1px solid color-mix(in srgb, #8b5cf6 30%, var(--border-primary))',
@@ -604,7 +604,7 @@ const SyncConflictModal: React.FC<SyncConflictModalProps> = ({ isOpen, conflict,
 
             <button
               onClick={() => onResolve('merge', mergedData)}
-              className="btn-press w-full py-3 rounded-xl font-bold text-sm text-white transition-all"
+              className="btn-press-glass w-full py-3 rounded-xl font-bold text-sm text-white transition-all"
               style={{
                 background: 'linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%)',
                 boxShadow: '0 4px 14px color-mix(in srgb, var(--accent-500) 25%, transparent)',

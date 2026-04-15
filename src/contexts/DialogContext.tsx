@@ -76,8 +76,8 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
           style={{
             animation: 'dialogFadeIn 0.18s ease-out forwards',
             background: 'var(--bg-overlay)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
+            backdropFilter: 'blur(16px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(16px) saturate(180%)',
           }}
         >
           <style>{`
@@ -91,12 +91,8 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
               aria-modal="true"
               aria-labelledby="dialog-title"
               aria-describedby="dialog-msg"
+              className="glass-heavy glass-noise glass-highlight"
               style={{
-                background: 'var(--glass-bg)',
-                backdropFilter: 'blur(24px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-                border: `1px solid var(--glass-border)`,
-                boxShadow: 'var(--shadow-lg)',
                 borderRadius: '24px',
                 padding: '24px',
               }}
@@ -109,18 +105,16 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
               {type === 'alert' && (
                 <button
                   onClick={() => handleChoice('confirm')}
-                  className="btn-press"
+                  className="btn-press-glass glass-btn-primary"
                   style={{
                     width: '100%',
                     padding: '13px',
                     borderRadius: '14px',
-                    background: `linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%)`,
                     border: 'none',
                     color: 'white',
                     fontWeight: 700,
                     fontSize: '14px',
                     cursor: 'pointer',
-                    boxShadow: `0 4px 14px color-mix(in srgb, var(--accent-500) 25%, transparent)`,
                   }}
                 >
                   {options.confirmText || t('btn.ok')}
@@ -131,12 +125,11 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleChoice('cancel')}
-                    className="btn-press"
+                    className="btn-press-glass glass-btn"
                     style={{
                       flex: 1,
                       padding: '13px',
                       borderRadius: '14px',
-                      background: 'var(--bg-card-hover)',
                       border: 'none',
                       color: 'var(--text-primary)',
                       fontWeight: 600,
@@ -148,18 +141,16 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
                   </button>
                   <button
                     onClick={() => handleChoice('confirm')}
-                    className="btn-press"
+                    className="btn-press-glass glass-btn-primary"
                     style={{
                       flex: 1,
                       padding: '13px',
                       borderRadius: '14px',
-                      background: `linear-gradient(135deg, var(--accent-400) 0%, var(--accent-500) 100%)`,
                       border: 'none',
                       color: 'white',
                       fontWeight: 700,
                       fontSize: '14px',
                       cursor: 'pointer',
-                      boxShadow: `0 4px 14px color-mix(in srgb, var(--accent-500) 25%, transparent)`,
                     }}
                   >
                     {options.confirmText || t('btn.ok')}
@@ -170,14 +161,12 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
               {options.thirdOption && (
                 <button
                   onClick={() => handleChoice('third')}
-                  className="btn-press"
+                  className="btn-press-glass glass-btn"
                   style={{
                     width: '100%',
                     marginTop: '8px',
                     padding: '13px',
                     borderRadius: '14px',
-                    background: 'var(--bg-card-hover)',
-                    border: `1px solid var(--border-primary)`,
                     color: 'var(--text-secondary)',
                     fontWeight: 500,
                     fontSize: '14px',

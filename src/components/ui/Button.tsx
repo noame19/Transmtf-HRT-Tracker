@@ -20,24 +20,24 @@ const sizeClasses: Record<Size, string> = {
 
 const variantStyles: Record<Variant, { base: string; hover: string }> = {
   primary: {
-    base: 'accent-bg-gradient text-white shadow-sm',
-    hover: 'hover:brightness-110 hover:shadow-md',
+    base: 'glass-btn-primary text-white',
+    hover: '',
   },
   secondary: {
-    base: 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] border border-[var(--border-primary)]',
-    hover: 'hover:bg-[var(--border-primary)]',
+    base: 'glass-btn text-[var(--text-primary)]',
+    hover: '',
   },
   ghost: {
     base: 'text-[var(--text-secondary)] bg-transparent',
-    hover: 'hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]',
+    hover: 'hover:bg-[var(--glass-bg-subtle)] hover:text-[var(--text-primary)]',
   },
   danger: {
-    base: 'bg-red-500 text-white shadow-sm',
+    base: 'bg-red-500/90 backdrop-blur-sm text-white border border-red-400/30',
     hover: 'hover:bg-red-600 hover:shadow-md',
   },
   outline: {
-    base: 'bg-transparent border-2 text-[var(--text-primary)]',
-    hover: 'hover:bg-[var(--bg-card-hover)]',
+    base: 'glass-btn text-[var(--text-primary)]',
+    hover: '',
   },
 };
 
@@ -59,7 +59,7 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <button
       className={[
-        'inline-flex items-center justify-center btn-press transition-all duration-150',
+        'inline-flex items-center justify-center btn-press-glass transition-all duration-150',
         sizeClasses[size],
         vs.base,
         !isDisabled ? vs.hover : '',

@@ -459,15 +459,14 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
     return (
         <div
             className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
         >
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="dose-modal-title"
-                className="relative rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-slide-up md:modal-spring md:animate-none"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
+                className="relative rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-slide-up-glass md:modal-spring-glass md:animate-none glass-modal glass-noise glass-highlight"
             >
                 <div className="p-6 md:p-8 border-b flex justify-between items-center shrink-0"
                     style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
@@ -816,7 +815,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                             <button
                                 onClick={saveTemplate}
                                 disabled={!newTemplateName.trim()}
-                                className="px-3 py-2 text-white text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 accent-bg-gradient"
+                                className="px-3 py-2 text-white text-sm font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1 glass-btn-primary btn-press-glass"
                             >
                                 <Check size={14} /> {t('template.confirm')}
                             </button>
@@ -855,7 +854,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className={`flex-1 h-14 text-white text-lg font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 accent-bg-gradient ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`flex-1 h-14 text-white text-lg font-bold rounded-xl transition-all flex items-center justify-center gap-2 glass-btn-primary btn-press-glass ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (
                             <>

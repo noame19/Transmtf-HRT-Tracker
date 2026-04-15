@@ -25,6 +25,20 @@ export const THEME_PRESETS: Record<ThemeColorId, { zh: string; en: string; color
 
 export const THEME_COLOR_IDS = Object.keys(THEME_PRESETS) as ThemeColorId[];
 
+/** Pre-computed accent-500 RGB triplets for rgba(var(--accent-rgb), alpha) usage */
+export const ACCENT_RGB_MAP: Record<ThemeColorId, string> = {
+  sakura:   '244,63,94',
+  ocean:    '14,165,233',
+  lavender: '139,92,246',
+  mint:     '16,185,129',
+  sunset:   '249,115,22',
+  berry:    '217,70,239',
+  coral:    '236,72,153',
+  sky:      '6,182,212',
+  rose:     '239,68,68',
+  teal:     '20,184,166',
+};
+
 // ─── Context ───
 interface ThemeContextType {
   themeColor: ThemeColorId;
@@ -76,6 +90,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--accent-400', c[400]);
     root.style.setProperty('--accent-500', c[500]);
     root.style.setProperty('--accent-600', c[600]);
+    root.style.setProperty('--accent-rgb', ACCENT_RGB_MAP[themeColor]);
   }, [themeColor]);
 
   // Apply dark mode class

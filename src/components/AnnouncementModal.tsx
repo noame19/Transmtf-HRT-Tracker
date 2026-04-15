@@ -41,12 +41,11 @@ const AnnouncementModal: React.FC = () => {
   return (
     <div
       className="fixed inset-0 z-[9998] flex items-center justify-center px-4 py-6 overflow-y-auto"
-      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)' }}
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
       onClick={(e) => { if (e.target === e.currentTarget) setVisible(false); }}
     >
       <div
-        className="relative w-full max-w-lg mx-auto my-auto rounded-3xl overflow-hidden animate-announcement-in"
-        style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)' }}
+        className="relative w-full max-w-lg mx-auto my-auto rounded-3xl overflow-hidden animate-announcement-in glass-modal glass-noise glass-highlight"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -77,7 +76,7 @@ const AnnouncementModal: React.FC = () => {
         <div className="px-6 py-4 border-t flex justify-end" style={{ borderColor: 'var(--border-secondary)' }}>
           <button
             onClick={() => setVisible(false)}
-            className="px-5 py-2 text-white text-sm font-medium rounded-xl transition shadow-sm btn-press accent-bg-gradient"
+            className="px-5 py-2 text-white text-sm font-medium rounded-xl transition shadow-sm btn-press-glass glass-btn-primary"
           >
             知道了 · Got it
           </button>

@@ -35,8 +35,9 @@ const ThemePicker: React.FC = () => {
                 background: `linear-gradient(135deg, ${preset.colors[400]}, ${preset.colors[500]})`,
                 ...(isActive ? { ringColor: preset.colors[400] } : {}),
                 boxShadow: isActive
-                  ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${preset.colors[400]}, 0 4px 12px ${preset.colors[300]}40`
+                  ? `0 0 0 2px var(--bg-card), 0 0 0 4px ${preset.colors[400]}, 0 6px 16px ${preset.colors[300]}60`
                   : undefined,
+                filter: isActive ? `drop-shadow(0 0 6px ${preset.colors[400]}80)` : undefined,
               }}
             >
               {isActive && (

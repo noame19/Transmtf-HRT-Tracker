@@ -155,7 +155,7 @@ const AccountOIDC: React.FC = () => {
         )}
 
         {/* OIDC Binding Status */}
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="glass-card rounded-2xl p-6">
           <div className="mb-4 flex items-center gap-3">
             <Link2 size={20} className="text-blue-500" />
             <h3 className="font-bold text-gray-900">{t('account.oidc') || 'Transmtf Login'}</h3>
@@ -221,7 +221,7 @@ const AccountOIDC: React.FC = () => {
 
         {/* Password Management */}
         {status && (
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="glass-card rounded-2xl p-6">
             <div className="mb-4 flex items-center gap-3">
               <Lock size={20} className="text-gray-600" />
               <h3 className="font-bold text-gray-900">{t('account.changePassword') || 'Login Password'}</h3>
@@ -248,7 +248,7 @@ const AccountOIDC: React.FC = () => {
                       setSetPasswordError('');
                       setShowSetPasswordModal(true);
                     }}
-                    className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    className="glass-btn rounded-xl border px-4 py-2.5 text-sm font-medium transition"
                   >
                     <Lock size={16} />
                     {t('oidc.setPassword') || 'Set Login Password'}
@@ -285,7 +285,7 @@ const AccountOIDC: React.FC = () => {
       {/* Set Password Modal */}
       {showSetPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+          <div className="glass-modal glass-noise glass-highlight w-full max-w-md rounded-3xl p-6">
             <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-900">
               <Lock size={24} className="text-pink-500" />
               {t('oidc.setPasswordTitle') || 'Set Login Password'}
@@ -341,7 +341,7 @@ const AccountOIDC: React.FC = () => {
       {/* Remove Password Modal */}
       {showRemovePasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+          <div className="glass-modal glass-noise glass-highlight w-full max-w-md rounded-3xl p-6">
             <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-900">
               <Unlink size={24} className="text-red-500" />
               {t('oidc.removePasswordTitle') || 'Remove Login Password'}

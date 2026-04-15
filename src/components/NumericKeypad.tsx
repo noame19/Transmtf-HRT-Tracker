@@ -8,13 +8,13 @@ interface NumericKeypadProps {
 }
 
 const btnBase: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.55)',
-  backdropFilter: 'blur(12px) saturate(160%)',
-  WebkitBackdropFilter: 'blur(12px) saturate(160%)',
-  border: '1.5px solid rgba(255,255,255,0.75)',
-  boxShadow: '0 2px 12px rgba(236,72,153,0.08), 0 1px 0 rgba(255,255,255,0.9) inset',
+  background: 'var(--glass-bg-default)',
+  backdropFilter: 'blur(20px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+  border: '1px solid var(--glass-border-strong)',
+  boxShadow: 'var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.30)',
   borderRadius: '50%',
-  color: 'rgba(20,10,40,0.82)',
+  color: 'var(--text-primary)',
   fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif',
   cursor: 'pointer',
   transition: 'all 0.12s ease',

@@ -183,15 +183,15 @@ const AccountShares: React.FC = () => {
 
         {/* Shares List */}
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+          <div className="glass-card rounded-2xl p-8 text-center">
             <p className="text-gray-500">{t('common.loading') || 'Loading...'}</p>
           </div>
         ) : shares.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+          <div className="glass-card rounded-2xl p-8 text-center">
             <p className="text-gray-500">{t('shares.empty') || 'No shares yet'}</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-100">
+          <div className="glass-card rounded-2xl divide-y divide-gray-100">
             {shares.map((share) => (
               <div key={share.share_id} className="p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-4">
@@ -303,7 +303,7 @@ const AccountShares: React.FC = () => {
       {/* Create Share Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl">
+          <div className="glass-modal glass-noise glass-highlight rounded-3xl max-w-md w-full p-6">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
               {t('shares.createNew') || 'Create New Share'}
             </h3>

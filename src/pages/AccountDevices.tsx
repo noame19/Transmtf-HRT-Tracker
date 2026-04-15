@@ -131,19 +131,19 @@ const AccountDevices: React.FC = () => {
 
         {/* Sessions List */}
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+          <div className="glass-card rounded-2xl p-8 text-center">
             <p className="text-gray-500">{t('common.loading') || 'Loading...'}</p>
           </div>
         ) : error ? (
-          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-8 text-center">
+          <div className="glass-card rounded-2xl border-red-200 p-8 text-center">
             <p className="text-red-600">{error}</p>
           </div>
         ) : sessions.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+          <div className="glass-card rounded-2xl p-8 text-center">
             <p className="text-gray-500">{t('devices.empty') || 'No sessions found'}</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm divide-y divide-gray-100">
+          <div className="glass-card rounded-2xl divide-y divide-gray-100">
             {sessions.map((session) => (
               <div key={session.session_id} className="p-4">
                 <div className="flex items-start gap-4">
@@ -191,7 +191,7 @@ const AccountDevices: React.FC = () => {
       {/* Password Modal */}
       {passwordModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+          <div className="glass-modal glass-noise glass-highlight rounded-2xl max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               {passwordModal.action === 'revoke'
                 ? `${t('devices.revokeSession') || 'Revoke Session'} - ${passwordModal.deviceInfo}`

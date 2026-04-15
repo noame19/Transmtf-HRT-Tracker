@@ -120,9 +120,8 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                     aria-labelledby={labelId}
                     onClick={() => isOpen ? closeList() : openList()}
                     onKeyDown={handleButtonKeyDown}
-                    className="w-full p-4 border rounded-xl focus:ring-2 outline-none flex items-center justify-between transition-all"
-                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
-                    onFocus={e => e.currentTarget.style.boxShadow = '0 0 0 2px var(--accent-300)'}
+                    className="w-full p-4 rounded-xl outline-none flex items-center justify-between transition-all glass-input"
+                    onFocus={e => e.currentTarget.style.boxShadow = '0 0 0 2px var(--glass-input-focus-ring)'}
                     onBlur={e => e.currentTarget.style.boxShadow = 'none'}
                 >
                     <div className="flex items-center gap-2">
@@ -138,8 +137,7 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                         id={listboxId}
                         role="listbox"
                         aria-labelledby={labelId}
-                        className="absolute top-full left-0 right-0 mt-2 border rounded-xl shadow-md z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
-                        style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}
+                        className="absolute top-full left-0 right-0 mt-2 rounded-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 glass-heavy glass-noise"
                     >
                         {options.map((opt, index) => (
                             <div

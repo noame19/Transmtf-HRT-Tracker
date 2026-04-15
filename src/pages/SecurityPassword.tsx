@@ -137,7 +137,7 @@ const SecurityPassword: React.FC = () => {
   return (
     <div className="w-full h-full overflow-y-auto bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <div className="glass-card rounded-2xl p-6">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-full bg-pink-100 flex items-center justify-center">
               <Lock size={24} className="text-pink-600" />

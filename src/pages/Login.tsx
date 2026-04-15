@@ -166,8 +166,7 @@ const Login: React.FC = () => {
     <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4"
       style={{ background: `linear-gradient(135deg, var(--accent-50) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%)` }}>
       <div className="w-full max-w-sm">
-        <div className="rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)', boxShadow: 'var(--shadow-lg)' }}>
+        <div className="rounded-2xl sm:rounded-3xl glass-card p-5 sm:p-6">
           <div className="text-center mb-5 sm:mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2" style={{ color: 'var(--text-primary)' }}>
               {t('login.title') || 'Sign In'}
@@ -248,7 +247,7 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base text-white accent-bg-gradient btn-press"
+              className="w-full py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base text-white glass-btn-primary btn-press-glass"
             >
               {isLoading ? (t('login.loading') || 'Signing in...') : (t('login.submit') || 'Sign In')}
             </button>

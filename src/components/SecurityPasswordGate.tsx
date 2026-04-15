@@ -95,23 +95,19 @@ const SecurityPasswordGate: React.FC = () => {
           'radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,0.3) 0%, transparent 70%)',
           'rgba(255,255,255,0.6)',
         ].join(', '),
-        backdropFilter: 'blur(64px) saturate(200%)',
-        WebkitBackdropFilter: 'blur(64px) saturate(200%)',
+        backdropFilter: 'blur(32px) saturate(220%)',
+        WebkitBackdropFilter: 'blur(32px) saturate(220%)',
       }}
     >
       <div
         className="w-full max-w-sm mx-auto my-auto sg-fade-in"
         style={{
-          background: 'rgba(255,255,255,0.52)',
-          backdropFilter: 'blur(40px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(40px) saturate(160%)',
-          border: '1.5px solid rgba(255,255,255,0.78)',
+          background: 'var(--glass-bg-heavy)',
+          backdropFilter: 'blur(32px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(32px) saturate(200%)',
+          border: '1px solid var(--glass-border-strong)',
           borderRadius: '40px',
-          boxShadow: [
-            '0 8px 48px rgba(236,72,153,0.1)',
-            '0 2px 0 rgba(255,255,255,0.95) inset',
-            '0 -1px 0 rgba(0,0,0,0.04) inset',
-          ].join(', '),
+          boxShadow: 'var(--glass-shadow-modal)',
           padding: '36px 24px 28px',
         }}
       >
@@ -204,7 +200,7 @@ const SecurityPasswordGate: React.FC = () => {
                 className="mb-5 sg-shake"
                 style={{
                   background: 'rgba(254,226,226,0.55)',
-                  backdropFilter: 'blur(10px)',
+                  backdropFilter: 'blur(16px) saturate(180%)',
                   border: '1px solid rgba(252,165,165,0.5)',
                   borderRadius: '16px',
                   padding: '12px 14px',
@@ -231,7 +227,7 @@ const SecurityPasswordGate: React.FC = () => {
                 className="mb-5"
                 style={{
                   background: 'rgba(253,242,248,0.6)',
-                  backdropFilter: 'blur(10px)',
+                  backdropFilter: 'blur(16px) saturate(180%)',
                   border: '1px solid rgba(251,207,232,0.5)',
                   borderRadius: '16px',
                   padding: '12px 14px',

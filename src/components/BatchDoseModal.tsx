@@ -234,15 +234,14 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     return (
         <div
             className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
         >
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="batch-modal-title"
-                className="relative rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl h-[92vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-slide-up md:modal-spring md:animate-none"
-                style={{ background: 'var(--bg-card)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border-primary)' }}
+                className="relative rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl h-[92vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-slide-up-glass md:modal-spring-glass md:animate-none glass-modal glass-noise glass-highlight"
             >
                 {/* Header */}
                 <div className="p-5 md:p-6 border-b flex justify-between items-center shrink-0"
@@ -471,7 +470,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                         {t('btn.cancel')}
                                                                     </button>
                                                                     <button onClick={() => confirmEdit(ev.id)}
-                                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition accent-bg-gradient">
+                                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white transition glass-btn-primary btn-press-glass">
                                                                         <Check size={12} className="inline mr-1" />{t('btn.save')}
                                                                     </button>
                                                                 </div>
@@ -518,7 +517,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                         <button
                             onClick={generatePreview}
                             disabled={!doseStr || !startDate || !endDate}
-                            className="flex-1 h-14 text-white text-base font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 accent-bg-gradient disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="flex-1 h-14 text-white text-base font-bold rounded-xl transition-all flex items-center justify-center gap-2 glass-btn-primary btn-press-glass disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             {t('batch.generate')}
                             <ChevronRight size={18} />
@@ -537,7 +536,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                             <button
                                 onClick={handleConfirm}
                                 disabled={previewEvents.length === 0}
-                                className="flex-1 h-14 text-white text-base font-bold rounded-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 accent-bg-gradient disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="flex-1 h-14 text-white text-base font-bold rounded-xl transition-all flex items-center justify-center gap-2 glass-btn-primary btn-press-glass disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 <Plus size={18} />
                                 {t('batch.confirm_add')} ({previewEvents.length})

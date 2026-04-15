@@ -92,11 +92,11 @@ const ShareView: React.FC = () => {
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+          <div className="glass-card rounded-2xl p-12 text-center">
             <p className="text-gray-500 text-lg">{t('common.loading') || 'Loading...'}</p>
           </div>
         ) : needsPassword ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+          <div className="glass-card rounded-2xl p-8">
             <div className="flex items-center justify-center mb-6">
               <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
                 <Lock size={32} className="text-amber-600" />
@@ -135,7 +135,7 @@ const ShareView: React.FC = () => {
             </form>
           </div>
         ) : error ? (
-          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-8">
+          <div className="glass-card rounded-2xl border-red-200 p-8">
             <div className="flex items-center justify-center mb-6">
               <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
                 <AlertCircle size={32} className="text-red-600" />
@@ -149,7 +149,7 @@ const ShareView: React.FC = () => {
         ) : shareData ? (
           <div className="space-y-6">
             {/* Info Card */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="glass-card rounded-2xl p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-gray-900 mb-1">
@@ -166,7 +166,7 @@ const ShareView: React.FC = () => {
             </div>
 
             {/* Chart */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="glass-card rounded-2xl p-6">
               <ResultChart
                 sim={simulation}
                 events={shareData.events}

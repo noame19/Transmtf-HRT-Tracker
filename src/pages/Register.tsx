@@ -183,7 +183,7 @@ const Register: React.FC = () => {
     return (
       <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
         <div className="w-full max-w-sm">
-          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border border-gray-200 text-center">
+          <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 text-center">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
               {t('register.disabled') || 'Registration Disabled'}
             </h1>
@@ -219,7 +219,7 @@ const Register: React.FC = () => {
   return (
     <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
       <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-6 border border-gray-200">
+        <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6">
           <div className="text-center mb-5 sm:mb-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">
               {t('register.title') || 'Create Account'}

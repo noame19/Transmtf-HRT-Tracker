@@ -182,7 +182,7 @@ const Account: React.FC = () => {
     return (
       <div className="min-h-full px-4 py-6">
         <div className="mx-auto w-full max-w-2xl">
-          <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm text-center">
+          <div className="rounded-2xl glass-card p-8 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-50 border border-pink-100">
               <User className="text-pink-600" size={30} />
             </div>
@@ -219,7 +219,7 @@ const Account: React.FC = () => {
   return (
     <div className="min-h-full px-4 py-6">
       <div className="mx-auto w-full max-w-2xl space-y-6">
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl glass-card p-6 shadow-sm">
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -263,7 +263,7 @@ const Account: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl glass-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
             <Cloud size={20} className="text-blue-500" />
             <h3 className="font-bold text-gray-900">{t('account.cloudSync') || 'Cloud Sync'}</h3>
@@ -295,7 +295,7 @@ const Account: React.FC = () => {
           <h3 className="px-2 text-xs font-bold uppercase tracking-wider text-gray-400">
             {t('account.management') || 'Management'}
           </h3>
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl glass-card">
             <Link to="/account/devices" className={managementLinkClass}>
               <Smartphone size={20} className="text-gray-600" />
               <div className="flex-1">

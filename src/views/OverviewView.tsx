@@ -154,13 +154,11 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       <header className="relative px-4 md:px-8 pt-6 pb-4">
         <div className="grid md:grid-cols-3 gap-3 md:gap-4">
           {/* Main level card */}
-          <div className="md:col-span-2 rounded-2xl border px-5 py-5"
+          <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-5 py-5 relative overflow-hidden"
             style={{
               background: isDark
-                ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.10), var(--bg-card))`
-                : `linear-gradient(135deg, var(--accent-50), var(--bg-card))`,
-              borderColor: 'var(--border-primary)',
-              boxShadow: 'var(--shadow-sm)',
+                ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.06), var(--bg-card))`,
             }}>
             <div className="flex items-center mb-3">
               <h1 className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] md:text-xs font-semibold border"
@@ -337,12 +335,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
           {/* Side cards */}
           <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-            <div className="flex items-center gap-3 p-4 rounded-2xl border card-lift"
-              style={{
-                background: 'var(--bg-card)',
-                borderColor: 'var(--border-primary)',
-                boxShadow: 'var(--shadow-sm)',
-              }}>
+            <div className="flex items-center gap-3 p-4 glass-card card-lift-glass">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center border"
                 style={{
                   background: 'var(--accent-50)',
@@ -357,12 +350,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
             <button
               onClick={onOpenWeightModal}
-              className="flex items-center gap-3 p-4 rounded-2xl border card-lift text-left"
-              style={{
-                background: 'var(--bg-card)',
-                borderColor: 'var(--border-primary)',
-                boxShadow: 'var(--shadow-sm)',
-              }}
+              className="flex items-center gap-3 p-4 glass-card card-lift-glass btn-press-glass text-left"
             >
               <div className="w-12 h-12 rounded-xl flex items-center justify-center border"
                 style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
