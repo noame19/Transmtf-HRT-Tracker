@@ -1,25 +1,18 @@
 import React, { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useTranslation } from '../contexts/LanguageContext';
 
-const EXEMPT_PATHS = new Set(['/auth/oidc/callback']);
-
 const SessionExpiredDialog: React.FC = () => {
-  const location = useLocation();
-  const { isAuthenticated, sessionExpiredNotice, clearSessionExpiredNotice } = useAuth();
+  const navigate = useNavigate();
+  const { sessionExpiredNotice, clearSessionExpiredNotice } = useAuth();
   const { showDialog } = useDialog();
   const { t } = useTranslation();
   const handledNoticeIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (
-      !sessionExpiredNotice ||
-      isAuthenticated ||
-      EXEMPT_PATHS.has(location.pathname) ||
-      handledNoticeIdRef.current === sessionExpiredNotice.id
-    ) {
+    if (!sessionExpiredNotice || handledNoticeIdRef.current === sessionExpiredNotice.id) {
       return;
     }
 
@@ -40,6 +33,7 @@ const SessionExpiredDialog: React.FC = () => {
       }
 
       clearSessionExpiredNotice();
+      navigate('/login', { replace: true });
     };
 
     showSessionExpiredDialog();
@@ -47,7 +41,7 @@ const SessionExpiredDialog: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [clearSessionExpiredNotice, isAuthenticated, location.pathname, sessionExpiredNotice, showDialog, t]);
+  }, [clearSessionExpiredNotice, navigate, sessionExpiredNotice, showDialog, t]);
 
   return null;
 };
