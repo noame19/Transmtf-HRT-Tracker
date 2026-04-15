@@ -99,7 +99,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isExternalThemeUpdate.current = false;
       return;
     }
-    localStorage.setItem('hrt-last-modified', new Date().toISOString());
+    const now = new Date().toISOString();
+    localStorage.setItem('hrt-last-modified', now);
+    localStorage.setItem('hrt-last-data-updated', now);
     window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-theme-color' } }));
   }, [themeColor]);
   useEffect(() => {
@@ -112,7 +114,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isExternalDarkUpdate.current = false;
       return;
     }
-    localStorage.setItem('hrt-last-modified', new Date().toISOString());
+    const now = new Date().toISOString();
+    localStorage.setItem('hrt-last-modified', now);
+    localStorage.setItem('hrt-last-data-updated', now);
     window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-dark-mode' } }));
   }, [isDark]);
 

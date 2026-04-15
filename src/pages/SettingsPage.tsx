@@ -172,6 +172,7 @@ const SettingsPage: React.FC = () => {
 
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
+            localStorage.setItem('hrt-last-data-updated', lastModified);
             const langValue = localStorage.getItem('hrt-lang') || lang;
             const dataHash = computeDataHash({
                 events: nextEvents,
@@ -301,6 +302,7 @@ const SettingsPage: React.FC = () => {
             localStorage.setItem('hrt-events', JSON.stringify([]));
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
+            localStorage.setItem('hrt-last-data-updated', lastModified);
             const langValue = localStorage.getItem('hrt-lang') || lang;
             const dataHash = computeDataHash({
                 events: [],

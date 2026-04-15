@@ -164,6 +164,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         const lastModified = new Date().toISOString();
         localStorage.setItem('hrt-last-modified', lastModified);
+        localStorage.setItem('hrt-last-data-updated', lastModified);
         window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: updateKey, lastModified } }));
     };
 

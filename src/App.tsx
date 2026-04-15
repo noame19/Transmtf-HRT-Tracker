@@ -4,10 +4,12 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { DialogProvider } from './contexts/DialogContext';
 import { AppDataProvider } from './contexts/AppDataContext';
 import { useAuth } from './contexts/AuthContext';
+import { useCloudSync } from './contexts/CloudSyncContext';
 import MainLayout from './components/MainLayout';
 import SecurityPasswordGate from './components/SecurityPasswordGate';
 import OIDCBindingGate from './components/OIDCBindingGate';
 import AnnouncementModal from './components/AnnouncementModal';
+import SyncConflictModal from './components/SyncConflictModal';
 import OverviewPage from './pages/OverviewPage';
 import HistoryPage from './pages/HistoryPage';
 import LabPage from './pages/LabPage';
@@ -33,6 +35,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
+// Sync conflict modal — rendered inside LanguageProvider so useTranslation works
+const SyncConflictOverlay: React.FC = () => {
+  try {
+    const { pendingConflict, resolveConflict } = useCloudSync();
+    return (
+      <SyncConflictModal
+        isOpen={!!pendingConflict}
+        conflict={pendingConflict}
+        onResolve={resolveConflict}
+      />
+    );
+  } catch {
+    // CloudSyncProvider may not be an ancestor if user is not logged in
+    return null;
+  }
+};
+
 const App = () => (
     <LanguageProvider>
         <DialogProvider>
@@ -40,6 +59,7 @@ const App = () => (
                 <SecurityPasswordGate />
                 <OIDCBindingGate />
                 <AnnouncementModal />
+                <SyncConflictOverlay />
                 <Routes>
                     {/* All routes use MainLayout for unified layout */}
                     <Route element={<MainLayout />}>

@@ -22,6 +22,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
         }
         const lastModified = new Date().toISOString();
         localStorage.setItem('hrt-last-modified', lastModified);
+        localStorage.setItem('hrt-last-data-updated', lastModified);
         window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-lang', lastModified } }));
     }, [lang]);
 
