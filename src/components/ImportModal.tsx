@@ -1,23 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import jsQR from 'jsqr';
-import { X, QrCode, Activity, ImageIcon, Upload } from 'lucide-react';
+import { X, Upload } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClose: () => void; onImportJson: (text: string) => Promise<boolean> }) => {
     const { t } = useTranslation();
-    const [activeTab, setActiveTab] = useState<'qr' | 'json'>('qr');
     const [text, setText] = useState("");
-    const [errorMsg, setErrorMsg] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const qrFileInputRef = useRef<HTMLInputElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
         if (isOpen) {
             setText("");
-            setErrorMsg("");
-            setActiveTab('qr');
         }
     }, [isOpen]);
 
@@ -41,50 +34,19 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
         }
     };
 
-    const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setErrorMsg('');
-        const reader = new FileReader();
-        reader.onload = () => {
-            const img = new window.Image();
-            img.onload = async () => {
-                const canvas = canvasRef.current;
-                const ctx = canvas?.getContext('2d');
-                if (!canvas || !ctx) return;
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, canvas.width, canvas.height);
-                if (code?.data) {
-                    if (await onImportJson(code.data)) {
-                        onClose();
-                    }
-                } else {
-                    setErrorMsg(t('qr.error.decode'));
-                }
-            };
-            img.onerror = () => setErrorMsg(t('qr.error.decode'));
-            img.src = reader.result as string;
-        };
-        reader.readAsDataURL(file);
-        e.target.value = "";
-    };
-
     const dialogRef = useFocusTrap(isOpen, onClose);
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+        <div className="fixed inset-0 flex items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="import-modal-title"
-                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight"
+                className="rounded-3xl w-full max-w-lg md:max-w-2xl p-6 md:p-8 flex flex-col max-h-[90vh] modal-spring-glass safe-area-pb glass-modal"
             >
                 <div className="flex justify-between items-center mb-6 shrink-0">
                     <h3 id="import-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('import.title')}</h3>
@@ -94,91 +56,48 @@ const ImportModal = ({ isOpen, onClose, onImportJson }: { isOpen: boolean; onClo
                     </button>
                 </div>
 
-                <div className="flex p-1 rounded-xl mb-6 shrink-0" style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-secondary)' }}>
-                    <button
-                        onClick={() => setActiveTab('qr')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'qr' ? 'shadow-sm' : ''}`}
-                        style={activeTab === 'qr' ? { background: 'var(--bg-card)', color: 'var(--text-primary)' } : { color: 'var(--text-tertiary)' }}
-                    >
-                        <QrCode size={16} />
-                        QR Code
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('json')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'json' ? 'shadow-sm' : ''}`}
-                        style={activeTab === 'json' ? { background: 'var(--bg-card)', color: 'var(--text-primary)' } : { color: 'var(--text-tertiary)' }}
-                    >
-                        <Activity size={16} />
-                        JSON
-                    </button>
-                </div>
-
                 <div className="flex-1 overflow-y-auto min-h-0">
-                    {activeTab === 'qr' && (
-                        <div className="space-y-4">
-                            <div className="p-8 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center transition cursor-pointer"
-                                style={{ borderColor: 'var(--border-primary)' }}
-                                onClick={() => qrFileInputRef.current?.click()}>
-                                <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-500 rounded-full flex items-center justify-center mb-4">
-                                    <ImageIcon size={32} />
-                                </div>
-                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('qr.import.file')}</p>
-                                <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{t('qr.upload.hint')}</p>
-                            </div>
-                            <input type="file" accept="image/*" ref={qrFileInputRef} onChange={handleQrImageUpload} className="hidden" />
-                            
-                            {errorMsg && (
-                                <div role="alert" className="p-3 bg-red-50 text-red-500 text-xs font-bold rounded-xl text-center">
-                                    {errorMsg}
-                                </div>
-                            )}
-                            <canvas ref={canvasRef} className="hidden" />
-                        </div>
-                    )}
-
-                    {activeTab === 'json' && (
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>{t('import.text')}</label>
-                                <textarea
-                                    className="w-full h-32 p-3 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-xs"
-                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
-                                    placeholder={t('import.paste_hint')}
-                                    value={text}
-                                    onChange={e => setText(e.target.value)}
-                                />
-                                <button
-                                    onClick={handleTextImport}
-                                    disabled={!text.trim()}
-                                    className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass"
-                                >
-                                    {t('drawer.import')}
-                                </button>
-                            </div>
-
-                            <div className="relative flex py-2 items-center">
-                                <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
-                                <span className="flex-shrink-0 mx-4 text-xs uppercase font-bold" style={{ color: 'var(--text-tertiary)' }}>OR</span>
-                                <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
-                            </div>
-
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="w-full py-3 border-2 border-dashed font-bold rounded-xl transition flex items-center justify-center gap-2"
-                                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)' }}
-                            >
-                                <Upload size={20} />
-                                {t('import.file_btn')}
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="application/json"
-                                className="hidden"
-                                onChange={handleJsonFileChange}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>{t('import.text')}</label>
+                            <textarea
+                                className="w-full h-32 p-3 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-xs"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                placeholder={t('import.paste_hint')}
+                                value={text}
+                                onChange={e => setText(e.target.value)}
                             />
+                            <button
+                                onClick={handleTextImport}
+                                disabled={!text.trim()}
+                                className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass"
+                            >
+                                {t('drawer.import')}
+                            </button>
                         </div>
-                    )}
+
+                        <div className="relative flex py-2 items-center">
+                            <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
+                            <span className="flex-shrink-0 mx-4 text-xs uppercase font-bold" style={{ color: 'var(--text-tertiary)' }}>OR</span>
+                            <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
+                        </div>
+
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full py-3 border-2 border-dashed font-bold rounded-xl transition flex items-center justify-center gap-2"
+                            style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)' }}
+                        >
+                            <Upload size={20} />
+                            {t('import.file_btn')}
+                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="application/json"
+                            className="hidden"
+                            onChange={handleJsonFileChange}
+                        />
+                    </div>
                 </div>
             </div>
         </div>

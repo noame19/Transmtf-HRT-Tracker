@@ -8,9 +8,9 @@ const DisclaimerModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 flex items-end md:items-center justify-center z-[60] animate-in fade-in duration-200 p-4"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
-            <div className="rounded-3xl w-full max-w-lg p-6 md:p-8 modal-spring-glass glass-modal glass-noise glass-highlight">
+        <div className="fixed inset-0 flex items-center justify-center z-[60] animate-in fade-in duration-200 p-4"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
+            <div className="rounded-3xl w-full max-w-lg p-6 md:p-8 modal-spring-glass glass-modal">
                 <div className="flex flex-col items-center mb-4">
                     <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-3">
                         <AlertTriangle className="text-amber-500" size={24} />

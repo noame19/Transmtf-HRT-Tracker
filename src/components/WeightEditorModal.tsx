@@ -31,14 +31,14 @@ const WeightEditorModal = ({ isOpen, onClose, currentWeight, onSave }: any) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 animate-in fade-in duration-200"
-            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}>
+        <div className="fixed inset-0 flex items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="weight-modal-title"
-                className="rounded-t-3xl md:rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-slide-up-glass md:modal-spring-glass md:animate-none safe-area-pb glass-modal glass-noise glass-highlight"
+                className="rounded-3xl w-full max-w-lg md:max-w-xl p-6 md:p-8 modal-spring-glass safe-area-pb glass-modal"
             >
                 <div className="flex justify-between items-center mb-6">
                     <h3 id="weight-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>{t('modal.weight.title')}</h3>

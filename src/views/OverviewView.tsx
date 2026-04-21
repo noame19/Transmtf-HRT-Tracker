@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
-import { Activity, Settings, Info } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Activity, Settings, Info, Camera } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
+import ShareImageModal from '../components/ShareImageModal';
 import { DoseEvent, SimulationResult, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
@@ -65,6 +66,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 }) => {
   const { t, lang } = useTranslation();
   const { isDark, colors } = useTheme();
+  const [shareImageOpen, setShareImageOpen] = useState(false);
   const h = currentTime.getTime() / 3600000;
 
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
@@ -374,8 +376,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           labResults={labResults}
           simCI={simCI}
           baselineE2PGmL={baselineE2PGmL}
+          onShareImage={() => setShareImageOpen(true)}
         />
       </main>
+
+      <ShareImageModal
+        isOpen={shareImageOpen}
+        onClose={() => setShareImageOpen(false)}
+        events={events}
+        labResults={labResults}
+        simulation={simulation}
+        simCI={simCI}
+        baselineE2PGmL={baselineE2PGmL}
+      />
     </>
   );
 };

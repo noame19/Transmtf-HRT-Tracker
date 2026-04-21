@@ -7,6 +7,8 @@ import { setLogoutInProgress } from '../utils/authSessionState';
 
 interface User {
   username: string;
+  displayName?: string;
+  avatarUrl?: string;
 }
 
 interface AuthContextType {
@@ -17,7 +19,7 @@ interface AuthContextType {
   isLoggingOut: boolean;
   login: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string; status?: number }>;
   register: (username: string, password: string, turnstileToken?: string) => Promise<{ success: boolean; error?: string }>;
-  loginWithTokens: (tokens: AuthTokens, username: string) => void;
+  loginWithTokens: (tokens: AuthTokens, username: string, displayName?: string, avatarUrl?: string) => void;
   logout: (clearLocalData?: boolean) => Promise<void>;
   refreshAccessToken: () => Promise<boolean>;
 }
@@ -27,6 +29,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_STORAGE_KEY = 'hrt-access-token';
 const REFRESH_TOKEN_STORAGE_KEY = 'hrt-refresh-token';
 const USERNAME_STORAGE_KEY = 'hrt-username';
+const DISPLAY_NAME_STORAGE_KEY = 'hrt-display-name';
+const AVATAR_URL_STORAGE_KEY = 'hrt-avatar-url';
 const TOKEN_COOKIE_DAYS = 3650;
 
 /**
@@ -72,6 +76,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearStoredValue(TOKEN_STORAGE_KEY);
     clearStoredValue(REFRESH_TOKEN_STORAGE_KEY);
     clearStoredValue(USERNAME_STORAGE_KEY);
+    clearStoredValue(DISPLAY_NAME_STORAGE_KEY);
+    clearStoredValue(AVATAR_URL_STORAGE_KEY);
 
     try {
       try {
@@ -151,8 +157,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (storedAccessToken && storedUsername) {
       // Access token present — restore session immediately
+      const storedDisplayName = getStoredValue(DISPLAY_NAME_STORAGE_KEY) || undefined;
+      const storedAvatarUrl = getStoredValue(AVATAR_URL_STORAGE_KEY) || undefined;
       setAccessToken(storedAccessToken);
-      setUser({ username: storedUsername });
+      setUser({ username: storedUsername, displayName: storedDisplayName, avatarUrl: storedAvatarUrl });
       apiClient.setAccessToken(storedAccessToken);
       setIsLoading(false);
     } else if (storedRefreshToken && storedUsername) {
@@ -161,8 +169,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       apiClient.refreshToken({ refresh_token: storedRefreshToken }).then((response) => {
         if (response.success && response.data) {
           const { access_token, refresh_token } = response.data;
+          const storedDisplayName = getStoredValue(DISPLAY_NAME_STORAGE_KEY) || undefined;
+          const storedAvatarUrl = getStoredValue(AVATAR_URL_STORAGE_KEY) || undefined;
           setAccessToken(access_token);
-          setUser({ username: storedUsername });
+          setUser({ username: storedUsername, displayName: storedDisplayName, avatarUrl: storedAvatarUrl });
           apiClient.setAccessToken(access_token);
           setStoredValue(TOKEN_STORAGE_KEY, access_token);
           setStoredValue(REFRESH_TOKEN_STORAGE_KEY, refresh_token);
@@ -267,16 +277,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: response.error || 'Registration failed' };
   };
 
-  const loginWithTokens = (tokens: AuthTokens, username: string) => {
+  const loginWithTokens = (tokens: AuthTokens, username: string, displayName?: string, avatarUrl?: string) => {
     const { access_token, refresh_token } = tokens;
 
     setAccessToken(access_token);
-    setUser({ username });
+    setUser({ username, displayName, avatarUrl });
     apiClient.setAccessToken(access_token);
 
     setStoredValue(TOKEN_STORAGE_KEY, access_token);
     setStoredValue(REFRESH_TOKEN_STORAGE_KEY, refresh_token);
     setStoredValue(USERNAME_STORAGE_KEY, username);
+    if (displayName) setStoredValue(DISPLAY_NAME_STORAGE_KEY, displayName);
+    else clearStoredValue(DISPLAY_NAME_STORAGE_KEY);
+    if (avatarUrl) setStoredValue(AVATAR_URL_STORAGE_KEY, avatarUrl);
+    else clearStoredValue(AVATAR_URL_STORAGE_KEY);
   };
 
   return (

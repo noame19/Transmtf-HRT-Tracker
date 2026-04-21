@@ -155,6 +155,22 @@
         .glass-noise.glass-highlight::after  { z-index: 1; }
         .glass-noise.glass-highlight > *     { position: relative; z-index: 2; }
 
+        /* ── Modal-specific clean-white overrides ──
+           Modals no longer use frosted glass / noise / highlight layers.
+           They are flat, bright, minimal white cards with a soft shadow. */
+        .glass-modal.glass-noise::before,
+        .glass-modal.glass-highlight::after {
+            display: none !important;
+            content: none !important;
+        }
+        .glass-modal.glass-noise,
+        .glass-modal.glass-highlight,
+        .glass-modal.glass-noise.glass-highlight {
+            overflow: visible;
+        }
+        /* Keep scroll clipping for inner scrollable areas but allow shadow bleed */
+        .glass-modal { isolation: isolate; }
+
         /* ── Glass surface levels ── */
 
         /* .glass — nav bars, primary containers (was basic glassmorphism, now enhanced) */
@@ -183,13 +199,24 @@
             box-shadow: var(--glass-shadow-modal);
         }
 
-        /* .glass-modal — modal panels */
+        /* .glass-modal — modal panels (clean minimal white card, no frosted glass) */
         .glass-modal {
-            background: var(--glass-bg-heavy);
-            backdrop-filter: blur(32px) saturate(200%);
-            -webkit-backdrop-filter: blur(32px) saturate(200%);
-            border: 1px solid var(--glass-border-strong);
-            box-shadow: var(--glass-shadow-modal);
+            background: var(--bg-card);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border: 1px solid var(--border-primary);
+            box-shadow:
+                0 1px 3px rgba(15, 23, 42, 0.04),
+                0 8px 24px rgba(15, 23, 42, 0.08),
+                0 24px 64px rgba(15, 23, 42, 0.12);
+        }
+        .dark .glass-modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-primary);
+            box-shadow:
+                0 1px 3px rgba(0, 0, 0, 0.2),
+                0 8px 24px rgba(0, 0, 0, 0.35),
+                0 24px 64px rgba(0, 0, 0, 0.5);
         }
 
         /* .glass-card — regular cards (non-blur, solid but polished) */
@@ -257,13 +284,13 @@
 
         /* Enhanced glass animations */
         @keyframes modalSpringEnhanced {
-            0%   { opacity: 0; transform: scale(0.88); filter: blur(4px); }
-            65%  { opacity: 1; transform: scale(1.02); filter: blur(0px); }
-            100% { opacity: 1; transform: scale(1);    filter: blur(0px); }
+            0%   { opacity: 0; transform: scale(0.94) translateY(8px); }
+            60%  { opacity: 1; transform: scale(1.01) translateY(-1px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
         }
         @keyframes modalSlideUpEnhanced {
-            from { opacity: 0.6; transform: translateY(100%) scale(0.98); }
-            to   { opacity: 1;   transform: translateY(0)    scale(1);    }
+            from { opacity: 0; transform: translateY(24px) scale(0.98); }
+            to   { opacity: 1; transform: translateY(0)    scale(1);    }
         }
         @keyframes pageForwardGlass {
             from { opacity: 0; transform: translateX(20px) scale(0.98); filter: blur(2px); }

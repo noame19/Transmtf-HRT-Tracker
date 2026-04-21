@@ -18,11 +18,9 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Account from './pages/Account';
 import AccountDevices from './pages/AccountDevices';
-import AccountShares from './pages/AccountShares';
 import AccountOIDC from './pages/AccountOIDC';
 import SecurityPassword from './pages/SecurityPassword';
 import OIDCCallback from './pages/OIDCCallback';
-import ShareView from './pages/ShareView';
 
 // Protected route component
 interface ProtectedRouteProps {
@@ -79,15 +77,11 @@ const App = () => (
 
                         {/* Account pages - protected */}
                         <Route path="account/devices" element={<ProtectedRoute><AccountDevices /></ProtectedRoute>} />
-                        <Route path="account/shares" element={<ProtectedRoute><AccountShares /></ProtectedRoute>} />
                         <Route path="account/security" element={<ProtectedRoute><SecurityPassword /></ProtectedRoute>} />
                         <Route path="account/oidc" element={<ProtectedRoute><AccountOIDC /></ProtectedRoute>} />
 
                         {/* OIDC callback - no auth required (handles both login and bind) */}
                         <Route path="auth/oidc/callback" element={<OIDCCallback />} />
-
-                        {/* Share view */}
-                        <Route path="share/:shareId" element={<ShareView />} />
                     </Route>
                 </Routes>
             </AppDataProvider>

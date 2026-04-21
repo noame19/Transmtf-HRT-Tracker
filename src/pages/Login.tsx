@@ -182,7 +182,8 @@ const Login: React.FC = () => {
                 type="button"
                 onClick={handleOIDCLogin}
                 disabled={oidcLoading}
-                className="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white text-gray-800 py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+                className="w-full flex items-center justify-center gap-2 border py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
               >
                 {oidcLoading ? (
                   <Loader2 size={18} className="animate-spin" />
@@ -193,16 +194,16 @@ const Login: React.FC = () => {
               </button>
 
               <div className="my-4 flex items-center gap-3">
-                <div className="flex-1 border-t border-gray-200" />
-                <span className="text-xs text-gray-400">{t('oidc.or') || 'or'}</span>
-                <div className="flex-1 border-t border-gray-200" />
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-primary)' }} />
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('oidc.or') || 'or'}</span>
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-primary)' }} />
               </div>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="username" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {t('login.username') || 'Username'}
               </label>
               <input
@@ -210,14 +211,15 @@ const Login: React.FC = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                 placeholder={t('login.usernamePlaceholder') || 'Enter your username'}
                 disabled={isLoading}
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {t('login.password') || 'Password'}
               </label>
               <input
@@ -225,7 +227,8 @@ const Login: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                 placeholder={t('login.passwordPlaceholder') || 'Enter your password'}
                 disabled={isLoading}
               />
@@ -255,7 +258,7 @@ const Login: React.FC = () => {
 
           {!registrationDisabled && (
             <div className="mt-4 sm:mt-5 text-center">
-              <p className="text-xs sm:text-sm text-gray-600">
+              <p className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
                 {t('login.noAccount') || "Don't have an account?"}{' '}
                 <Link to="/register" className="text-pink-600 hover:text-pink-700 font-medium transition">
                   {t('login.register') || 'Sign Up'}
@@ -266,7 +269,7 @@ const Login: React.FC = () => {
 
           {registrationDisabled && (
             <div className="mt-4 sm:mt-5 text-center">
-              <p className="text-xs sm:text-sm text-gray-500">
+              <p className="text-xs sm:text-sm" style={{ color: 'var(--text-tertiary)' }}>
                 {oidcEnabled
                   ? (t('oidc.registrationDisabled') || 'Registration is disabled. Please sign in with Transmtf.')
                   : (t('register.disabledDesc') || 'New account registration is currently disabled.')}

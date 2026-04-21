@@ -68,8 +68,13 @@ const MainLayout: React.FC = () => {
     }, [location.pathname]);
 
     useEffect(() => {
-        if (isAuthenticated && user?.username) {
-            setAvatarUrl(`${API_ORIGIN}/api/avatars/${user.username}`);
+        if (isAuthenticated && user) {
+            // Prefer OIDC avatar URL, fallback to uploaded avatar
+            if (user.avatarUrl) {
+                setAvatarUrl(user.avatarUrl);
+            } else if (user.username) {
+                setAvatarUrl(`${API_ORIGIN}/api/avatars/${user.username}`);
+            }
             setAvatarError(false);
         } else {
             setAvatarUrl(null);

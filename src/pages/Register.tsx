@@ -181,13 +181,13 @@ const Register: React.FC = () => {
   // If registration is disabled, show a message with OIDC option
   if (registrationDisabled) {
     return (
-      <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+      <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4" style={{ background: 'var(--bg-secondary)' }}>
         <div className="w-full max-w-sm">
           <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6 text-center">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
               {t('register.disabled') || 'Registration Disabled'}
             </h1>
-            <p className="text-sm sm:text-base text-gray-600 mb-6">
+            <p className="text-sm sm:text-base mb-6" style={{ color: 'var(--text-secondary)' }}>
               {t('register.disabledDesc') || 'New account registration is currently disabled. Please sign in with Transmtf.'}
             </p>
 
@@ -196,7 +196,8 @@ const Register: React.FC = () => {
                 type="button"
                 onClick={handleOIDCLogin}
                 disabled={oidcLoading}
-                className="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white text-gray-800 py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base mb-4"
+                className="w-full flex items-center justify-center gap-2 border py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base mb-4"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
               >
                 {oidcLoading ? (
                   <Loader2 size={18} className="animate-spin" />
@@ -217,21 +218,21 @@ const Register: React.FC = () => {
   }
 
   return (
-    <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+    <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4" style={{ background: 'var(--bg-secondary)' }}>
       <div className="w-full max-w-sm">
         <div className="glass-card rounded-2xl sm:rounded-3xl p-5 sm:p-6">
           <div className="text-center mb-5 sm:mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2" style={{ color: 'var(--text-primary)' }}>
               {t('register.title') || 'Create Account'}
             </h1>
-            <p className="text-sm sm:text-base text-gray-600">
+            <p className="text-sm sm:text-base" style={{ color: 'var(--text-secondary)' }}>
               {t('register.subtitle') || 'Join Transmtf HRT Tracker to sync your data'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="username" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {t('register.username') || 'Username'}
               </label>
               <input
@@ -239,14 +240,15 @@ const Register: React.FC = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                 placeholder={t('register.usernamePlaceholder') || '3-20 characters, letters, numbers, and underscores'}
                 disabled={isLoading}
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {t('register.password') || 'Password'}
               </label>
               <input
@@ -254,14 +256,15 @@ const Register: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                 placeholder={t('register.passwordPlaceholder') || 'At least 8 characters with letters and numbers'}
                 disabled={isLoading}
               />
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
                 {t('register.confirmPassword') || 'Confirm Password'}
               </label>
               <input
@@ -269,7 +272,8 @@ const Register: React.FC = () => {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border border-gray-300 rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base border rounded-lg sm:rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                 placeholder={t('register.confirmPasswordPlaceholder') || 'Re-enter your password'}
                 disabled={isLoading}
               />
@@ -291,14 +295,14 @@ const Register: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-gray-900 text-white py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
+              className="w-full py-2.5 sm:py-3 px-4 rounded-lg sm:rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base text-white glass-btn-primary btn-press-glass"
             >
               {isLoading ? (t('register.loading') || 'Creating account...') : (t('register.submit') || 'Create Account')}
             </button>
           </form>
 
           <div className="mt-4 sm:mt-5 text-center">
-            <p className="text-xs sm:text-sm text-gray-600">
+            <p className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
               {t('register.hasAccount') || 'Already have an account?'}{' '}
               <Link to="/login" className="text-pink-600 hover:text-pink-700 font-medium transition">
                 {t('register.login') || 'Sign In'}
@@ -307,7 +311,7 @@ const Register: React.FC = () => {
           </div>
 
           <div className="mt-3 sm:mt-4 text-center">
-            <Link to="/" className="text-gray-500 hover:text-gray-700 text-xs sm:text-sm transition">
+            <Link to="/" className="text-xs sm:text-sm transition" style={{ color: 'var(--text-tertiary)' }}>
               {t('register.continueWithout') || 'Continue without account'}
             </Link>
           </div>

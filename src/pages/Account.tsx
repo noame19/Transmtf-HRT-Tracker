@@ -7,7 +7,6 @@ import { useDialog } from '../contexts/DialogContext';
 import {
   User,
   Smartphone,
-  Share2,
   LogOut,
   Cloud,
   Camera,
@@ -39,7 +38,7 @@ const Account: React.FC = () => {
   const [changingPassword, setChangingPassword] = useState(false);
 
   const managementItemClass = 'flex items-center gap-3 px-4 py-4 transition';
-  const managementLinkClass = `${managementItemClass} hover:bg-gray-50`;
+  const managementLinkClass = `${managementItemClass} hover:bg-[var(--bg-card-hover)]`;
 
   const handleLogout = async () => {
     const choice = await showDialog(
@@ -186,25 +185,27 @@ const Account: React.FC = () => {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-50 border border-pink-100">
               <User className="text-pink-600" size={30} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">{t('account.title') || 'Profile'}</h1>
-            <p className="mx-auto mt-3 max-w-lg text-sm text-gray-500">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.title') || 'Profile'}</h1>
+            <p className="mx-auto mt-3 max-w-lg text-sm" style={{ color: 'var(--text-secondary)' }}>
               {t('auth.loginPrompt') || 'Login to use cloud sync features'}
             </p>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-gray-500">
+            <p className="mx-auto mt-1 max-w-lg text-sm" style={{ color: 'var(--text-secondary)' }}>
               Transmtf HRT Tracker helps you sync treatment history, share records, and secure your personal data.
             </p>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={() => navigate('/login')}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-800"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition"
+                style={{ background: 'var(--text-primary)' }}
               >
                 <LogIn size={18} />
                 {t('auth.login') || 'Login'}
               </button>
               <button
                 onClick={() => navigate('/register')}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition"
+                style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card)', color: 'var(--text-secondary)' }}
               >
                 <UserPlus size={18} />
                 {t('auth.register') || 'Register'}
@@ -229,7 +230,15 @@ const Account: React.FC = () => {
               aria-label={t('account.avatarManage') || 'Manage avatar'}
             >
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-pink-100">
-                {user?.username ? (
+                {user?.avatarUrl ? (
+                  // OIDC provider avatar URL
+                  <img
+                    src={user.avatarUrl}
+                    alt="Avatar"
+                    className="h-full w-full object-cover"
+                    onError={() => {/* silently fallback handled by parent */}}
+                  />
+                ) : user?.username ? (
                   <>
                     <img
                       key={avatarKey}
@@ -257,8 +266,11 @@ const Account: React.FC = () => {
               />
             </button>
             <div className="flex-1">
-              <h2 className="text-xl font-bold text-gray-900">{user?.username}</h2>
-              <p className="text-sm text-gray-500">{t('account.member') || 'Transmtf HRT Tracker Member'}</p>
+              <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{user?.displayName || user?.username}</h2>
+              {user?.displayName && user?.username !== user?.displayName && (
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>@{user.username}</p>
+              )}
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.member') || 'Transmtf HRT Tracker Member'}</p>
             </div>
           </div>
         </div>
@@ -266,76 +278,68 @@ const Account: React.FC = () => {
         <div className="rounded-2xl glass-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-3">
             <Cloud size={20} className="text-blue-500" />
-            <h3 className="font-bold text-gray-900">{t('account.cloudSync') || 'Cloud Sync'}</h3>
+            <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.cloudSync') || 'Cloud Sync'}</h3>
           </div>
 
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('account.status') || 'Status'}:</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{t('account.status') || 'Status'}:</span>
               <span className={`font-medium ${isSyncing ? 'text-blue-600' : 'text-green-600'}`}>
                 {isSyncing ? (t('account.syncing') || 'Syncing...') : (t('account.synced') || 'Synced')}
               </span>
             </div>
             {lastSyncTime && (
               <div className="flex items-center justify-between">
-                <span className="text-gray-600">{t('account.lastSync') || 'Last Sync'}:</span>
-                <span className="text-gray-900">{new Date(lastSyncTime).toLocaleString()}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{t('account.lastSync') || 'Last Sync'}:</span>
+                <span style={{ color: 'var(--text-primary)' }}>{new Date(lastSyncTime).toLocaleString()}</span>
               </div>
             )}
             {syncError && (
               <div className="mt-2 text-xs text-red-600">{syncError}</div>
             )}
-            <div className="mt-2 border-t border-gray-100 pt-2 text-xs text-gray-500">
+            <div className="mt-2 border-t pt-2 text-xs" style={{ borderColor: 'var(--border-primary)', color: 'var(--text-tertiary)' }}>
               {t('account.autoSyncNote') || 'Local changes upload in real time; cloud data is pulled every 3 seconds'}
             </div>
           </div>
         </div>
 
         <div className="space-y-2">
-          <h3 className="px-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+          <h3 className="px-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
             {t('account.management') || 'Management'}
           </h3>
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl glass-card">
+          <div className="divide-y overflow-hidden rounded-2xl glass-card" style={{ borderColor: 'var(--border-secondary)' }}>
             <Link to="/account/devices" className={managementLinkClass}>
-              <Smartphone size={20} className="text-gray-600" />
+              <Smartphone size={20} style={{ color: 'var(--text-secondary)' }} />
               <div className="flex-1">
-                <p className="text-sm font-bold text-gray-900">{t('account.devices') || 'Devices'}</p>
-                <p className="text-xs text-gray-500">{t('account.devicesDesc') || 'Manage logged in devices'}</p>
-              </div>
-            </Link>
-
-            <Link to="/account/shares" className={managementLinkClass}>
-              <Share2 size={20} className="text-gray-600" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-gray-900">{t('account.shares') || 'Shares'}</p>
-                <p className="text-xs text-gray-500">{t('account.sharesDesc') || 'Manage data shares'}</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.devices') || 'Devices'}</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('account.devicesDesc') || 'Manage logged in devices'}</p>
               </div>
             </Link>
 
             <Link to="/account/security" className={managementLinkClass}>
-              <Lock size={20} className="text-gray-600" />
+              <Lock size={20} style={{ color: 'var(--text-secondary)' }} />
               <div className="flex-1">
-                <p className="text-sm font-bold text-gray-900">{t('account.securityPassword') || 'Security Password'}</p>
-                <p className="text-xs text-gray-500">{t('account.securityPasswordDesc') || 'Manage 6-digit PIN for data encryption'}</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.securityPassword') || 'Security Password'}</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('account.securityPasswordDesc') || 'Manage 6-digit PIN for data encryption'}</p>
               </div>
             </Link>
 
             <Link to="/account/oidc" className={managementLinkClass}>
-              <Link2 size={20} className="text-gray-600" />
+              <Link2 size={20} style={{ color: 'var(--text-secondary)' }} />
               <div className="flex-1">
-                <p className="text-sm font-bold text-gray-900">{t('account.oidc') || 'Transmtf Login'}</p>
-                <p className="text-xs text-gray-500">{t('account.oidcDesc') || 'Manage Transmtf identity and password'}</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.oidc') || 'Transmtf Login'}</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('account.oidcDesc') || 'Manage Transmtf identity and password'}</p>
               </div>
             </Link>
 
             <button
               onClick={() => setShowPasswordModal(true)}
-              className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-[var(--bg-card-hover)]"
             >
-              <Key size={20} className="text-gray-600" />
+              <Key size={20} style={{ color: 'var(--text-secondary)' }} />
               <div className="flex-1">
-                <p className="text-sm font-bold text-gray-900">{t('account.changePassword') || 'Change Password'}</p>
-                <p className="text-xs text-gray-500">{t('account.changePasswordDesc') || 'Update your login password'}</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.changePassword') || 'Change Password'}</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('account.changePasswordDesc') || 'Update your login password'}</p>
               </div>
             </button>
           </div>
@@ -343,7 +347,8 @@ const Account: React.FC = () => {
 
         <button
           onClick={handleLogout}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white/80 px-4 py-3 font-medium text-red-600 transition hover:bg-red-50"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 font-medium text-red-600 transition hover:bg-red-50"
+          style={{ background: 'var(--bg-card)' }}
         >
           <LogOut size={18} />
           {t('account.logout') || 'Logout'}
@@ -352,48 +357,51 @@ const Account: React.FC = () => {
 
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl" style={{ background: 'var(--bg-card)' }}>
+            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               <Key size={24} className="text-pink-500" />
               {t('account.changePassword') || 'Change Password'}
             </h3>
 
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {t('account.oldPassword') || 'Old Password'}
                 </label>
                 <input
                   type="password"
                   value={oldPassword}
                   onChange={(event) => setOldPassword(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                   placeholder={t('account.oldPasswordPlaceholder') || 'Enter old password'}
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {t('account.newPassword') || 'New Password'}
                 </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                   placeholder={t('account.newPasswordPlaceholder') || 'Enter new password (8+ chars)'}
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {t('account.confirmPassword') || 'Confirm Password'}
                 </label>
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                   placeholder={t('account.confirmPasswordPlaceholder') || 'Confirm new password'}
                 />
               </div>
@@ -404,7 +412,7 @@ const Account: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-1 text-xs text-gray-500">
+              <div className="space-y-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 <p>- {t('account.passwordRequirement1') || 'At least 8 characters'}</p>
                 <p>- {t('account.passwordRequirement2') || 'Contains at least one letter and one number'}</p>
                 <p>- {t('account.passwordWarning') || 'All other devices will be logged out'}</p>
@@ -421,7 +429,8 @@ const Account: React.FC = () => {
                   setPasswordError('');
                 }}
                 disabled={changingPassword}
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex-1 rounded-xl border px-4 py-3 font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', background: 'var(--bg-card-hover)' }}
               >
                 {t('btn.cancel') || 'Cancel'}
               </button>

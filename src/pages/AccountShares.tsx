@@ -303,7 +303,7 @@ const AccountShares: React.FC = () => {
       {/* Create Share Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-modal glass-noise glass-highlight rounded-3xl max-w-md w-full p-6">
+          <div className="glass-modal rounded-3xl max-w-md w-full p-6">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
               {t('shares.createNew') || 'Create New Share'}
             </h3>

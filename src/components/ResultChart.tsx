@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateConcentration_CPA, LabResult, convertToPgMl } from '../../logic';
-import { Activity, RotateCcw, Info, FlaskConical } from 'lucide-react';
+import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
 } from 'recharts';
@@ -271,15 +271,14 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
     return null;
 };
 
-const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPointClick }: {
+const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPointClick, onShareImage }: {
     sim: SimulationResult | null;
     events: DoseEvent[];
     labResults?: LabResult[];
     simCI?: SimCI | null;
-    /** Endogenous baseline E2 (pg/mL) to add to the raw E2 curve when no
-     *  personal model is active. Derived from pre-dose lab results. */
     baselineE2PGmL?: number | null;
     onPointClick: (e: DoseEvent) => void;
+    onShareImage?: () => void;
 }) => {
     // Determine whether any CPA dosing events exist
     const hasCPADoses = useMemo(() => {
@@ -725,26 +724,39 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                     )}
                 </h2>
 
-                <div className="flex bg-[var(--bg-secondary)] rounded-xl p-1 gap-1 border border-[var(--border-primary)]">
-                    <button
-                        onClick={() => zoomToDuration(30)}
-                        className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
-                        1M
-                    </button>
-                    <button
-                        onClick={() => zoomToDuration(7)}
-                        className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
-                        1W
-                    </button>
-                    <div className="w-px h-4 self-center mx-1" style={{ background: 'var(--border-primary)' }}></div>
-                    <button
-                        onClick={() => {
-                            zoomToDuration(7);
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}
-                    >
-                        <RotateCcw size={14} className="md:w-4 md:h-4" />
-                    </button>
+                <div className="flex items-center gap-2">
+                    <div className="flex bg-[var(--bg-secondary)] rounded-xl p-1 gap-1 border border-[var(--border-primary)]">
+                        <button
+                            onClick={() => zoomToDuration(30)}
+                            className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
+                            1M
+                        </button>
+                        <button
+                            onClick={() => zoomToDuration(7)}
+                            className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}>
+                            1W
+                        </button>
+                        <div className="w-px h-4 self-center mx-1" style={{ background: 'var(--border-primary)' }}></div>
+                        <button
+                            onClick={() => {
+                                zoomToDuration(7);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}
+                        >
+                            <RotateCcw size={14} className="md:w-4 md:h-4" />
+                        </button>
+                    </div>
+                    {onShareImage && (
+                        <button
+                            onClick={onShareImage}
+                            title="Share as Image"
+                            aria-label="Share as Image"
+                            className="p-1.5 rounded-lg hover:bg-[var(--bg-card-hover)] transition-all"
+                            style={{ color: 'var(--text-secondary)' }}
+                        >
+                            <Camera size={16} className="md:w-[18px] md:h-[18px]" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -765,14 +777,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f2f4f7" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-secondary)" />
                         <XAxis
                             dataKey="time"
                             type="number"
                             domain={xDomain || ['auto', 'auto']}
                             allowDataOverflow={true}
                             tickFormatter={(ms) => formatDate(new Date(ms), lang)}
-                            tick={{fontSize: 10, fill: '#9aa3b1', fontWeight: 600}}
+                            tick={{fontSize: 10, fill: 'var(--text-tertiary)', fontWeight: 600}}
                             minTickGap={48}
                             axisLine={false}
                             tickLine={false}

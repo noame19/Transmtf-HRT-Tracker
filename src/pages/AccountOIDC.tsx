@@ -139,14 +139,15 @@ const AccountOIDC: React.FC = () => {
         <div className="flex items-center gap-3">
           <Link
             to="/profile"
-            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition"
+            className="flex items-center gap-1 text-sm transition"
+            style={{ color: 'var(--text-secondary)' }}
           >
             <ArrowLeft size={16} />
             {t('account.title') || 'Profile'}
           </Link>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900">{t('oidc.title') || 'Transmtf Identity'}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{t('oidc.title') || 'Transmtf Identity'}</h1>
 
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -158,7 +159,7 @@ const AccountOIDC: React.FC = () => {
         <div className="glass-card rounded-2xl p-6">
           <div className="mb-4 flex items-center gap-3">
             <Link2 size={20} className="text-blue-500" />
-            <h3 className="font-bold text-gray-900">{t('account.oidc') || 'Transmtf Login'}</h3>
+            <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.oidc') || 'Transmtf Login'}</h3>
           </div>
 
           {status?.bound ? (
@@ -168,31 +169,31 @@ const AccountOIDC: React.FC = () => {
                   <Shield size={12} />
                   {t('oidc.status.bound') || 'Linked'}
                 </span>
-                <span className="text-xs text-gray-500">{t('oidc.bound_permanent') || 'Permanently linked — cannot be unlinked'}</span>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('oidc.bound_permanent') || 'Permanently linked — cannot be unlinked'}</span>
               </div>
 
               {status.oidc_email && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{t('oidc.email') || 'Email'}:</span>
-                  <span className="font-medium text-gray-900">{status.oidc_email}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('oidc.email') || 'Email'}:</span>
+                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{status.oidc_email}</span>
                 </div>
               )}
               {status.provider && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{t('oidc.provider') || 'Provider'}:</span>
-                  <span className="font-medium text-gray-900 break-all text-right max-w-xs">{status.provider}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('oidc.provider') || 'Provider'}:</span>
+                  <span className="font-medium break-all text-right max-w-xs" style={{ color: 'var(--text-primary)' }}>{status.provider}</span>
                 </div>
               )}
               {status.oidc_subject && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">{t('oidc.subject') || 'Identity ID'}:</span>
-                  <span className="font-mono text-xs text-gray-600 break-all text-right max-w-xs">{status.oidc_subject}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('oidc.subject') || 'Identity ID'}:</span>
+                  <span className="font-mono text-xs break-all text-right max-w-xs" style={{ color: 'var(--text-secondary)' }}>{status.oidc_subject}</span>
                 </div>
               )}
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                 {t('oidc.status.notBound') || 'No Transmtf identity linked to this account.'}
               </p>
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -223,13 +224,13 @@ const AccountOIDC: React.FC = () => {
         {status && (
           <div className="glass-card rounded-2xl p-6">
             <div className="mb-4 flex items-center gap-3">
-              <Lock size={20} className="text-gray-600" />
-              <h3 className="font-bold text-gray-900">{t('account.changePassword') || 'Login Password'}</h3>
+              <Lock size={20} style={{ color: 'var(--text-secondary)' }} />
+              <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>{t('account.changePassword') || 'Login Password'}</h3>
             </div>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">{t('account.status') || 'Status'}:</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{t('account.status') || 'Status'}:</span>
                 <span className={`font-medium ${status.has_password ? 'text-green-600' : 'text-amber-600'}`}>
                   {status.has_password
                     ? (t('oidc.hasPassword') || 'Password set')
@@ -239,7 +240,7 @@ const AccountOIDC: React.FC = () => {
 
               {!status.has_password && (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     {t('oidc.noPasswordDesc') || 'This account has no login password. You can set one to allow password-based login in addition to Transmtf.'}
                   </p>
                   <button
@@ -258,7 +259,7 @@ const AccountOIDC: React.FC = () => {
 
               {status.has_password && status.bound && (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                     {t('oidc.removePasswordDesc') || 'You can remove your login password and use Transmtf as your only login method.'}
                   </p>
                   <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -285,22 +286,23 @@ const AccountOIDC: React.FC = () => {
       {/* Set Password Modal */}
       {showSetPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="glass-modal glass-noise glass-highlight w-full max-w-md rounded-3xl p-6">
-            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <div className="glass-modal w-full max-w-md rounded-3xl p-6">
+            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               <Lock size={24} className="text-pink-500" />
               {t('oidc.setPasswordTitle') || 'Set Login Password'}
             </h3>
 
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {t('oidc.newPassword') || 'New Password'}
                 </label>
                 <input
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                   placeholder={t('oidc.passwordPlaceholder') || 'At least 8 characters with letters and numbers'}
                   disabled={settingPassword}
                 />
@@ -312,7 +314,7 @@ const AccountOIDC: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-1 text-xs text-gray-500">
+              <div className="space-y-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 <p>- {t('account.passwordRequirement1') || 'At least 8 characters'}</p>
                 <p>- {t('account.passwordRequirement2') || 'Contains at least one letter and one number'}</p>
               </div>
@@ -322,7 +324,8 @@ const AccountOIDC: React.FC = () => {
               <button
                 onClick={() => setShowSetPasswordModal(false)}
                 disabled={settingPassword}
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                className="flex-1 rounded-xl border px-4 py-3 font-medium transition disabled:opacity-50"
+                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', background: 'var(--bg-card-hover)' }}
               >
                 {t('btn.cancel') || 'Cancel'}
               </button>
@@ -341,8 +344,8 @@ const AccountOIDC: React.FC = () => {
       {/* Remove Password Modal */}
       {showRemovePasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="glass-modal glass-noise glass-highlight w-full max-w-md rounded-3xl p-6">
-            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold text-gray-900">
+          <div className="glass-modal w-full max-w-md rounded-3xl p-6">
+            <h3 className="mb-4 flex items-center gap-2 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               <Unlink size={24} className="text-red-500" />
               {t('oidc.removePasswordTitle') || 'Remove Login Password'}
             </h3>
@@ -353,14 +356,15 @@ const AccountOIDC: React.FC = () => {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                   {t('oidc.currentPassword') || 'Current Password'}
                 </label>
                 <input
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
                   placeholder={t('oidc.currentPasswordPlaceholder') || 'Enter current password'}
                   disabled={removingPassword}
                 />
@@ -377,7 +381,8 @@ const AccountOIDC: React.FC = () => {
               <button
                 onClick={() => setShowRemovePasswordModal(false)}
                 disabled={removingPassword}
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                className="flex-1 rounded-xl border px-4 py-3 font-medium transition disabled:opacity-50"
+                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)', background: 'var(--bg-card-hover)' }}
               >
                 {t('btn.cancel') || 'Cancel'}
               </button>

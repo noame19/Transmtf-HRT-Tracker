@@ -445,6 +445,22 @@ export const TRANSLATIONS_BASE = {
         "shares.typeCopyDesc": "分享当前数据快照",
         "shares.typeRealtimeDesc": "始终显示最新数据",
 
+        // Share as image
+        "share.imageTitle": "导出为图片",
+        "share.imageDesc": "生成高分辨率横版图片，包含当前血药浓度与完整曲线。",
+        "share.rangeLabel": "曲线显示范围",
+        "share.rangeFrom": "起始日期",
+        "share.rangeTo": "结束日期",
+        "share.range7d": "近7天",
+        "share.range30d": "近30天",
+        "share.range90d": "近90天",
+        "share.rangeAll": "全部",
+        "share.rangeInvalid": "起始日期必须早于结束日期。",
+        "share.generating": "生成中...",
+        "share.download": "下载图片",
+        "share.noData": "暂无数据可导出",
+        "share.error": "生成图片失败，请重试。",
+
         // Common
         "common.loading": "加载中...",
         "common.success": "成功",
@@ -1077,6 +1093,22 @@ export const TRANSLATIONS_BASE = {
         "shares.typeCopyDesc": "Share current data snapshot",
         "shares.typeRealtimeDesc": "Always show latest data",
 
+        // Share as image
+        "share.imageTitle": "Export as Image",
+        "share.imageDesc": "Generates a high-resolution landscape image with current levels and full chart.",
+        "share.rangeLabel": "Chart date range",
+        "share.rangeFrom": "From",
+        "share.rangeTo": "To",
+        "share.range7d": "Last 7d",
+        "share.range30d": "Last 30d",
+        "share.range90d": "Last 90d",
+        "share.rangeAll": "All",
+        "share.rangeInvalid": "Start date must be before end date.",
+        "share.generating": "Generating...",
+        "share.download": "Download Image",
+        "share.noData": "No data to export",
+        "share.error": "Failed to generate image. Please try again.",
+
         // Common
         "common.loading": "Loading...",
         "common.success": "Success",
@@ -1669,6 +1701,22 @@ export const TRANSLATIONS = {
         "account.changing": "修改中...",
         "account.securityPassword": "安全密碼",
         "account.securityPasswordDesc": "管理用於資料加密的 6 位 PIN",
+
+        // Share as image (zh-TW overrides)
+        "share.imageTitle": "匯出為圖片",
+        "share.imageDesc": "生成高解析度橫向圖片，包含目前血藥濃度與完整曲線。",
+        "share.rangeLabel": "曲線顯示範圍",
+        "share.rangeFrom": "起始日期",
+        "share.rangeTo": "結束日期",
+        "share.range7d": "近7天",
+        "share.range30d": "近30天",
+        "share.range90d": "近90天",
+        "share.rangeAll": "全部",
+        "share.rangeInvalid": "起始日期必須早於結束日期。",
+        "share.generating": "生成中...",
+        "share.download": "下載圖片",
+        "share.noData": "暫無資料可匯出",
+        "share.error": "生成圖片失敗，請重試。",
     },
 
     en: {
@@ -1993,5 +2041,20 @@ export const TRANSLATIONS = {
         "oidc.setPasswordSuccess": "ログインパスワードを設定しました。",
         "oidc.removePasswordSuccess": "ログインパスワードを削除しました。Transmtf でサインインしてください。",
         "oidc.loading": "処理中...",
+
+        "share.imageTitle": "画像としてエクスポート",
+        "share.imageDesc": "現在の血中濃度と完全なチャートを含む高解像度横向き画像を生成します。",
+        "share.rangeLabel": "チャートの表示範囲",
+        "share.rangeFrom": "開始日",
+        "share.rangeTo": "終了日",
+        "share.range7d": "直近7日",
+        "share.range30d": "直近30日",
+        "share.range90d": "直近90日",
+        "share.rangeAll": "全期間",
+        "share.rangeInvalid": "開始日は終了日より前である必要があります。",
+        "share.generating": "生成中...",
+        "share.download": "画像をダウンロード",
+        "share.noData": "エクスポートするデータがありません",
+        "share.error": "画像の生成に失敗しました。もう一度お試しください。",
     },
 } as const;

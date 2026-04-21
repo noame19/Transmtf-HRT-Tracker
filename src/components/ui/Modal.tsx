@@ -46,8 +46,8 @@ const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center animate-in fade-in duration-200"
-      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-200"
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
     >
       <div
         ref={dialogRef}
@@ -56,11 +56,11 @@ const Modal: React.FC<ModalProps> = ({
         aria-labelledby={title ? id : undefined}
         className={`
           w-full ${maxWidth} md:mx-4
-          glass-modal glass-noise glass-highlight
-          rounded-t-3xl md:rounded-3xl
+          glass-modal
+          rounded-3xl
           flex flex-col
           ${fullHeight ? 'h-[92vh] md:max-h-[85vh]' : 'max-h-[90vh] md:max-h-[85vh]'}
-          md:modal-spring-glass modal-slide-up-glass md:animate-none
+          modal-spring-glass
           safe-area-pb
         `}
       >

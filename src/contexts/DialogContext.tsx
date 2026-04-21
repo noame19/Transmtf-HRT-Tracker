@@ -76,23 +76,25 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
           style={{
             animation: 'dialogFadeIn 0.18s ease-out forwards',
             background: 'var(--bg-overlay)',
-            backdropFilter: 'blur(16px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
           }}
         >
           <style>{`
             @keyframes dialogFadeIn { from { opacity: 0; } to { opacity: 1; } }
-            @keyframes dialogScaleIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+            @keyframes dialogScaleIn { from { opacity: 0; transform: scale(0.94) translateY(6px); } 60% { opacity: 1; transform: scale(1.01) translateY(-1px); } to { opacity: 1; transform: scale(1) translateY(0); } }
           `}</style>
-          <div className="w-full max-w-sm" style={{ animation: 'dialogScaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+          <div className="w-full max-w-sm" style={{ animation: 'dialogScaleIn 0.32s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
             <div
               ref={dialogRef}
               role={type === 'alert' ? 'alertdialog' : 'dialog'}
               aria-modal="true"
               aria-labelledby="dialog-title"
               aria-describedby="dialog-msg"
-              className="glass-heavy glass-noise glass-highlight"
               style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-primary)',
+                boxShadow: '0 1px 3px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.08), 0 24px 64px rgba(15,23,42,0.12)',
                 borderRadius: '24px',
                 padding: '24px',
               }}

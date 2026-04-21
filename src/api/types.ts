@@ -171,6 +171,8 @@ export interface OIDCCallbackResponse {
   tokens: AuthTokens;
   is_new_user: boolean;
   username?: string;
+  display_name?: string;
+  avatar_url?: string;
 }
 
 export interface OIDCBindStatusResponse {

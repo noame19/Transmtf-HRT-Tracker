@@ -101,15 +101,15 @@ const AccountDevices: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen pb-20" style={{ background: 'var(--bg-secondary)' }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="sticky top-0 z-10 border-b" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
         <div className="max-w-2xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Link to="/profile" className="text-gray-600 hover:text-gray-900">
+            <Link to="/profile" style={{ color: 'var(--text-secondary)' }}>
               <ArrowLeft size={24} />
             </Link>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
               <Smartphone size={24} className="text-pink-500" />
               {t('devices.title') || 'Devices'}
             </h1>
@@ -122,7 +122,8 @@ const AccountDevices: React.FC = () => {
         {sessions.length > 1 && (
           <button
             onClick={handleRevokeAllOthers}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white border border-red-200 rounded-xl text-red-600 hover:bg-red-50 transition font-medium"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-red-200 rounded-xl text-red-600 hover:bg-red-50 transition font-medium"
+            style={{ background: 'var(--bg-card)' }}
           >
             <Shield size={18} />
             {t('devices.revokeAll') || 'Revoke All Other Sessions'}
@@ -132,7 +133,7 @@ const AccountDevices: React.FC = () => {
         {/* Sessions List */}
         {loading ? (
           <div className="glass-card rounded-2xl p-8 text-center">
-            <p className="text-gray-500">{t('common.loading') || 'Loading...'}</p>
+            <p style={{ color: 'var(--text-secondary)' }}>{t('common.loading') || 'Loading...'}</p>
           </div>
         ) : error ? (
           <div className="glass-card rounded-2xl border-red-200 p-8 text-center">
@@ -140,10 +141,10 @@ const AccountDevices: React.FC = () => {
           </div>
         ) : sessions.length === 0 ? (
           <div className="glass-card rounded-2xl p-8 text-center">
-            <p className="text-gray-500">{t('devices.empty') || 'No sessions found'}</p>
+            <p style={{ color: 'var(--text-secondary)' }}>{t('devices.empty') || 'No sessions found'}</p>
           </div>
         ) : (
-          <div className="glass-card rounded-2xl divide-y divide-gray-100">
+          <div className="glass-card rounded-2xl divide-y" style={{ borderColor: 'var(--border-secondary)' }}>
             {sessions.map((session) => (
               <div key={session.session_id} className="p-4">
                 <div className="flex items-start gap-4">
@@ -153,7 +154,7 @@ const AccountDevices: React.FC = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 text-sm">
+                        <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
                           {session.device_info || 'Unknown Device'}
                         </span>
                         {session.is_current && (
@@ -171,7 +172,7 @@ const AccountDevices: React.FC = () => {
                         </button>
                       )}
                     </div>
-                    <div className="text-xs text-gray-500 space-y-1">
+                    <div className="text-xs space-y-1" style={{ color: 'var(--text-tertiary)' }}>
                       <div>IP: {session.ip_address}</div>
                       <div>
                         {t('devices.lastActive') || 'Last active'}: {new Date(session.last_used_at).toLocaleString()}
@@ -191,14 +192,14 @@ const AccountDevices: React.FC = () => {
       {/* Password Modal */}
       {passwordModal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="glass-modal glass-noise glass-highlight rounded-2xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
               {passwordModal.action === 'revoke'
                 ? `${t('devices.revokeSession') || 'Revoke Session'} - ${passwordModal.deviceInfo}`
                 : t('devices.revokeAll') || 'Revoke All Other Sessions'}
             </h3>
 
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
               {t('devices.enterPasswordConfirm') || 'Enter your account password to confirm'}
             </p>
 
@@ -208,7 +209,8 @@ const AccountDevices: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
               placeholder={t('devices.password') || 'Password'}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 mb-4"
+              className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 mb-4"
+              style={{ borderColor: 'var(--border-primary)', background: 'var(--bg-card-hover)', color: 'var(--text-primary)' }}
               autoFocus
             />
 
@@ -218,7 +220,8 @@ const AccountDevices: React.FC = () => {
                   setPasswordModal({ show: false, action: null });
                   setPassword('');
                 }}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 px-4 rounded-xl font-medium hover:bg-gray-300 transition"
+                className="flex-1 py-3 px-4 rounded-xl font-medium transition"
+                style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
               >
                 {t('common.cancel') || 'Cancel'}
               </button>

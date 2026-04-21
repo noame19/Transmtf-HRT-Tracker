@@ -41,11 +41,11 @@ const AnnouncementModal: React.FC = () => {
   return (
     <div
       className="fixed inset-0 z-[9998] flex items-center justify-center px-4 py-6 overflow-y-auto"
-      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
+      style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) setVisible(false); }}
     >
       <div
-        className="relative w-full max-w-lg mx-auto my-auto rounded-3xl overflow-hidden animate-announcement-in glass-modal glass-noise glass-highlight"
+        className="relative w-full max-w-lg mx-auto my-auto rounded-3xl overflow-hidden animate-announcement-in glass-modal"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

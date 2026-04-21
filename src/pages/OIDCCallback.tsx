@@ -60,14 +60,14 @@ const OIDCCallback: React.FC = () => {
       } else {
         const response = await apiClient.oidcCallback({ code, state });
         if (response.success && response.data) {
-          const { tokens, username } = response.data;
+          const { tokens, username, display_name, avatar_url } = response.data;
 
           // Backend always returns username in data.username (both new and existing users)
           if (!username) {
             setError(t('oidc.callback.error') || 'Could not determine account. Please try again.');
             return;
           }
-          loginWithTokens(tokens, username);
+          loginWithTokens(tokens, username, display_name, avatar_url);
           navigate('/', { replace: true });
         } else {
           setError(response.error || t('oidc.callback.error') || 'Sign-in failed.');
@@ -82,16 +82,16 @@ const OIDCCallback: React.FC = () => {
 
   if (error) {
     return (
-      <div className="w-full min-h-full flex items-center justify-center p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+      <div className="w-full min-h-full flex items-center justify-center p-4" style={{ background: 'var(--bg-secondary)' }}>
         <div className="glass-card rounded-3xl w-full max-w-sm p-6 text-center">
           <div className="mb-4 text-red-500 text-4xl">✕</div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">
+          <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
             {t('oidc.callback.error') || 'Sign-in Failed'}
           </h2>
-          <p className="text-sm text-gray-600 mb-6">{error}</p>
+          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>{error}</p>
           <button
             onClick={() => navigate('/login', { replace: true })}
-            className="w-full bg-gray-900 text-white py-2.5 px-4 rounded-xl font-medium hover:bg-gray-800 transition text-sm"
+            className="w-full py-2.5 px-4 rounded-xl font-medium transition text-sm text-white glass-btn-primary"
           >
             {t('oidc.callback.returnToLogin') || 'Return to Login'}
           </button>
@@ -101,10 +101,10 @@ const OIDCCallback: React.FC = () => {
   }
 
   return (
-    <div className="w-full min-h-full flex items-center justify-center p-4 bg-gradient-to-br from-pink-50 via-white to-blue-50">
+    <div className="w-full min-h-full flex items-center justify-center p-4" style={{ background: 'var(--bg-secondary)' }}>
       <div className="glass-card rounded-3xl w-full max-w-sm p-6 text-center">
         <Loader2 className="mx-auto mb-4 text-pink-500 animate-spin" size={40} />
-        <p className="text-sm text-gray-600">
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           {t('oidc.callback.processing') || 'Processing sign-in...'}
         </p>
       </div>
