@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useCloudSync } from '../contexts/CloudSyncContext';
@@ -9,7 +9,7 @@ import {
   Smartphone,
   LogOut,
   Cloud,
-  Camera,
+  ExternalLink,
   Key,
   Lock,
   LogIn,
@@ -24,10 +24,7 @@ const Account: React.FC = () => {
   const { t } = useTranslation();
   const { showDialog } = useDialog();
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [avatarKey, setAvatarKey] = useState(Date.now());
   const [avatarAvailable, setAvatarAvailable] = useState(true);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -59,73 +56,9 @@ const Account: React.FC = () => {
     await logout(clearData);
   };
 
-  const handleAvatarClick = async () => {
+  const handleAvatarClick = () => {
     if (!isAuthenticated) return;
-
-    if (!avatarAvailable) {
-      fileInputRef.current?.click();
-      return;
-    }
-
-    const choice = await showDialog(
-      'confirm',
-      t('account.avatarActionPrompt') || 'Choose an avatar action',
-      {
-        confirmText: t('account.uploadAvatar') || 'Upload Avatar',
-        cancelText: t('account.deleteAvatar') || 'Delete Avatar',
-        thirdOption: t('common.cancel') || 'Cancel',
-      },
-    );
-
-    if (choice === 'confirm') {
-      fileInputRef.current?.click();
-    }
-
-    if (choice === 'cancel') {
-      handleDeleteAvatar();
-    }
-  };
-
-  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      showDialog('alert', t('account.avatarTooLarge') || 'Avatar file too large (max 5MB)');
-      return;
-    }
-
-    if (!['image/png', 'image/jpeg', 'image/gif'].includes(file.type)) {
-      showDialog('alert', t('account.invalidImageType') || 'Invalid image type (PNG, JPEG, or GIF only)');
-      return;
-    }
-
-    setUploadingAvatar(true);
-    const response = await apiClient.uploadAvatar(file);
-    setUploadingAvatar(false);
-
-    if (response.success && response.data) {
-      showDialog('alert', t('account.avatarUploaded') || 'Avatar uploaded successfully');
-      setAvatarKey(Date.now());
-      setAvatarAvailable(true);
-    } else {
-      showDialog('alert', response.error || 'Failed to upload avatar');
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDeleteAvatar = async () => {
-    const response = await apiClient.deleteAvatar();
-    if (response.success) {
-      showDialog('alert', t('account.avatarDeleted') || 'Avatar deleted successfully');
-      setAvatarKey(Date.now());
-      setAvatarAvailable(false);
-    } else {
-      showDialog('alert', response.error || 'Failed to delete avatar');
-    }
+    showDialog('alert', t('account.avatarSetHint') || 'To set or change your avatar, visit transmtf.com/profile and sign in again.');
   };
 
   const handleChangePassword = async () => {
@@ -225,9 +158,8 @@ const Account: React.FC = () => {
             <button
               type="button"
               onClick={handleAvatarClick}
-              disabled={uploadingAvatar}
-              className="relative group"
-              aria-label={t('account.avatarManage') || 'Manage avatar'}
+              className="relative"
+              aria-label={t('account.avatarManage') || 'Avatar'}
             >
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-pink-100">
                 {user?.avatarUrl ? (
@@ -236,13 +168,12 @@ const Account: React.FC = () => {
                     src={user.avatarUrl}
                     alt="Avatar"
                     className="h-full w-full object-cover"
-                    onError={() => {/* silently fallback handled by parent */}}
+                    onError={() => {/* silently fallback */}}
                   />
                 ) : user?.username ? (
                   <>
                     <img
-                      key={avatarKey}
-                      src={`${apiClient.getAvatarUrl(user.username)}?t=${avatarKey}`}
+                      src={`${apiClient.getAvatarUrl(user.username)}`}
                       alt="Avatar"
                       className={`h-full w-full object-cover ${avatarAvailable ? '' : 'hidden'}`}
                       onLoad={() => setAvatarAvailable(true)}
@@ -254,16 +185,6 @@ const Account: React.FC = () => {
                   <User size={32} className="text-pink-600" />
                 )}
               </div>
-              <span className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-white opacity-0 transition group-hover:opacity-100">
-                <Camera size={14} />
-              </span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/gif"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
             </button>
             <div className="flex-1">
               <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{user?.displayName || user?.username}</h2>
@@ -271,6 +192,19 @@ const Account: React.FC = () => {
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>@{user.username}</p>
               )}
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.member') || 'Transmtf HRT Tracker Member'}</p>
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {t('account.avatarOAuthOnly') || 'Avatar is synced automatically via third-party login and cannot be uploaded here.'}{' '}
+                <a
+                  href="https://www.transmtf.com/profile"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-pink-500 underline hover:text-pink-600"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  transmtf.com/profile
+                  <ExternalLink size={10} className="inline" />
+                </a>
+              </p>
             </div>
           </div>
         </div>

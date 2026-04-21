@@ -354,12 +354,14 @@ export const TRANSLATIONS_BASE = {
         "account.avatarTooLarge": "头像文件过大（最大 5MB）",
         "account.invalidImageType": "无效的图片类型（仅支持 PNG、JPEG 或 GIF）",
         "account.avatarUploaded": "头像上传成功",
-        "account.avatarManage": "管理头像",
+        "account.avatarManage": "头像",
         "account.uploadAvatar": "上传头像",
         "account.deleteAvatar": "删除头像",
         "account.avatarActionPrompt": "请选择头像操作",
         "account.deleteAvatarConfirm": "确定要删除头像吗？",
         "account.avatarDeleted": "头像已删除",
+        "account.avatarOAuthOnly": "头像仅通过第三方登录自动同步，无法在此处上传。",
+        "account.avatarSetHint": "如需设置或更换头像，请前往 transmtf.com/profile 修改后重新登录。",
 
         // Password management
         "account.changePassword": "修改密码",
@@ -1002,12 +1004,14 @@ export const TRANSLATIONS_BASE = {
         "account.avatarTooLarge": "Avatar file too large (max 5MB)",
         "account.invalidImageType": "Invalid image type (PNG, JPEG, or GIF only)",
         "account.avatarUploaded": "Avatar uploaded successfully",
-        "account.avatarManage": "Manage avatar",
+        "account.avatarManage": "Avatar",
         "account.uploadAvatar": "Upload avatar",
         "account.deleteAvatar": "Delete Avatar",
         "account.avatarActionPrompt": "Choose an avatar action",
         "account.deleteAvatarConfirm": "Delete your avatar?",
         "account.avatarDeleted": "Avatar deleted successfully",
+        "account.avatarOAuthOnly": "Avatar is synced automatically via third-party login and cannot be uploaded here.",
+        "account.avatarSetHint": "To set or change your avatar, visit transmtf.com/profile and sign in again.",
 
         // Password management
         "account.changePassword": "Change Password",

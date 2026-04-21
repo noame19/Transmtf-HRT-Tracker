@@ -292,6 +292,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStoredValue(USERNAME_STORAGE_KEY, username);
     if (displayName) setStoredValue(DISPLAY_NAME_STORAGE_KEY, displayName);
     else clearStoredValue(DISPLAY_NAME_STORAGE_KEY);
+    // Always use OAuth avatar URL; clear any previously stored local avatar
     if (avatarUrl) setStoredValue(AVATAR_URL_STORAGE_KEY, avatarUrl);
     else clearStoredValue(AVATAR_URL_STORAGE_KEY);
   };
