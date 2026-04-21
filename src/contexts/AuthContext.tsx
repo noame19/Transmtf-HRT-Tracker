@@ -105,6 +105,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('hrt-last-data-updated');
         localStorage.removeItem('hrt-last-sync-time');
         localStorage.removeItem('hrt-last-pull-time');
+        localStorage.removeItem('hrt-last-known-cloud-updated');
+        localStorage.removeItem('hrt-last-known-cloud-hash');
+        localStorage.removeItem('hrt-data-hash');
       }
     } finally {
       setLogoutInProgress(false);

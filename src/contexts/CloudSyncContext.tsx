@@ -19,8 +19,20 @@ const CloudSyncContext = createContext<CloudSyncContextType | undefined>(undefin
 const LAST_SYNC_TIME_KEY = 'hrt-last-sync-time';
 const LAST_PULL_TIME_KEY = 'hrt-last-pull-time';
 const LAST_DATA_UPDATED_KEY = 'hrt-last-data-updated';
+const LAST_KNOWN_CLOUD_UPDATED_KEY = 'hrt-last-known-cloud-updated';
+const LAST_KNOWN_CLOUD_HASH_KEY = 'hrt-last-known-cloud-hash';
 const SYNC_INTERVAL = 3000; // 3 seconds
 const PULL_CHECK_INTERVAL = 3000; // 3 seconds
+
+// Record the cloud baseline = the cloud state we last successfully synced with.
+// This lets us distinguish "local-only changes since baseline" (safe to push) from
+// "cloud changed under us while we also changed locally" (real conflict).
+function setCloudBaseline(cloudUpdated: string | null | undefined, cloudHash: string) {
+  if (cloudUpdated) {
+    localStorage.setItem(LAST_KNOWN_CLOUD_UPDATED_KEY, cloudUpdated);
+  }
+  localStorage.setItem(LAST_KNOWN_CLOUD_HASH_KEY, cloudHash);
+}
 
 // Deep-equal for comparing field values (handles arrays, objects, primitives)
 function deepEqual(a: any, b: any): boolean {
@@ -172,6 +184,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (localData.lastDataUpdated) {
         localStorage.setItem(LAST_DATA_UPDATED_KEY, localData.lastDataUpdated);
       }
+      // After a successful push, the cloud's state == what we just uploaded,
+      // so record it as the new baseline.
+      setCloudBaseline(localData.lastDataUpdated || localData.lastModified, dataHash);
       return true;
     }
 
@@ -221,6 +236,9 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       darkMode: data?.darkMode ?? localData.darkMode,
     });
     localStorage.setItem('hrt-data-hash', dataHash);
+    // After applying cloud data locally, our local state == cloud state,
+    // so the cloud version we just pulled becomes the new baseline.
+    setCloudBaseline(data?.lastDataUpdated || fallbackTimestamp || null, dataHash);
     window.dispatchEvent(new StorageEvent('storage', { key: 'hrt-data-synced', newValue: Date.now().toString() }));
   }, []);
 
@@ -245,10 +263,11 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const now = new Date();
 
       if (!response.success || !response.data) {
-        // Network / auth error — if we have local changes, still try to push
-        if (localData.lastModified) {
-          await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified });
-        }
+        // GET failed — DO NOT push: we have no idea what cloud actually contains,
+        // and pushing blindly would set a stale baseline. The next 3-second poll
+        // will retry once the network/auth recovers. Local changes remain in
+        // localStorage and will be pushed on the next successful sync.
+        setSyncError(response.error || 'Failed to fetch cloud data');
         return;
       }
 
@@ -286,49 +305,90 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // Cloud lacks the field, push once so it's recorded
           await pushLocalDataToCloud({ ...localData, lastModified: localData.lastModified || now.toISOString() });
         }
+        // Local == cloud, refresh baseline so future pushes don't trip false conflicts
+        setCloudBaseline(cloudData.lastDataUpdated || localData.lastDataUpdated || null, cloudHash);
         setLastSyncTime(now);
         localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
         localStorage.setItem(LAST_PULL_TIME_KEY, now.toISOString());
         return;
       }
 
-      // ④ Data differs — try conflict detection via lastDataUpdated
+      // ④ Data differs — distinguish "local-only changes since baseline" (push, no prompt)
+      //    from "cloud changed under us while local also changed" (real conflict).
+      const lastKnownCloudUpdated = localStorage.getItem(LAST_KNOWN_CLOUD_UPDATED_KEY);
+      const lastKnownCloudHash = localStorage.getItem(LAST_KNOWN_CLOUD_HASH_KEY);
       const cloudDataUpdated = cloudData.lastDataUpdated as string | undefined;
       const localDataUpdated = localData.lastDataUpdated as string | null;
 
-      if (cloudDataUpdated && localDataUpdated) {
-        const ct = new Date(cloudDataUpdated).getTime();
-        const lt = new Date(localDataUpdated).getTime();
+      const hasBaseline = Boolean(lastKnownCloudUpdated || lastKnownCloudHash);
 
-        if (ct !== lt) {
-          // Both sides changed independently → conflict!
-          const diffs = computeFieldDiffs(localData, cloudData);
-          if (diffs.length > 0) {
-            conflictPendingRef.current = true;
-            setPendingConflict({
-              localData,
-              cloudData,
-              diffs,
-              localTime: localDataUpdated,
-              cloudTime: cloudDataUpdated,
-            });
-            return; // wait for user resolution
-          }
-        }
+      // Conservative defaults when baseline is missing (first run after upgrade,
+      // fresh install, post-logout): assume both sides may have diverged so we
+      // never silently overwrite a real difference.
+      const cloudChangedSinceBaseline = hasBaseline
+        ? (lastKnownCloudUpdated && cloudDataUpdated
+            ? cloudDataUpdated !== lastKnownCloudUpdated
+            : (lastKnownCloudHash ? cloudHash !== lastKnownCloudHash : true))
+        : true;
 
-        // Same lastDataUpdated but different hash is unlikely but possible
-        // (e.g. settings changed by another mechanism).
-        // Fall through to lastModified comparison below.
+      const localChangedSinceBaseline = hasBaseline
+        ? (lastKnownCloudHash ? localData.dataHash !== lastKnownCloudHash : true)
+        : Boolean(localData.lastModified); // no baseline → assume changed iff user ever edited
+
+      if (!cloudChangedSinceBaseline && localChangedSinceBaseline) {
+        // Only local changed → safe to push without prompting
+        await pushLocalDataToCloud({
+          ...localData,
+          lastModified: localData.lastModified || now.toISOString(),
+        });
+        setLastSyncTime(now);
+        localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
+        localStorage.setItem(LAST_PULL_TIME_KEY, now.toISOString());
+        return;
       }
 
-      // ⑤ Fallback: compare lastModified (covers old data without lastDataUpdated)
+      if (cloudChangedSinceBaseline && !localChangedSinceBaseline) {
+        // Only cloud changed → silently pull
+        applyCloudToLocal(cloudData, localData);
+        setLastSyncTime(now);
+        localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
+        localStorage.setItem(LAST_PULL_TIME_KEY, now.toISOString());
+        return;
+      }
+
+      if (cloudChangedSinceBaseline && localChangedSinceBaseline) {
+        // Both sides diverged from the shared baseline → genuine conflict.
+        // Never fall through to timestamp-based auto-resolution here — that would
+        // silently overwrite one side's changes. Always prompt the user.
+        const diffs = computeFieldDiffs(localData, cloudData);
+        if (diffs.length > 0) {
+          conflictPendingRef.current = true;
+          setPendingConflict({
+            localData,
+            cloudData,
+            diffs,
+            localTime: localDataUpdated || '',
+            cloudTime: cloudDataUpdated || '',
+          });
+        }
+        return;
+      }
+      // else: !cloudChanged && !localChanged yet hash differs — shouldn't happen
+      // after baseline is set (step ③ would have matched). Fall through for safety.
+
+      // ⑤ Fallback: only reached when no baseline exists yet AND step ④ couldn't decide
+      // (e.g. !localChanged && !cloudChanged but hashes differ — extremely rare).
+      // Use lastModified to pick a winner conservatively, then establish a baseline.
       const cloudLM = cloudData.lastModified as string | undefined;
       const localLM = localData.lastModified;
 
       if (cloudLM && localLM) {
         if (new Date(localLM) > new Date(cloudLM)) {
           await pushLocalDataToCloud(localData);
+        } else if (new Date(cloudLM) > new Date(localLM)) {
+          applyCloudToLocal(cloudData, localData);
         } else {
+          // Same lastModified, different hashes — prefer cloud (avoid silent local-overwrite race)
           applyCloudToLocal(cloudData, localData);
         }
       } else if (!cloudLM && localLM) {
@@ -336,10 +396,10 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else if (cloudLM && !localLM) {
         applyCloudToLocal(cloudData, localData);
       } else {
-        // Neither has timestamps — merge with fallback
+        // Neither has timestamps — prefer cloud (server-authoritative on cold start).
+        // Avoid the previous merge-and-push, which could resurrect deleted records.
         const fallback = now.toISOString();
         applyCloudToLocal(cloudData, localData, fallback);
-        await pushLocalDataToCloud({ ...localData, ...cloudData, lastModified: fallback, lastDataUpdated: fallback });
       }
 
       setLastSyncTime(now);
