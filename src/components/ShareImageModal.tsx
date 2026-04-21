@@ -178,9 +178,27 @@ const ShareImageModal: React.FC<Props> = ({
     // ── User info (only if logged in) ──
     const isLoggedIn = !!user;
     const displayName = isLoggedIn ? (user!.displayName || user!.username || '') : '';
-    const avatarSrc = isLoggedIn
+    const candidateAvatarSrc = isLoggedIn
         ? (user!.avatarUrl || (user!.username ? `${API_ORIGIN}/api/avatars/${user!.username}` : null))
         : null;
+
+    // Probe avatar URL before render — if the avatar 404s (or any other load error),
+    // html-to-image will reject the whole capture. Fall back to the initial-letter
+    // placeholder instead. Probing happens once per URL.
+    const [avatarSrc, setAvatarSrc] = useState<string | null>(candidateAvatarSrc);
+    useEffect(() => {
+        if (!candidateAvatarSrc) {
+            setAvatarSrc(null);
+            return;
+        }
+        let cancelled = false;
+        const probe = new Image();
+        probe.crossOrigin = 'anonymous';
+        probe.onload = () => { if (!cancelled) setAvatarSrc(candidateAvatarSrc); };
+        probe.onerror = () => { if (!cancelled) setAvatarSrc(null); };
+        probe.src = candidateAvatarSrc;
+        return () => { cancelled = true; };
+    }, [candidateAvatarSrc]);
 
     // ── Theme-aware print canvas palette (mirrors index.css custom properties) ──
     const accent50 = colors[50];
@@ -243,6 +261,10 @@ const ShareImageModal: React.FC<Props> = ({
                 backgroundColor: palette.bg,
                 width: CANVAS_W,
                 height: CANVAS_H,
+                // If any image (e.g. avatar) fails to load during capture, substitute
+                // a 1x1 transparent pixel instead of rejecting the whole render.
+                imagePlaceholder:
+                    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
             });
             const link = document.createElement('a');
             link.download = `hrt-share-${now.toISOString().slice(0, 10)}.png`;
