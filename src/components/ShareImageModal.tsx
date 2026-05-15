@@ -165,6 +165,12 @@ const ShareImageModal: React.FC<Props> = ({
         return (lo > 0 && hi > lo) ? { lo, hi } : null;
     })() : null;
 
+    const currentCI68 = (hasPersonalModel && simCI!.ci68Low?.length === simCI!.timeH.length) ? (() => {
+        const lo = interpAt(simCI!.timeH, simCI!.ci68Low, h);
+        const hi = interpAt(simCI!.timeH, simCI!.ci68High, h);
+        return (lo > 0 && hi > lo) ? { lo, hi } : null;
+    })() : null;
+
     // Baseline (lab-result-only fallback)
     const baselineLevel = useMemo(() => {
         if (!hasDoseHistory && labResults.length > 0) {
@@ -182,21 +188,33 @@ const ShareImageModal: React.FC<Props> = ({
         ? (user!.avatarUrl || (user!.username ? `${API_ORIGIN}/api/avatars/${user!.username}` : null))
         : null;
 
-    // Probe avatar URL before render — if the avatar 404s (or any other load error),
-    // html-to-image will reject the whole capture. Fall back to the initial-letter
-    // placeholder instead. Probing happens once per URL.
-    const [avatarSrc, setAvatarSrc] = useState<string | null>(candidateAvatarSrc);
+    // Fetch the avatar as a data URL so html-to-image can embed it without CORS issues.
+    // OAuth avatars are often loaded without CORS by the browser first, poisoning the cache
+    // and causing crossOrigin-mode probes to fail. Using fetch() avoids the cache problem.
+    const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
     useEffect(() => {
         if (!candidateAvatarSrc) {
             setAvatarSrc(null);
             return;
         }
         let cancelled = false;
-        const probe = new Image();
-        probe.crossOrigin = 'anonymous';
-        probe.onload = () => { if (!cancelled) setAvatarSrc(candidateAvatarSrc); };
-        probe.onerror = () => { if (!cancelled) setAvatarSrc(null); };
-        probe.src = candidateAvatarSrc;
+        fetch(candidateAvatarSrc, { mode: 'cors' })
+            .then(r => { if (!r.ok) throw new Error('http'); return r.blob(); })
+            .then(blob => new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            }))
+            .then(dataUrl => { if (!cancelled) setAvatarSrc(dataUrl); })
+            .catch(() => {
+                // CORS unavailable — fall back to plain URL validity check
+                if (cancelled) return;
+                const probe = new Image();
+                probe.onload = () => { if (!cancelled) setAvatarSrc(candidateAvatarSrc); };
+                probe.onerror = () => { if (!cancelled) setAvatarSrc(null); };
+                probe.src = candidateAvatarSrc;
+            });
         return () => { cancelled = true; };
     }, [candidateAvatarSrc]);
 
@@ -564,6 +582,15 @@ const ShareImageModal: React.FC<Props> = ({
                                             <span style={{ fontSize: '13px', fontWeight: 800, color: accent300, textTransform: 'uppercase', letterSpacing: '0.1em' }}>95% CI</span>
                                             <span style={{ fontSize: '18px', fontWeight: 700, color: accent500 }}>
                                                 {currentCI.lo.toFixed(0)} – {currentCI.hi.toFixed(0)}
+                                                <span style={{ fontSize: '13px', fontWeight: 500, marginLeft: '6px', color: accent300 }}>pg/mL</span>
+                                            </span>
+                                        </div>
+                                    )}
+                                    {currentCI68 && (
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', whiteSpace: 'nowrap' }}>
+                                            <span style={{ fontSize: '13px', fontWeight: 800, color: accent300, textTransform: 'uppercase', letterSpacing: '0.1em' }}>68% CI</span>
+                                            <span style={{ fontSize: '18px', fontWeight: 700, color: accent500 }}>
+                                                {currentCI68.lo.toFixed(0)} – {currentCI68.hi.toFixed(0)}
                                                 <span style={{ fontSize: '13px', fontWeight: 500, marginLeft: '6px', color: accent300 }}>pg/mL</span>
                                             </span>
                                         </div>

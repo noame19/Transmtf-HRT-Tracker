@@ -134,6 +134,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return null;
   }, [hasPersonalCpaModel, simCI, h]);
 
+  const currentCI68 = useMemo(() => {
+    if (!hasPersonalModel) return null;
+    if (!simCI!.ci68Low?.length || simCI!.ci68Low.length !== simCI!.timeH.length) return null;
+    const lo = interpAt(simCI!.timeH, simCI!.ci68Low, h);
+    const hi = interpAt(simCI!.timeH, simCI!.ci68High, h);
+    if (lo > 0 && hi > 0 && hi > lo) return { lo, hi };
+    return null;
+  }, [hasPersonalModel, simCI, h]);
+
   const getLevelStatus = (conc: number) => {
     if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--accent-50)', border: 'var(--accent-200)' };
     if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(5,150,105,0.15)' : '#ecfdf5', border: isDark ? 'rgba(5,150,105,0.3)' : '#a7f3d0' };
@@ -214,6 +223,17 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     <span className="text-[11px] font-semibold"
                       style={{ color: 'var(--accent-400)' }}>
                       {currentCI.lo.toFixed(0)} – {currentCI.hi.toFixed(0)}
+                      <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                    </span>
+                  </div>
+                )}
+                {currentCI68 && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide"
+                      style={{ color: 'var(--accent-300)' }}>{t('chart.ci68_band')}</span>
+                    <span className="text-[11px] font-semibold"
+                      style={{ color: 'var(--accent-400)' }}>
+                      {currentCI68.lo.toFixed(0)} – {currentCI68.hi.toFixed(0)}
                       <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
                     </span>
                   </div>
