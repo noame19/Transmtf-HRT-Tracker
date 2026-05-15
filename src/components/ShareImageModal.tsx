@@ -188,17 +188,36 @@ const ShareImageModal: React.FC<Props> = ({
         ? (user!.avatarUrl || (user!.username ? `${API_ORIGIN}/api/avatars/${user!.username}` : null))
         : null;
 
-    // Fetch the avatar as a data URL so html-to-image can embed it without CORS issues.
-    // OAuth avatars are often loaded without CORS by the browser first, poisoning the cache
-    // and causing crossOrigin-mode probes to fail. Using fetch() avoids the cache problem.
+    // Pre-fetch images as data URLs so html-to-image can embed them without any CORS issues.
+    // The browser caches /favicon.ico and OAuth avatars without CORS headers during normal
+    // page load, causing crossOrigin="anonymous" img elements to hit "tainted canvas" errors.
+    // Fetching via the Fetch API uses a separate CORS cache and returns a blob we can
+    // convert to a data URL — html-to-image embeds data URLs directly, no re-fetch needed.
     const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
     useEffect(() => {
-        if (!candidateAvatarSrc) {
-            setAvatarSrc(null);
-            return;
-        }
+        if (!candidateAvatarSrc) { setAvatarSrc(null); return; }
         let cancelled = false;
-        fetch(candidateAvatarSrc, { mode: 'cors' })
+        const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+        fetch(candidateAvatarSrc, { mode: 'cors', cache: 'no-store' })
+            .then(r => { if (!r.ok) throw new Error('http'); return r.blob(); })
+            .then(blobToDataUrl)
+            .then(dataUrl => { if (!cancelled) setAvatarSrc(dataUrl); })
+            .catch(() => { if (!cancelled) setAvatarSrc(null); }); // CORS not supported → letter placeholder
+        return () => { cancelled = true; };
+    }, [candidateAvatarSrc]);
+
+    // Favicon: same-origin fetch always succeeds; converts to data URL to avoid the
+    // browser's non-CORS favicon cache poisoning html-to-image's canvas serialisation.
+    const [faviconSrc, setFaviconSrc] = useState<string | null>(null);
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        fetch('/favicon.ico', { cache: 'no-store' })
             .then(r => { if (!r.ok) throw new Error('http'); return r.blob(); })
             .then(blob => new Promise<string>((resolve, reject) => {
                 const reader = new FileReader();
@@ -206,17 +225,10 @@ const ShareImageModal: React.FC<Props> = ({
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             }))
-            .then(dataUrl => { if (!cancelled) setAvatarSrc(dataUrl); })
-            .catch(() => {
-                // CORS unavailable — fall back to plain URL validity check
-                if (cancelled) return;
-                const probe = new Image();
-                probe.onload = () => { if (!cancelled) setAvatarSrc(candidateAvatarSrc); };
-                probe.onerror = () => { if (!cancelled) setAvatarSrc(null); };
-                probe.src = candidateAvatarSrc;
-            });
+            .then(dataUrl => { if (!cancelled) setFaviconSrc(dataUrl); })
+            .catch(() => { if (!cancelled) setFaviconSrc('/favicon.ico'); });
         return () => { cancelled = true; };
-    }, [candidateAvatarSrc]);
+    }, [isOpen]);
 
     // ── Theme-aware print canvas palette (mirrors index.css custom properties) ──
     const accent50 = colors[50];
@@ -465,7 +477,6 @@ const ShareImageModal: React.FC<Props> = ({
                                 <img
                                     src={avatarSrc}
                                     alt=""
-                                    crossOrigin="anonymous"
                                     style={{ width: '96px', height: '96px', borderRadius: '50%', objectFit: 'cover', border: `4px solid ${accent300}`, flexShrink: 0 }}
                                 />
                             )}
@@ -490,12 +501,13 @@ const ShareImageModal: React.FC<Props> = ({
                                     display: 'flex', alignItems: 'center', gap: '12px',
                                     marginTop: isLoggedIn && displayName ? '8px' : '0',
                                 }}>
-                                    <img
-                                        src="/favicon.ico"
-                                        alt=""
-                                        crossOrigin="anonymous"
-                                        style={{ width: '36px', height: '36px', flexShrink: 0, borderRadius: '8px' }}
-                                    />
+                                    {faviconSrc && (
+                                        <img
+                                            src={faviconSrc}
+                                            alt=""
+                                            style={{ width: '36px', height: '36px', flexShrink: 0, borderRadius: '8px' }}
+                                        />
+                                    )}
                                     <div style={{
                                         fontSize: '28px',
                                         color: palette.textPrimary,
