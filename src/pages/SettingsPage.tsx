@@ -22,13 +22,11 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-import { DoseEvent, LabResult, encryptData, decryptData } from '../../logic';
+import { DoseEvent, LabResult, decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import ImportModal from '../components/ImportModal';
-import ExportModal from '../components/ExportModal';
-import PasswordDisplayModal from '../components/PasswordDisplayModal';
 import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
@@ -60,9 +58,6 @@ const SettingsPage: React.FC = () => {
     const { isDark, setIsDark } = useTheme();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-    const [generatedPassword, setGeneratedPassword] = useState('');
-    const [isPasswordDisplayOpen, setIsPasswordDisplayOpen] = useState(false);
     const [isPasswordInputOpen, setIsPasswordInputOpen] = useState(false);
     const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
@@ -272,26 +267,18 @@ const SettingsPage: React.FC = () => {
         URL.revokeObjectURL(url);
     };
 
-    const handleExportConfirm = async (encrypt: boolean) => {
-        setIsExportModalOpen(false);
-
+    const handleExport = () => {
+        if (events.length === 0 && labResults.length === 0) {
+            showDialog('alert', t('drawer.empty_export'));
+            return;
+        }
         const exportData = {
             meta: { version: 1, exportedAt: new Date().toISOString() },
             weight,
             events,
             labResults,
         };
-        const json = JSON.stringify(exportData, null, 2);
-
-        if (encrypt) {
-            const { data, password } = await encryptData(json);
-            setGeneratedPassword(password);
-            setIsPasswordDisplayOpen(true);
-            downloadFile(data, `hrt-dosages-encrypted-${new Date().toISOString().split('T')[0]}.json`);
-            return;
-        }
-
-        downloadFile(json, `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
+        downloadFile(JSON.stringify(exportData, null, 2), `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
     };
 
     const handleClearAllEvents = () => {
@@ -405,13 +392,7 @@ const SettingsPage: React.FC = () => {
                         </button>
 
                         <button
-                            onClick={() => {
-                                if (events.length === 0 && labResults.length === 0) {
-                                    showDialog('alert', t('drawer.empty_export'));
-                                    return;
-                                }
-                                setIsExportModalOpen(true);
-                            }}
+                            onClick={handleExport}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
@@ -550,21 +531,6 @@ const SettingsPage: React.FC = () => {
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
                 onImportJson={importEventsFromJson}
-            />
-
-            <ExportModal
-                isOpen={isExportModalOpen}
-                onClose={() => setIsExportModalOpen(false)}
-                onExport={handleExportConfirm}
-                events={events}
-                labResults={labResults}
-                weight={weight}
-            />
-
-            <PasswordDisplayModal
-                isOpen={isPasswordDisplayOpen}
-                onClose={() => setIsPasswordDisplayOpen(false)}
-                password={generatedPassword}
             />
 
             <PasswordInputModal
