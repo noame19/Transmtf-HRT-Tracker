@@ -182,6 +182,9 @@ export const TRANSLATIONS_BASE = {
         "batch.step_config": "设置",
         "batch.step_preview": "预览",
         "batch.dose": "剂量",
+        "batch.mixed": "混合",
+        "batch.invalid_range": "开始日期必须早于或等于结束日期",
+        "batch.tap_to_edit": "点击某一条可单独修改",
 
         "route.injection": "肌肉注射 (Injection)",
         "route.oral": "口服 (Oral)",
@@ -832,6 +835,9 @@ export const TRANSLATIONS_BASE = {
         "batch.step_config": "Configure",
         "batch.step_preview": "Preview",
         "batch.dose": "Dose",
+        "batch.mixed": "Mixed",
+        "batch.invalid_range": "Start date must be on or before end date",
+        "batch.tap_to_edit": "Tap any row to edit it individually",
 
         "route.injection": "Injection",
         "route.oral": "Oral",

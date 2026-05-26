@@ -4,7 +4,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
-import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getBioavailabilityMultiplier, getToE2Factor } from '../../logic';
+import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor } from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -62,7 +62,15 @@ const formatGuideNumber = (val: number) => {
     return rounded.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
 };
 
-const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) => {
+export interface DoseFormModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    eventToEdit?: DoseEvent | null;
+    onSave: (event: DoseEvent) => void;
+    onDelete?: (id: string) => void;
+}
+
+const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
     const dateInputRef = useRef<HTMLInputElement>(null);
@@ -95,14 +103,6 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         }
         return { [ExtraKey.sublingualTier]: slTier };
     }, [route, useCustomTheta, customTheta, slTier]);
-
-    const bioMultiplier = useMemo(() => {
-        const extrasForCalc = slExtras ?? {};
-        if (route === Route.gel) {
-            extrasForCalc[ExtraKey.gelSite] = gelSite;
-        }
-        return getBioavailabilityMultiplier(route, ester, extrasForCalc);
-    }, [route, ester, slExtras, gelSite]);
 
     useEffect(() => {
         if (isOpen) {
@@ -231,13 +231,13 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         if (lastEditedField === 'raw' && rawDose) {
             handleRawChange(rawDose);
         }
-    }, [bioMultiplier, ester, route]);
+    }, [ester]);
 
     useEffect(() => {
         if (lastEditedField === 'bio' && e2Dose) {
             handleE2Change(e2Dose);
         }
-    }, [bioMultiplier, ester, route]);
+    }, [ester]);
 
     const [isSaving, setIsSaving] = useState(false);
     const [templates, setTemplates] = useState<DoseTemplate[]>(() => {
@@ -294,14 +294,21 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         if (isNaN(timeH)) {
             timeH = new Date().getTime() / 3600000;
         }
-        
+
+        // Route-determined esters always store as E2; otherwise use the outer
+        // `safeEster` (computed once per render at component scope).
+        const effectiveEster =
+            (route === Route.patchRemove || route === Route.patchApply || route === Route.gel)
+                ? Ester.E2
+                : safeEster;
+
         let e2Equivalent = parseFloat(e2Dose);
         if (isNaN(e2Equivalent)) e2Equivalent = 0;
         // For EV injection/sublingual/oral, derive E2-equivalent from raw dose (hidden field) to avoid drift
-        if (ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) {
+        if (effectiveEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) {
             const rawVal = parseFloat(rawDose);
             if (Number.isFinite(rawVal)) {
-                const factor = getToE2Factor(ester) || 1;
+                const factor = getToE2Factor(effectiveEster) || 1;
                 e2Equivalent = rawVal * factor;
             }
         }
@@ -328,13 +335,23 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
             }
             finalDose = raw; // patch input is compound dose on patch
         } else if (route !== Route.patchRemove) {
-            if (!Number.isFinite(e2Equivalent) || e2Equivalent <= 0) {
-                showDialog('alert', nonPositiveMsg);
-                setIsSaving(false);
-                return;
+            if (effectiveEster === Ester.CPA) {
+                const rawVal = parseFloat(rawDose);
+                if (!Number.isFinite(rawVal) || rawVal <= 0) {
+                    showDialog('alert', nonPositiveMsg);
+                    setIsSaving(false);
+                    return;
+                }
+                finalDose = rawVal;
+            } else {
+                if (!Number.isFinite(e2Equivalent) || e2Equivalent <= 0) {
+                    showDialog('alert', nonPositiveMsg);
+                    setIsSaving(false);
+                    return;
+                }
+                const factor = getToE2Factor(effectiveEster) || 1;
+                finalDose = (effectiveEster === Ester.E2) ? e2Equivalent : e2Equivalent / factor; // store compound mg
             }
-            const factor = getToE2Factor(ester) || 1;
-            finalDose = (ester === Ester.E2) ? e2Equivalent : e2Equivalent / factor; // store compound mg
         }
 
         if (route === Route.sublingual && slExtras) {
@@ -348,7 +365,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         const newEvent: DoseEvent = {
             id: eventToEdit?.id || uuidv4(),
             route,
-            ester: (route === Route.patchRemove || route === Route.patchApply || route === Route.gel) ? Ester.E2 : ester,
+            ester: effectiveEster,
             timeH,
             doseMG: finalDose,
             extras
@@ -400,9 +417,13 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         }
     }, [availableEsters, ester]);
 
+    // Mirror handleSave's safeEster so UI gating (canGenerate/doseGuide) and
+    // data write paths read the same value even mid-route-transition.
+    const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
+
     const doseGuide = useMemo(() => {
         // CPA 没有剂量提示，因为参考范围不同
-        if (ester === Ester.CPA) return null;
+        if (safeEster === Ester.CPA) return null;
 
         const cfg = DOSE_GUIDE_CONFIG[route];
         if (!cfg) return null;
@@ -423,7 +444,7 @@ const DoseFormModal = ({ isOpen, onClose, eventToEdit, onSave, onDelete }: any) 
         }
 
         return { config: cfg, level, value, showRateHint: false as const };
-    }, [route, patchMode, patchRate, e2Dose, ester]);
+    }, [route, patchMode, patchRate, e2Dose, safeEster]);
 
     const dialogRef = useFocusTrap(isOpen, onClose);
 
