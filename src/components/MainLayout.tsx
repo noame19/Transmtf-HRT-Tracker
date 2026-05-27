@@ -71,6 +71,18 @@ const MainLayout: React.FC = () => {
     useEffect(() => {
         const el = mainScrollRef.current;
         if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+        const notifyLayout = () => window.dispatchEvent(new Event('resize'));
+        const rafIds: number[] = [];
+        const raf1 = requestAnimationFrame(() => {
+            notifyLayout();
+            rafIds.push(requestAnimationFrame(notifyLayout));
+        });
+        rafIds.push(raf1);
+        const timers = [100, 300, 600].map(delay => setTimeout(notifyLayout, delay));
+        return () => {
+            rafIds.forEach(cancelAnimationFrame);
+            timers.forEach(clearTimeout);
+        };
     }, [location.pathname]);
 
     useEffect(() => {

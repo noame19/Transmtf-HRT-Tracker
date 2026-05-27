@@ -15,71 +15,149 @@ function hexToRgb(hex: string): string {
 }
 
 /**
- * Auto-fit font size: measures the container's available width and the text's
- * natural width at `maxPx`, then linearly scales down so the text always fits
- * on one line without truncation. If the scaled size would fall below `minPx`,
- * the font is clamped to `minPx` and a negative letter-spacing is applied as a
- * secondary strategy so the text still fits horizontally without ellipsis or
- * wrapping. Re-runs on container resize.
+ * Auto-fit font size, measured against the actually-rendered DOM (not a
+ * canvas) so the natural width always matches the displayed glyph metrics —
+ * canvas measurement diverges from CSS font-stack rendering across devices
+ * and tripped the home page after route remounts. The hook returns refs for
+ * both the visible container and an invisible measuring sibling that the
+ * consumer renders at `maxPx`. Re-runs on:
+ *  - mount (initial sync layout phase)
+ *  - the next two animation frames (post-CSS-animation settling)
+ *  - 100ms and 300ms after mount (defensive, covers the 250ms fadeSlideIn)
+ *  - `document.fonts.ready` (font swap)
+ *  - ResizeObserver on the container, the measuring element, AND the
+ *    documentElement (orientation / viewport changes)
+ *  - `window.resize` and `orientationchange` events
  */
 function useAutoFitFontSize(
   text: string,
   maxPx: number,
   minPx: number,
-  fontWeight: number | string = 900,
-  fontFamily: string = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-): { containerRef: React.RefObject<HTMLDivElement>; fontSize: number; letterSpacing: number } {
+): {
+  containerRef: React.RefObject<HTMLDivElement>;
+  measureRef: React.RefObject<HTMLSpanElement>;
+  fontSize: number;
+  letterSpacing: number;
+} {
   const containerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
   const [sizing, setSizing] = useState<{ fontSize: number; letterSpacing: number }>(
-    { fontSize: maxPx, letterSpacing: 0 },
+    { fontSize: minPx, letterSpacing: 0 },
   );
 
   useLayoutEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const m = measureRef.current;
+    if (!el || !m) return;
 
-    const measure = () => {
-      if (!ctx) return;
-      const containerWidth = el.clientWidth;
-      if (containerWidth <= 0 || text.length === 0) {
-        setSizing({ fontSize: maxPx, letterSpacing: 0 });
-        return;
-      }
-      ctx.font = `${fontWeight} ${maxPx}px ${fontFamily}`;
-      const naturalWidth = ctx.measureText(text).width;
-      if (naturalWidth <= containerWidth) {
-        setSizing({ fontSize: maxPx, letterSpacing: 0 });
-        return;
-      }
-      // Linear scale-down with 2% safety margin for browser sub-pixel rounding.
-      const scaled = Math.floor(maxPx * (containerWidth / naturalWidth) * 0.98);
-      if (scaled >= minPx) {
-        setSizing({ fontSize: scaled, letterSpacing: 0 });
-        return;
-      }
-      // Floor on font size: clamp to minPx and tighten letter-spacing across
-      // the remaining gaps until the text fits. Keeps the dose line readable
-      // (no ellipsis, no wrap) even on pathologically narrow containers.
-      ctx.font = `${fontWeight} ${minPx}px ${fontFamily}`;
-      const widthAtMin = ctx.measureText(text).width;
-      const overshoot = widthAtMin - containerWidth;
-      const gaps = Math.max(1, text.length - 1);
-      const tightening = overshoot > 0 ? -(overshoot / gaps) - 0.1 : 0;
-      setSizing({ fontSize: minPx, letterSpacing: tightening });
+    const apply = (next: { fontSize: number; letterSpacing: number }) => {
+      setSizing(prev => (
+        prev.fontSize === next.fontSize && Math.abs(prev.letterSpacing - next.letterSpacing) < 0.01
+          ? prev
+          : next
+      ));
     };
 
-    measure();
-    // Guard for older WebViews / browsers that predate ResizeObserver. The
-    // hook falls back to a one-shot measurement in that case.
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [text, maxPx, minPx, fontWeight, fontFamily]);
+    let rafPending = false;
 
-  return { containerRef, fontSize: sizing.fontSize, letterSpacing: sizing.letterSpacing };
+    const measureNow = () => {
+      rafPending = false;
+      const containerWidth = Math.floor(el.getBoundingClientRect().width);
+      const naturalWidth = Math.ceil(
+        Math.max(m.scrollWidth, m.offsetWidth, m.getBoundingClientRect().width),
+      );
+      // Skip until both the container and the hidden measuring sibling have
+      // valid sizes — otherwise we'd clobber a previous good measurement
+      // mid-route-transition with a transient 0.
+      if (containerWidth <= 0 || naturalWidth <= 0 || text.length === 0) return;
+      if (naturalWidth <= containerWidth) {
+        apply({ fontSize: maxPx, letterSpacing: 0 });
+        return;
+      }
+      const availableWidth = Math.max(1, containerWidth - 2);
+      const scaled = Math.floor(maxPx * (availableWidth / naturalWidth) * 0.98);
+      if (scaled >= minPx) {
+        apply({ fontSize: scaled, letterSpacing: 0 });
+        return;
+      }
+      // Below minPx: clamp font and tighten letter-spacing across the gaps.
+      // Monospace width scales linearly with font size, so we can derive the
+      // width at minPx directly from the maxPx measurement.
+      const widthAtMin = naturalWidth * (minPx / maxPx);
+      const overshoot = widthAtMin - availableWidth;
+      const gaps = Math.max(1, text.length - 1);
+      const tightening = overshoot > 0 ? -(overshoot / gaps) - 0.1 : 0;
+      apply({ fontSize: minPx, letterSpacing: tightening });
+    };
+
+    const rafIds: number[] = [];
+
+    const measure = () => {
+      if (rafPending) return;
+      rafPending = true;
+      rafIds.push(requestAnimationFrame(measureNow));
+    };
+
+    const cleanups: Array<() => void> = [];
+
+    measureNow();
+
+    rafIds.push(requestAnimationFrame(() => {
+      measureNow();
+      rafIds.push(requestAnimationFrame(measureNow));
+    }));
+    cleanups.push(() => rafIds.forEach(cancelAnimationFrame));
+
+    const timeouts = [50, 100, 250, 300, 600, 1000].map(delay => setTimeout(measure, delay));
+    cleanups.push(() => timeouts.forEach(clearTimeout));
+
+    const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+    if (fonts?.ready) {
+      let alive = true;
+      fonts.ready.then(() => { if (alive) measure(); }).catch(() => { /* ignore */ });
+      cleanups.push(() => { alive = false; });
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      ro.observe(m);
+      if (el.parentElement) ro.observe(el.parentElement);
+      cleanups.push(() => ro.disconnect());
+      const docRo = new ResizeObserver(measure);
+      docRo.observe(document.documentElement);
+      cleanups.push(() => docRo.disconnect());
+    }
+
+    const onResize = () => measure();
+    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('orientationchange', onResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', onResize, { passive: true });
+    window.visualViewport?.addEventListener('scroll', onResize, { passive: true });
+    window.addEventListener('pageshow', onResize);
+    document.addEventListener('animationend', onResize, true);
+    document.addEventListener('transitionend', onResize, true);
+    document.addEventListener('visibilitychange', onResize);
+    cleanups.push(() => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('scroll', onResize);
+      window.removeEventListener('pageshow', onResize);
+      document.removeEventListener('animationend', onResize, true);
+      document.removeEventListener('transitionend', onResize, true);
+      document.removeEventListener('visibilitychange', onResize);
+    });
+
+    return () => cleanups.forEach((fn) => fn());
+  }, [text, maxPx, minPx]);
+
+  return {
+    containerRef,
+    measureRef,
+    fontSize: sizing.fontSize,
+    letterSpacing: sizing.letterSpacing,
+  };
 }
 
 interface SimCI {
@@ -187,6 +265,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [hasPersonalCpaModel, simCI, h]);
 
   const currentCPA = personalCPA ?? rawCPA;
+  const E2_DOSE_MAX_FONT_PX = 38;
 
   const currentCPACI = useMemo(() => {
     if (!hasPersonalCpaModel) return null;
@@ -252,10 +331,10 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [lastE2Dose, t]);
 
   // Auto-fit the dose font to whatever container width is currently available.
-  // Max 52 px on desktop / large devices; min 14 px so it's always readable.
-  const { containerRef: e2DoseRef, fontSize: e2DoseFontSize, letterSpacing: e2DoseLetterSpacing } = useAutoFitFontSize(
+  // Keep it visually balanced instead of forcing it to fill the card.
+  const { containerRef: e2DoseRef, measureRef: e2MeasureRef, fontSize: e2DoseFontSize, letterSpacing: e2DoseLetterSpacing } = useAutoFitFontSize(
     lastE2DoseStr,
-    52,
+    E2_DOSE_MAX_FONT_PX,
     14,
   );
 
@@ -575,11 +654,38 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               {/* Body: dose number — auto-fits to container width, always one line */}
               {lastE2Dose ? (
                 <div className="flex flex-col mt-3 md:mt-4 md:flex-1 md:justify-center min-w-0">
-                  <div ref={e2DoseRef} className="w-full min-w-0">
-                    <p className="font-black font-mono leading-none whitespace-nowrap"
-                      style={{ color: 'var(--text-primary)', fontSize: `${e2DoseFontSize}px`, letterSpacing: `${e2DoseLetterSpacing}px` }}>
+                  <div ref={e2DoseRef} className="w-full min-w-0 relative">
+                    <p className="font-extrabold font-mono leading-none whitespace-nowrap"
+                      aria-label={lastE2DoseStr}
+                      style={{ color: 'var(--text-secondary)', fontSize: `${e2DoseFontSize}px`, letterSpacing: `${e2DoseLetterSpacing}px` }}>
                       {lastE2DoseStr}
                     </p>
+                    {/* Invisible measuring sibling at maxPx: the hook reads its
+                        offsetWidth so the natural width matches what the DOM
+                        would actually render — canvas measureText diverges
+                        from the real font stack on some devices, which caused
+                        the responsive sizing to fail on route remount. */}
+                    <span
+                      ref={e2MeasureRef}
+                      aria-hidden
+                      className="font-extrabold font-mono whitespace-nowrap"
+                      style={{
+                        position: 'absolute',
+                        display: 'inline-block',
+                        left: 0,
+                        top: 0,
+                        width: 'max-content',
+                        maxWidth: 'none',
+                        visibility: 'hidden',
+                        pointerEvents: 'none',
+                        fontSize: `${E2_DOSE_MAX_FONT_PX}px`,
+                        letterSpacing: 'normal',
+                        lineHeight: 1,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {lastE2DoseStr}
+                    </span>
                   </div>
                   <p className="text-[10px] md:text-xs font-mono mt-1.5 md:mt-2 whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
                     {lastE2Dose.route === Route.patchApply
