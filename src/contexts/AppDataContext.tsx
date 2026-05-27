@@ -100,6 +100,13 @@ function savePersonalModel(state: PersonalModelState | null) {
 }
 
 export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    // Set inside the useState initializer below when initial-load migration
+    // backfills weights for the first time. A useEffect later dispatches the
+    // user-facing toast — using a ref + effect (rather than setTimeout(0))
+    // guarantees the dispatch happens AFTER MainLayout's listener registers,
+    // so the toast cannot be lost to a race.
+    const justMigratedRef = useRef(false);
+
     const [events, setEvents] = useState<DoseEvent[]>(() => {
         const saved = localStorage.getItem('hrt-events');
         const parsed: DoseEvent[] = saved ? JSON.parse(saved) : [];
@@ -112,15 +119,22 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             localStorage.setItem('hrt-events', JSON.stringify(migrated));
             if (!localStorage.getItem(WEIGHT_MIGRATION_FLAG)) {
                 localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
-                // Defer dispatch until after the provider mounts so listeners exist.
-                setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
-                }, 0);
+                justMigratedRef.current = true;
             }
             return migrated;
         }
         return parsed;
     });
+
+    // Fire the migration toast once after mount when initial-load migration
+    // happened this session. Effect runs after children mount, so MainLayout's
+    // listener is already attached.
+    useEffect(() => {
+        if (justMigratedRef.current) {
+            justMigratedRef.current = false;
+            window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
+        }
+    }, []);
 
     const [labResults, setLabResults] = useState<LabResult[]>(() => {
         const saved = localStorage.getItem('hrt-lab-results');
@@ -246,6 +260,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                     const legacyRaw = localStorage.getItem(LEGACY_WEIGHT_KEY);
                     const legacyW = legacyRaw ? parseFloat(legacyRaw) : DEFAULT_WEIGHT_KG;
                     const migrated = backfillEventWeights(parsed, legacyW);
+                    // First time we see legacy events (cloud sync / cross-tab):
+                    // set the flag and announce the migration so the user knows
+                    // why their data was rewritten. The listener (MainLayout)
+                    // is always mounted by the time storage events fire.
+                    if (!localStorage.getItem(WEIGHT_MIGRATION_FLAG)) {
+                        localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
+                        window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
+                    }
                     setEvents(migrated);
                 } else {
                     setEvents(parsed);
