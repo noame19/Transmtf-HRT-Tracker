@@ -411,12 +411,35 @@ class PrecomputedEventModel {
 }
 
 /**
+ * Body weight in kg at simulation time `t`, derived from per-event weight as a
+ * step function. The earliest dose's weight is extended backward so points
+ * before the first event still get a meaningful Vd. When multiple events share
+ * the same `timeH`, the LAST one (most-recently-added under stable sort) wins
+ * — this yields a single deterministic value across the whole `t` axis,
+ * including the boundary `t === sortedEvents[0].timeH`. Assumes `sortedEvents`
+ * is already sorted ascending by `timeH`.
+ */
+export function weightAtTimeH(sortedEvents: DoseEvent[], t: number): number {
+    if (sortedEvents.length === 0) return 70;
+    let result = sortedEvents[0].weightKG;
+    for (let i = 0; i < sortedEvents.length; i++) {
+        if (sortedEvents[i].timeH <= t) {
+            result = sortedEvents[i].weightKG;
+        } else {
+            break;
+        }
+    }
+    return result;
+}
+
+/**
  * Main deterministic population simulation engine.
  *
- * This function is kept pure: it only depends on the recorded events and body
- * weight, which makes it a stable foundation for later calibration layers.
+ * This function is kept pure: it only depends on the recorded events (each of
+ * which carries its own body weight), which makes it a stable foundation for
+ * later calibration layers.
  */
-export function runSimulation(events: DoseEvent[], bodyWeightKG: number): SimulationResult | null {
+export function runSimulation(events: DoseEvent[]): SimulationResult | null {
     if (events.length === 0) return null;
 
     const sortedEvents = [...events].sort((a, b) => a.timeH - b.timeH);
@@ -436,9 +459,6 @@ export function runSimulation(events: DoseEvent[], bodyWeightKG: number): Simula
         : routes.has(Route.gel) ? 1.0
         : 2.0;
     const steps = Math.max(1000, Math.ceil((endTime - startTime) / maxStepH) + 1);
-
-    const plasmaVolumeML_E2 = CorePK.vdPerKG * bodyWeightKG * 1000;
-    const plasmaVolumeML_CPA = CPA_2COMP_PK.V1_per_kg * bodyWeightKG * 1000;
 
     const timeH: number[] = [];
     const concPGmL: number[] = [];
@@ -461,6 +481,10 @@ export function runSimulation(events: DoseEvent[], bodyWeightKG: number): Simula
                 totalAmountMG_E2 += amount;
             }
         }
+
+        const bodyWeightKG = weightAtTimeH(sortedEvents, t);
+        const plasmaVolumeML_E2 = CorePK.vdPerKG * bodyWeightKG * 1000;
+        const plasmaVolumeML_CPA = CPA_2COMP_PK.V1_per_kg * bodyWeightKG * 1000;
 
         const currentConc_E2 = (totalAmountMG_E2 * 1e9) / plasmaVolumeML_E2;
         const currentConc_CPA = (totalAmountMG_CPA * 1e6) / plasmaVolumeML_CPA;

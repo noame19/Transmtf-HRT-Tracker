@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
+import { useAppData } from '../contexts/AppDataContext';
+import { prefillWeightKG } from '../utils/weight';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
 import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor } from '../../logic';
@@ -73,16 +75,17 @@ export interface DoseFormModalProps {
 const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
+    const { events: allEvents } = useAppData();
     const dateInputRef = useRef<HTMLInputElement>(null);
-    
+
     // Form State
     const [dateStr, setDateStr] = useState("");
     const [route, setRoute] = useState<Route>(Route.injection);
     const [ester, setEster] = useState<Ester>(Ester.EV);
-    
+
     const [rawDose, setRawDose] = useState("");
     const [e2Dose, setE2Dose] = useState("");
-    
+
     const [patchMode, setPatchMode] = useState<"dose" | "rate">("dose");
     const [patchRate, setPatchRate] = useState("");
 
@@ -92,6 +95,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const [useCustomTheta, setUseCustomTheta] = useState(false);
     const [customTheta, setCustomTheta] = useState("");
     const [lastEditedField, setLastEditedField] = useState<'raw' | 'bio'>('bio');
+    const [weightStr, setWeightStr] = useState("");
 
     const slExtras = useMemo(() => {
         if (route !== Route.sublingual) return null;
@@ -158,6 +162,8 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     setGelSite(0);
                 }
 
+                setWeightStr((eventToEdit.weightKG ?? prefillWeightKG(allEvents)).toString());
+
             } else {
                 const now = new Date();
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
@@ -179,6 +185,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                         setUseCustomTheta(tpl.useCustomTheta);
                         setCustomTheta(tpl.customTheta);
                         setLastEditedField('raw');
+                        setWeightStr(prefillWeightKG(allEvents).toString());
                         return;
                     }
                 } catch { /* ignore */ }
@@ -194,6 +201,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 setUseCustomTheta(false);
                 setCustomTheta("");
                 setLastEditedField('bio');
+                setWeightStr(prefillWeightKG(allEvents).toString());
             }
         }
     }, [isOpen, eventToEdit]);
@@ -362,12 +370,18 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             extras[ExtraKey.gelSite] = gelSite;
         }
 
+        const parsedWeight = parseFloat(weightStr);
+        const weightKG = (Number.isFinite(parsedWeight) && parsedWeight > 0)
+            ? parsedWeight
+            : prefillWeightKG(allEvents);
+
         const newEvent: DoseEvent = {
             id: eventToEdit?.id || uuidv4(),
             route,
             ester: effectiveEster,
             timeH,
             doseMG: finalDose,
+            weightKG,
             extras
         };
 
@@ -521,6 +535,26 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                             >
                                 <Calendar size={18} />
                             </button>
+                        </div>
+                    </div>
+
+                    {/* Body weight */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.weight')}</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                inputMode="decimal"
+                                min="20"
+                                max="300"
+                                step="0.1"
+                                value={weightStr}
+                                onChange={e => setWeightStr(e.target.value)}
+                                className="flex-1 p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                placeholder="70"
+                            />
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-tertiary)' }}>{t('field.weight_unit')}</span>
                         </div>
                     </div>
 

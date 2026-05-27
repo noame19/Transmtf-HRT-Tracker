@@ -6,6 +6,7 @@ import {
     compute2CompCPACentralAmount,
     _analytic3C,
     oneCompAmount,
+    weightAtTimeH,
 } from './pk';
 import {
     convertToPgMl,
@@ -174,7 +175,6 @@ function computeCPAAmountWithAdherence(
  */
 export function computeCPAAtTimeWithTheta(
     events: DoseEvent[],
-    weight: number,
     timeH: number,
     theta: [number, number]
 ): number {
@@ -185,6 +185,7 @@ export function computeCPAAtTimeWithTheta(
         if (event.timeH > timeH) continue;
         totalCentralMG += computeCPAAmountWithAdherence(event, timeH - event.timeH, adherence);
     }
+    const weight = weightAtTimeH(sorted, timeH);
     const v1mL = CPA_2COMP_PK.V1_per_kg * weight * 1000;
     return Math.max(0, (totalCentralMG * 1e6) / v1mL);
 }
@@ -195,7 +196,6 @@ export function computeCPAAtTimeWithTheta(
  */
 export function computeE2AtTimeWithTheta(
     events: DoseEvent[],
-    weight: number,
     timeH: number,
     theta: [number, number]
 ): number {
@@ -209,6 +209,7 @@ export function computeE2AtTimeWithTheta(
         totalMG += computeEventAmountWithKScale(event, sorted, timeH - event.timeH, kScale);
     }
 
+    const weight = weightAtTimeH(sorted, timeH);
     const plasmaVolML = CorePK.vdPerKG * weight * 1000;
     return Math.max(0, (totalMG * 1e9) / plasmaVolML * s);
 }
@@ -219,7 +220,6 @@ export function computeE2AtTimeWithTheta(
  */
 export function ekfUpdatePersonalModel(
     events: DoseEvent[],
-    weight: number,
     state: PersonalModelState,
     labResult: LabResult,
     prevLabTimeH?: number
@@ -242,7 +242,7 @@ export function ekfUpdatePersonalModel(
         [state.thetaCov[1][0] + state.Q[1][0] * qScale, state.thetaCov[1][1] + state.Q[1][1] * qScale],
     ];
 
-    const predPGmL = computeE2AtTimeWithTheta(events, weight, labResult.timeH, theta);
+    const predPGmL = computeE2AtTimeWithTheta(events, labResult.timeH, theta);
     const yhat = Math.log(Math.max(predPGmL, EKF_EPS));
 
     if (!hasDoseBeforeLab) {
@@ -284,7 +284,7 @@ export function ekfUpdatePersonalModel(
     }
 
     const thetaKPerturbed: [number, number] = [theta[0], theta[1] + EKF_DELTA_K];
-    const predPerturbed = computeE2AtTimeWithTheta(events, weight, labResult.timeH, thetaKPerturbed);
+    const predPerturbed = computeE2AtTimeWithTheta(events, labResult.timeH, thetaKPerturbed);
     const yhatPerturbed = Math.log(Math.max(predPerturbed, EKF_EPS));
     const H: [number, number] = [1.0, (yhatPerturbed - yhat) / EKF_DELTA_K];
 
@@ -326,7 +326,7 @@ export function ekfUpdatePersonalModel(
     PNew[0][0] = Math.max(PNew[0][0], 1e-6);
     PNew[1][1] = Math.max(PNew[1][1], 1e-6);
 
-    const newPredPGmL = computeE2AtTimeWithTheta(events, weight, labResult.timeH, thetaNew);
+    const newPredPGmL = computeE2AtTimeWithTheta(events, labResult.timeH, thetaNew);
     // Use the baseline-subtracted observation for the residual anchor so that
     // the anchor only captures drug-model mismatch, not endogenous E2.
     const logRatioPost = Math.log(obsDrugPGmL) - Math.log(Math.max(newPredPGmL, EKF_EPS));
@@ -389,14 +389,13 @@ export function ekfUpdatePersonalModel(
  */
 export function replayPersonalModel(
     events: DoseEvent[],
-    weight: number,
     labResults: LabResult[]
 ): PersonalModelState {
     let state = initPersonalModel();
     const sorted = [...labResults].sort((a, b) => a.timeH - b.timeH);
     for (let i = 0; i < sorted.length; i++) {
         const prevTimeH = i > 0 ? sorted[i - 1].timeH : undefined;
-        const { newState } = ekfUpdatePersonalModel(events, weight, state, sorted[i], prevTimeH);
+        const { newState } = ekfUpdatePersonalModel(events, state, sorted[i], prevTimeH);
         state = newState;
     }
     return state;
@@ -425,7 +424,6 @@ export function computeCPAE2InhibitionFactor(
 export function computeSimulationWithCI(
     sim: SimulationResult,
     events: DoseEvent[],
-    weight: number,
     state: PersonalModelState,
     applyE2LearningToCPA: boolean = true,
     labResults: LabResult[] = [],
@@ -519,10 +517,10 @@ export function computeSimulationWithCI(
 
         for (const idx of ekfIndices) {
             const timeH = sim.timeH[idx];
-            const e2Base = computeE2AtTimeWithTheta(events, weight, timeH, theta);
+            const e2Base = computeE2AtTimeWithTheta(events, timeH, theta);
             const yhat = Math.log(Math.max(e2Base, EKF_EPS));
             const thetaKPlus: [number, number] = [theta[0], theta[1] + EKF_DELTA_K];
-            const yhatPlus = Math.log(Math.max(computeE2AtTimeWithTheta(events, weight, timeH, thetaKPlus), EKF_EPS));
+            const yhatPlus = Math.log(Math.max(computeE2AtTimeWithTheta(events, timeH, thetaKPlus), EKF_EPS));
             const H1 = (yhatPlus - yhat) / EKF_DELTA_K;
             const rawSigma2Param = P[0][0] + 2 * H1 * P[0][1] + H1 * H1 * P[1][1];
             const sigma2Param = Number.isFinite(rawSigma2Param) && rawSigma2Param > 0 ? rawSigma2Param : 0;

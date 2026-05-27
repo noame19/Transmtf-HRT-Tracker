@@ -6,24 +6,21 @@ import OverviewView from '../views/OverviewView';
 
 interface OutletContext {
     onEditEvent: (event: DoseEvent) => void;
-    onOpenWeightModal: () => void;
 }
 
 const OverviewPage: React.FC = () => {
-    const { onEditEvent, onOpenWeightModal } = useOutletContext<OutletContext>();
-    const { events, weight, labResults, simulation, currentTime, simCI, baselineE2PGmL } = useAppData();
+    const { onEditEvent } = useOutletContext<OutletContext>();
+    const { events, labResults, simulation, currentTime, simCI, baselineE2PGmL } = useAppData();
 
     return (
         <OverviewView
             events={events}
-            weight={weight}
             labResults={labResults}
             simulation={simulation}
             currentTime={currentTime}
             simCI={simCI}
             baselineE2PGmL={baselineE2PGmL}
             onEditEvent={onEditEvent}
-            onOpenWeightModal={onOpenWeightModal}
         />
     );
 };

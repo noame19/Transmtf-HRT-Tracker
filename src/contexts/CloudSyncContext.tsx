@@ -3,6 +3,7 @@ import apiClient from '../api/client';
 import { useAuth } from './AuthContext';
 import { useSecurityPassword } from './SecurityPasswordContext';
 import { computeDataHash } from '../utils/dataHash';
+import { DEFAULT_WEIGHT_KG } from '../utils/weight';
 import { isLogoutInProgress } from '../utils/authSessionState';
 import type { ConflictState, FieldDiff } from '../components/SyncConflictModal';
 
@@ -107,7 +108,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const storedLastModified = localStorage.getItem('hrt-last-modified');
     const storedLastDataUpdated = localStorage.getItem(LAST_DATA_UPDATED_KEY);
     const parsedEvents = events ? JSON.parse(events) : [];
-    const parsedWeight = weight ? parseFloat(weight) : 60;
+    const parsedWeight = weight ? parseFloat(weight) : DEFAULT_WEIGHT_KG;
     const parsedLabResults = labResults ? JSON.parse(labResults) : [];
     const resolvedLang = lang || 'en';
     const applyE2LearningToCPA = applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true';

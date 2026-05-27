@@ -27,6 +27,14 @@ export const TRANSLATIONS_BASE = {
         "status.estimate": "当前估算血药浓度",
         "status.weight": "体重",
 
+        "overview.total_doses": "总用药次数",
+        "overview.last_cpa": "上次醋酸环丙孕酮",
+        "overview.last_e2": "上次雌二醇",
+        "overview.just_now": "刚刚",
+        "overview.min_ago": "{n} 分钟前",
+        "overview.hour_ago": "{n} 小时前",
+        "overview.day_ago": "{n} 天前",
+        "overview.patch_applied_at": "贴上 {time}",
         "status.level.male": "男性参考范围",
         "status.level.mtf": "非针剂女性向 GAHT 目标",
         "status.level.follicular": "女性卵泡期",
@@ -124,12 +132,15 @@ export const TRANSLATIONS_BASE = {
 
         "modal.weight.title": "设置体重",
         "modal.weight.desc": "用于估算峰值浓度。",
+        "migration.per_dose_weight": "体重设置已升级为按用药记录独立保存。原有体重已自动迁移到每一条历史记录上。导出 JSON 仍会保留通用体重字段以便其他版本读取，但导入到不支持此功能的版本时，每条独立体重信息可能会丢失。",
         "modal.dose.add_title": "新增用药记录",
         "modal.dose.edit_title": "编辑用药记录",
 
         "field.time": "给药时间",
         "field.route": "给药途径",
         "field.ester": "药物类型",
+        "field.weight": "体重",
+        "field.weight_unit": "kg",
         "field.dose_raw": "药物剂量 (mg)",
         "field.dose_e2": "等效 E2 (mg)",
         "field.patch_mode": "输入模式",
@@ -169,6 +180,7 @@ export const TRANSLATIONS_BASE = {
         "batch.title": "批量添加",
         "batch.start_date": "开始日期",
         "batch.end_date": "结束日期",
+        "batch.weight_label": "体重 (kg)",
         "batch.interval": "间隔天数",
         "batch.times_per_day": "每日次数",
         "batch.time_slot": "时间",
@@ -441,6 +453,7 @@ export const TRANSLATIONS_BASE = {
         "shares.error": "错误",
         "shares.sharedData": "分享的 HRT 追踪数据",
         "shares.events": "条记录",
+        "shares.latest_weight": "最近体重 {w} kg",
         "shares.disclaimer": "这是只读的分享数据。所有数据属于原始用户。",
 
         // Share types
@@ -680,6 +693,15 @@ export const TRANSLATIONS_BASE = {
         "status.estimate": "Current Estimated Level",
         "status.weight": "Weight",
 
+        "overview.total_doses": "Total Doses",
+        "overview.last_cpa": "Last CPA",
+        "overview.last_e2": "Last Estradiol",
+        "overview.just_now": "just now",
+        "overview.min_ago": "{n}m ago",
+        "overview.hour_ago": "{n}h ago",
+        "overview.day_ago": "{n}d ago",
+        "overview.patch_applied_at": "applied {time}",
+
         "status.level.male": "Male Reference Range",
         "status.level.mtf": "GAHT target range",
         "status.level.follicular": "Female Follicular Phase",
@@ -777,12 +799,15 @@ export const TRANSLATIONS_BASE = {
 
         "modal.weight.title": "Body Weight",
         "modal.weight.desc": "Used in peak concentration estimates.",
+        "migration.per_dose_weight": "Body weight is now tracked per dose entry. Your existing weight has been migrated onto every historical record. Exports keep a top-level weight field for cross-version compatibility, but importing into older clients may drop the per-entry weights.",
         "modal.dose.add_title": "Add Dose",
         "modal.dose.edit_title": "Edit Dose",
 
         "field.time": "Time",
         "field.route": "Route",
         "field.ester": "Compound",
+        "field.weight": "Body Weight",
+        "field.weight_unit": "kg",
         "field.dose_raw": "Dose (mg)",
         "field.dose_e2": "E2 Equivalent (mg)",
         "field.patch_mode": "Input Mode",
@@ -822,6 +847,7 @@ export const TRANSLATIONS_BASE = {
         "batch.title": "Batch Add",
         "batch.start_date": "Start Date",
         "batch.end_date": "End Date",
+        "batch.weight_label": "Weight (kg)",
         "batch.interval": "Every N Days",
         "batch.times_per_day": "Times per Day",
         "batch.time_slot": "Time",
@@ -1094,6 +1120,7 @@ export const TRANSLATIONS_BASE = {
         "shares.error": "Error",
         "shares.sharedData": "Shared HRT Tracking Data",
         "shares.events": "events",
+        "shares.latest_weight": "latest weight {w} kg",
         "shares.disclaimer": "This is read-only shared data. All data belongs to the original user.",
 
         // Share types

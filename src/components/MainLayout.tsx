@@ -5,11 +5,10 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { API_ORIGIN } from '../api/config';
-import { useAppData } from '../contexts/AppDataContext';
+import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { DoseEvent, LabResult } from '../../logic';
 
-import WeightEditorModal from './WeightEditorModal';
 import DoseFormModal from './DoseFormModal';
 import BatchDoseModal from './BatchDoseModal';
 import LabResultModal from './LabResultModal';
@@ -22,9 +21,8 @@ const MainLayout: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated, user } = useAuth();
-    const { events, setEvents, weight, setWeight, labResults, setLabResults, currentTime } = useAppData();
+    const { events, setEvents, labResults, setLabResults, currentTime } = useAppData();
 
-    const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
     const [isLabModalOpen, setIsLabModalOpen] = useState(false);
@@ -57,10 +55,18 @@ const MainLayout: React.FC = () => {
     };
 
     useEffect(() => {
-        const shouldLock = isWeightModalOpen || isFormOpen || isLabModalOpen || isBatchOpen;
+        const handler = () => {
+            showDialog('alert', t('migration.per_dose_weight'));
+        };
+        window.addEventListener(PER_DOSE_WEIGHT_MIGRATION_EVENT, handler);
+        return () => window.removeEventListener(PER_DOSE_WEIGHT_MIGRATION_EVENT, handler);
+    }, [showDialog, t]);
+
+    useEffect(() => {
+        const shouldLock = isFormOpen || isLabModalOpen || isBatchOpen;
         document.body.style.overflow = shouldLock ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
-    }, [isWeightModalOpen, isFormOpen, isLabModalOpen, isBatchOpen]);
+    }, [isFormOpen, isLabModalOpen, isBatchOpen]);
 
     useEffect(() => {
         const el = mainScrollRef.current;
@@ -204,7 +210,6 @@ const MainLayout: React.FC = () => {
                 >
                     <Outlet context={{
                         onEditEvent: handleEditEvent,
-                        onOpenWeightModal: () => setIsWeightModalOpen(true),
                         onAddEvent: handleAddEvent,
                         onBatchAdd: () => setIsBatchOpen(true),
                         onAddLabResult: handleAddLabResult,
@@ -268,12 +273,6 @@ const MainLayout: React.FC = () => {
             `}</style>
 
             {/* ── Modals ── */}
-            <WeightEditorModal
-                isOpen={isWeightModalOpen}
-                onClose={() => setIsWeightModalOpen(false)}
-                currentWeight={weight}
-                onSave={setWeight}
-            />
             <DoseFormModal
                 isOpen={isFormOpen}
                 onClose={() => setIsFormOpen(false)}

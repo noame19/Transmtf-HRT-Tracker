@@ -760,7 +760,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                 </div>
             </div>
 
-            <div className="h-64 md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
+            <div className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 0, left: 10 }}>
                         <defs>

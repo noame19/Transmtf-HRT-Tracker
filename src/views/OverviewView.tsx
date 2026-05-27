@@ -1,16 +1,85 @@
-import React, { useMemo, useState } from 'react';
-import { Activity, Settings, Info, Camera } from 'lucide-react';
+import React, { useMemo, useState, useRef, useLayoutEffect } from 'react';
+import { Activity, Info, Camera, Syringe, Pill, Droplet, Sticker } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
 import ShareImageModal from '../components/ShareImageModal';
-import { DoseEvent, SimulationResult, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
+import { formatTime } from '../utils/helpers';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
 function hexToRgb(hex: string): string {
   const h = hex.replace('#', '');
   const n = parseInt(h, 16);
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+/**
+ * Auto-fit font size: measures the container's available width and the text's
+ * natural width at `maxPx`, then linearly scales down so the text always fits
+ * on one line without truncation. If the scaled size would fall below `minPx`,
+ * the font is clamped to `minPx` and a negative letter-spacing is applied as a
+ * secondary strategy so the text still fits horizontally without ellipsis or
+ * wrapping. Re-runs on container resize.
+ */
+function useAutoFitFontSize(
+  text: string,
+  maxPx: number,
+  minPx: number,
+  fontWeight: number | string = 900,
+  fontFamily: string = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+): { containerRef: React.RefObject<HTMLDivElement>; fontSize: number; letterSpacing: number } {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [sizing, setSizing] = useState<{ fontSize: number; letterSpacing: number }>(
+    { fontSize: maxPx, letterSpacing: 0 },
+  );
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const measure = () => {
+      if (!ctx) return;
+      const containerWidth = el.clientWidth;
+      if (containerWidth <= 0 || text.length === 0) {
+        setSizing({ fontSize: maxPx, letterSpacing: 0 });
+        return;
+      }
+      ctx.font = `${fontWeight} ${maxPx}px ${fontFamily}`;
+      const naturalWidth = ctx.measureText(text).width;
+      if (naturalWidth <= containerWidth) {
+        setSizing({ fontSize: maxPx, letterSpacing: 0 });
+        return;
+      }
+      // Linear scale-down with 2% safety margin for browser sub-pixel rounding.
+      const scaled = Math.floor(maxPx * (containerWidth / naturalWidth) * 0.98);
+      if (scaled >= minPx) {
+        setSizing({ fontSize: scaled, letterSpacing: 0 });
+        return;
+      }
+      // Floor on font size: clamp to minPx and tighten letter-spacing across
+      // the remaining gaps until the text fits. Keeps the dose line readable
+      // (no ellipsis, no wrap) even on pathologically narrow containers.
+      ctx.font = `${fontWeight} ${minPx}px ${fontFamily}`;
+      const widthAtMin = ctx.measureText(text).width;
+      const overshoot = widthAtMin - containerWidth;
+      const gaps = Math.max(1, text.length - 1);
+      const tightening = overshoot > 0 ? -(overshoot / gaps) - 0.1 : 0;
+      setSizing({ fontSize: minPx, letterSpacing: tightening });
+    };
+
+    measure();
+    // Guard for older WebViews / browsers that predate ResizeObserver. The
+    // hook falls back to a one-shot measurement in that case.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, maxPx, minPx, fontWeight, fontFamily]);
+
+  return { containerRef, fontSize: sizing.fontSize, letterSpacing: sizing.letterSpacing };
 }
 
 interface SimCI {
@@ -27,14 +96,12 @@ interface SimCI {
 
 interface OverviewViewProps {
   events: DoseEvent[];
-  weight: number;
   labResults: LabResult[];
   simulation: SimulationResult | null;
   currentTime: Date;
   simCI?: SimCI | null;
   baselineE2PGmL?: number | null;
   onEditEvent: (event: DoseEvent) => void;
-  onOpenWeightModal: () => void;
 }
 
 function interpAt(timeH: number[], values: number[], h: number): number {
@@ -55,14 +122,12 @@ function interpAt(timeH: number[], values: number[], h: number): number {
 
 const OverviewView: React.FC<OverviewViewProps> = ({
   events,
-  weight,
   labResults,
   simulation,
   currentTime,
   simCI,
   baselineE2PGmL,
   onEditEvent,
-  onOpenWeightModal,
 }) => {
   const { t, lang } = useTranslation();
   const { isDark, colors } = useTheme();
@@ -143,6 +208,74 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return null;
   }, [hasPersonalModel, simCI, h]);
 
+  // Latest CPA dose (any route, ester = CPA). Skips events scheduled in the
+  // future so a batch-imported plan or a manually post-dated entry doesn't
+  // pretend to be "the last dose" on the homepage.
+  const lastCPADose = useMemo<DoseEvent | null>(() => {
+    let latest: DoseEvent | null = null;
+    for (const ev of events) {
+      if (ev.ester !== Ester.CPA) continue;
+      if (ev.timeH > h) continue;
+      if (!latest || ev.timeH > latest.timeH) latest = ev;
+    }
+    return latest;
+  }, [events, h]);
+
+  // Latest non-oral estradiol dose (injection / sublingual / gel / patch
+  // apply). Patch-remove events are excluded because they represent removal,
+  // not an administration the user would think of as "the last dose". Future
+  // events are also excluded (see lastCPADose).
+  const lastE2Dose = useMemo<DoseEvent | null>(() => {
+    let latest: DoseEvent | null = null;
+    for (const ev of events) {
+      if (ev.ester === Ester.CPA) continue;
+      if (ev.route === Route.oral) continue;
+      if (ev.route === Route.patchRemove) continue;
+      if (ev.timeH > h) continue;
+      if (!latest || ev.timeH > latest.timeH) latest = ev;
+    }
+    return latest;
+  }, [events, h]);
+
+  // Pre-format the E2 dose display string. Font size is computed dynamically
+  // via useAutoFitFontSize below so the dose + ester abbreviation stays on a
+  // single line regardless of breakpoint or string length.
+  const lastE2DoseStr = useMemo<string>(() => {
+    if (!lastE2Dose) return '';
+    const rate = lastE2Dose.extras?.[ExtraKey.releaseRateUGPerDay];
+    if (lastE2Dose.route === Route.patchApply && rate) {
+      return `${rate} µg/d`;
+    }
+    const digits = lastE2Dose.doseMG >= 10 ? 1 : 2;
+    if (lastE2Dose.ester === Ester.E2) return `${lastE2Dose.doseMG.toFixed(digits)} mg`;
+    return `${lastE2Dose.doseMG.toFixed(digits)} mg ${t(`ester.${lastE2Dose.ester}`)}`;
+  }, [lastE2Dose, t]);
+
+  // Auto-fit the dose font to whatever container width is currently available.
+  // Max 52 px on desktop / large devices; min 14 px so it's always readable.
+  const { containerRef: e2DoseRef, fontSize: e2DoseFontSize, letterSpacing: e2DoseLetterSpacing } = useAutoFitFontSize(
+    lastE2DoseStr,
+    52,
+    14,
+  );
+
+  // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
+  // when older than ~30 days so old-record context stays readable.
+  const formatTimeAgo = (eventTimeH: number): string => {
+    const nowMs = currentTime.getTime();
+    const evMs = eventTimeH * 3600000;
+    const diffMin = Math.max(0, (nowMs - evMs) / 60000);
+    if (diffMin < 1) return t('overview.just_now');
+    if (diffMin < 60) return t('overview.min_ago').replace('{n}', String(Math.floor(diffMin)));
+    const diffH = diffMin / 60;
+    if (diffH < 24) return t('overview.hour_ago').replace('{n}', String(Math.floor(diffH)));
+    const diffD = diffH / 24;
+    if (diffD < 30) return t('overview.day_ago').replace('{n}', String(Math.floor(diffD)));
+    const d = new Date(evMs);
+    return d.toLocaleDateString(lang === 'zh' ? 'zh-CN' : lang === 'zh-TW' ? 'zh-TW' : lang === 'ja' ? 'ja-JP' : 'en-US',
+      { month: 'short', day: 'numeric' });
+  };
+
   const getLevelStatus = (conc: number) => {
     if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--accent-50)', border: 'var(--accent-200)' };
     if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(5,150,105,0.15)' : '#ecfdf5', border: isDark ? 'rgba(5,150,105,0.3)' : '#a7f3d0' };
@@ -162,10 +295,10 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <>
-      <header className="relative px-4 md:px-8 pt-6 pb-4">
-        <div className="grid md:grid-cols-3 gap-3 md:gap-4">
+      <header className="relative px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+        <div className="grid md:grid-cols-3 gap-2.5 md:gap-4 md:items-stretch">
           {/* Main level card */}
-          <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-5 py-5 relative overflow-hidden"
+          <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
             style={{
               background: isDark
                 ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
@@ -356,38 +489,141 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           {/* Side cards */}
-          <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-            <div className="flex items-center gap-3 p-4 glass-card card-lift-glass">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center border"
-                style={{
-                  background: 'var(--accent-50)',
-                  borderColor: 'var(--accent-200)',
-                }}>
-                <Activity size={18} style={{ color: 'var(--accent-500)' }} />
+          <div className="flex flex-col gap-3 md:h-full">
+
+            {/* Row 1: total dose count + last CPA (compact, paired) */}
+            <div className="grid grid-cols-2 gap-3">
+
+              {/* Total dose count */}
+              <div className="flex items-center gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--accent-50)', borderColor: 'var(--accent-200)' }}>
+                  <Activity size={16} style={{ color: 'var(--accent-500)' }} />
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.total_doses')}
+                  </p>
+                  <p className="text-lg md:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {events.length || 0}
+                  </p>
+                </div>
               </div>
-              <div className="leading-tight">
-                <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('timeline.title')}</p>
-                <p className="text-lg md:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{events.length || 0}</p>
+
+              {/* Last CPA dose */}
+              <div className="flex items-start gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  <Pill size={16} style={{ color: '#3b82f6' }} />
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.last_cpa')}
+                  </p>
+                  {lastCPADose ? (
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                      <p className="text-sm md:text-base font-bold font-mono truncate" style={{ color: 'var(--text-primary)' }}>
+                        {`${lastCPADose.doseMG.toFixed(lastCPADose.doseMG >= 10 ? 0 : 1)} mg`}
+                      </p>
+                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {formatTimeAgo(lastCPADose.timeH)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                  )}
+                </div>
               </div>
+
             </div>
-            <button
-              onClick={onOpenWeightModal}
-              className="flex items-center gap-3 p-4 glass-card card-lift-glass btn-press-glass text-left"
-            >
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center border"
-                style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                <Settings size={18} style={{ color: 'var(--text-secondary)' }} />
+
+            {/* Last estradiol dose (non-oral) — full width, content redistributes when stretched on desktop */}
+            <div className="flex flex-col p-3 md:p-4 glass-card card-lift-glass md:flex-1 min-h-0">
+              {/* Top row: icon + label + route badge + time-ago */}
+              <div className="flex items-start gap-3 shrink-0">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  {lastE2Dose
+                    ? (
+                      lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
+                      : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
+                      : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
+                      : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
+                      : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                    )
+                    : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                  }
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.last_e2')}
+                  </p>
+                  {lastE2Dose && (
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-0.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--accent-50)', color: 'var(--accent-500)' }}>
+                        {t(`route.${lastE2Dose.route}`)}
+                      </span>
+                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {formatTimeAgo(lastE2Dose.timeH)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="leading-tight">
-                <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('status.weight')}</p>
-                <p className="text-lg md:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{weight} kg</p>
-              </div>
-            </button>
+
+              {/* Body: dose number — auto-fits to container width, always one line */}
+              {lastE2Dose ? (
+                <div className="flex flex-col mt-3 md:mt-4 md:flex-1 md:justify-center min-w-0">
+                  <div ref={e2DoseRef} className="w-full min-w-0">
+                    <p className="font-black font-mono leading-none whitespace-nowrap"
+                      style={{ color: 'var(--text-primary)', fontSize: `${e2DoseFontSize}px`, letterSpacing: `${e2DoseLetterSpacing}px` }}>
+                      {lastE2DoseStr}
+                    </p>
+                  </div>
+                  <p className="text-[10px] md:text-xs font-mono mt-1.5 md:mt-2 whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                    {lastE2Dose.route === Route.patchApply
+                      ? t('overview.patch_applied_at').replace('{time}', formatTime(new Date(lastE2Dose.timeH * 3600000)))
+                      : formatTime(new Date(lastE2Dose.timeH * 3600000))}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col mt-3 md:flex-1 md:justify-center">
+                  <p className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                </div>
+              )}
+
+              {/* Bottom-aligned extra info (sublingual hold time / θ).
+                  Priority mirrors DoseFormModal: if both fields exist on stale
+                  data, tier wins so the on-screen value matches what the edit
+                  form will display. */}
+              {lastE2Dose && lastE2Dose.route === Route.sublingual && (() => {
+                const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
+                const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
+                let extraText: string | null = null;
+                if (tierRaw !== undefined) {
+                  const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
+                  extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
+                } else if (theta !== undefined && Number.isFinite(theta)) {
+                  extraText = `θ ${theta.toFixed(2)}`;
+                }
+                if (!extraText) return null;
+                return (
+                  <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t shrink-0"
+                    style={{ borderColor: 'var(--border-secondary)' }}>
+                    <p className="text-[10px] md:text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
+                      {t('field.sl_duration')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{extraText}</span>
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+
           </div>
         </div>
       </header>
 
-      <main className="w-full px-4 py-6 rounded-t-3xl"
+      <main className="w-full px-3 md:px-4 py-4 md:py-6 rounded-t-3xl"
         style={{ background: 'var(--bg-card)' }}>
         <ResultChart
           sim={simulation}

@@ -6,6 +6,7 @@ import ResultChart from '../components/ResultChart';
 import PINInput from '../components/PINInput';
 import { Share2, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator } from '../../logic';
+import { backfillEventWeights, eventsNeedWeightMigration, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const ShareView: React.FC = () => {
   const { shareId } = useParams<{ shareId: string }>();
@@ -29,7 +30,10 @@ const ShareView: React.FC = () => {
 
   useEffect(() => {
     if (shareData) {
-      const sim = runSimulation(shareData.events, shareData.weight);
+      const events = eventsNeedWeightMigration(shareData.events)
+        ? backfillEventWeights(shareData.events, shareData.weight)
+        : shareData.events;
+      const sim = runSimulation(events);
       setSimulation(sim);
     }
   }, [shareData]);
@@ -46,7 +50,7 @@ const ShareView: React.FC = () => {
       setNeedsPassword(false);
       setShareData({
         events: response.data.data.events || [],
-        weight: response.data.data.weight || 60,
+        weight: response.data.data.weight || DEFAULT_WEIGHT_KG,
         labResults: response.data.data.labResults || [],
       });
     } else {
@@ -156,7 +160,7 @@ const ShareView: React.FC = () => {
                     {t('shares.sharedData') || 'Shared HRT Tracking Data'}
                   </h3>
                   <p className="text-sm text-gray-500">
-                    {shareData.events.length} {t('shares.events') || 'events'} · {shareData.weight} kg
+                    {shareData.events.length} {t('shares.events') || 'events'} · {(t('shares.latest_weight') || 'latest weight {w} kg').replace('{w}', String(shareData.weight))}
                   </p>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-pink-50 flex items-center justify-center">

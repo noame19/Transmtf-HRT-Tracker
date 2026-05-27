@@ -94,7 +94,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
                     </span>
                   </div>
                   <div className="text-xs font-medium space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="truncate">{t(`route.${ev.route}`)}</span>
                       {ev.extras[ExtraKey.releaseRateUGPerDay] && (
                         <>
@@ -102,6 +102,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
                           <span style={{ color: 'var(--text-primary)' }}>{`${ev.extras[ExtraKey.releaseRateUGPerDay]} µg/d`}</span>
                         </>
                       )}
+                      <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border ml-auto" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                        {`${ev.weightKG} ${t('field.weight_unit')}`}
+                      </span>
                     </div>
                     {ev.route !== RouteEnum.patchRemove && !ev.extras[ExtraKey.releaseRateUGPerDay] && (
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: 'var(--text-primary)' }}>

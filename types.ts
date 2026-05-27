@@ -67,6 +67,7 @@ export interface DoseEvent {
     timeH: number; // Hours since 1970
     doseMG: number; // Dose in mg (of the ester/compound), NOT E2-equivalent
     ester: Ester;
+    weightKG: number; // Body weight at time of administration, in kg
     extras: Partial<Record<ExtraKey, number>>;
 }
 

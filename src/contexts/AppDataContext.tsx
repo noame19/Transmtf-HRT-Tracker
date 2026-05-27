@@ -7,6 +7,7 @@ import {
     ekfUpdatePersonalModel,
 } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
+import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const PERSONAL_MODEL_KEY = 'hrt-personal-model';
 const APPLY_E2_LEARNING_TO_CPA_KEY = 'hrt-apply-e2-learning-to-cpa';
@@ -14,6 +15,10 @@ const CALIBRATION_MODEL_KEY = 'hrt-calibration-model';
 const APPLY_CPA_INHIBITION_TO_E2_KEY = 'hrt-apply-cpa-inhibition-to-e2';
 const THEME_COLOR_KEY = 'hrt-theme-color';
 const DARK_MODE_KEY = 'hrt-dark-mode';
+const WEIGHT_MIGRATION_FLAG = 'hrt-weight-per-dose-migrated';
+const LEGACY_WEIGHT_KEY = 'hrt-weight';
+
+export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
 interface SimCI {
     timeH: number[];
@@ -30,8 +35,6 @@ interface SimCI {
 interface AppDataContextType {
     events: DoseEvent[];
     setEvents: React.Dispatch<React.SetStateAction<DoseEvent[]>>;
-    weight: number;
-    setWeight: React.Dispatch<React.SetStateAction<number>>;
     labResults: LabResult[];
     setLabResults: React.Dispatch<React.SetStateAction<LabResult[]>>;
     simulation: SimulationResult | null;
@@ -99,12 +102,24 @@ function savePersonalModel(state: PersonalModelState | null) {
 export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [events, setEvents] = useState<DoseEvent[]>(() => {
         const saved = localStorage.getItem('hrt-events');
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const [weight, setWeight] = useState<number>(() => {
-        const saved = localStorage.getItem('hrt-weight');
-        return saved ? parseFloat(saved) : 70.0;
+        const parsed: DoseEvent[] = saved ? JSON.parse(saved) : [];
+        // One-shot per-dose-weight migration: backfill events that predate the
+        // schema change so every PK call has a real weight to work with.
+        if (eventsNeedWeightMigration(parsed)) {
+            const legacyRaw = localStorage.getItem(LEGACY_WEIGHT_KEY);
+            const legacyW = legacyRaw ? parseFloat(legacyRaw) : DEFAULT_WEIGHT_KG;
+            const migrated = backfillEventWeights(parsed, legacyW);
+            localStorage.setItem('hrt-events', JSON.stringify(migrated));
+            if (!localStorage.getItem(WEIGHT_MIGRATION_FLAG)) {
+                localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
+                // Defer dispatch until after the provider mounts so listeners exist.
+                setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
+                }, 0);
+            }
+            return migrated;
+        }
+        return parsed;
     });
 
     const [labResults, setLabResults] = useState<LabResult[]>(() => {
@@ -134,7 +149,6 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const suppressLocalUpdateRef = useRef({
         events: false,
-        weight: false,
         labResults: false,
         calibrationModel: false,
         applyE2LearningToCPA: false,
@@ -142,7 +156,6 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
     const isInitialLoadRef = useRef({
         events: true,
-        weight: true,
         labResults: true,
         calibrationModel: true,
         applyE2LearningToCPA: true,
@@ -172,13 +185,15 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     useEffect(() => {
         const value = JSON.stringify(events);
         localStorage.setItem('hrt-events', value);
+        // Legacy compat: keep top-level weight in sync with most recent event
+        // so older clients / cloud snapshots still see a meaningful value.
+        // Guard on events.length > 0 so a user who set a global weight before
+        // recording any doses doesn't lose it the first time this effect runs.
+        if (events.length > 0) {
+            localStorage.setItem(LEGACY_WEIGHT_KEY, latestEventWeight(events).toString());
+        }
         finalizeLocalUpdate('events', 'hrt-events');
     }, [events]);
-    useEffect(() => {
-        const value = weight.toString();
-        localStorage.setItem('hrt-weight', value);
-        finalizeLocalUpdate('weight', 'hrt-weight');
-    }, [weight]);
     useEffect(() => {
         const value = JSON.stringify(labResults);
         localStorage.setItem('hrt-lab-results', value);
@@ -202,9 +217,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
         const darkModeRaw = localStorage.getItem('hrt-dark-mode');
         const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
-        const hash = computeDataHash({ events, weight, labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode });
+        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode });
         localStorage.setItem('hrt-data-hash', hash);
-    }, [events, weight, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2]);
+    }, [events, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2]);
 
     // Update current time every minute
     useEffect(() => {
@@ -214,7 +229,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY];
+            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -226,15 +241,15 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                     markExternalUpdate('events');
                 }
                 const saved = localStorage.getItem('hrt-events');
-                setEvents(saved ? JSON.parse(saved) : []);
-            }
-
-            if (e.key === 'hrt-weight' || isCloudSync) {
-                if (isCloudSync || isOtherTabSync) {
-                    markExternalUpdate('weight');
+                const parsed: DoseEvent[] = saved ? JSON.parse(saved) : [];
+                if (eventsNeedWeightMigration(parsed)) {
+                    const legacyRaw = localStorage.getItem(LEGACY_WEIGHT_KEY);
+                    const legacyW = legacyRaw ? parseFloat(legacyRaw) : DEFAULT_WEIGHT_KG;
+                    const migrated = backfillEventWeights(parsed, legacyW);
+                    setEvents(migrated);
+                } else {
+                    setEvents(parsed);
                 }
-                const saved = localStorage.getItem('hrt-weight');
-                setWeight(saved ? parseFloat(saved) : 70.0);
             }
 
             if (e.key === 'hrt-lab-results' || isCloudSync) {
@@ -302,17 +317,17 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
 
-    // Run simulation when events or weight change
+    // Run simulation when events change (per-event weight is read from events).
     useEffect(() => {
         if (events.length > 0) {
-            const res = runSimulation(events, weight);
+            const res = runSimulation(events);
             setSimulation(res);
         } else {
             setSimulation(null);
         }
-    }, [events, weight]);
+    }, [events]);
 
-    // Rebuild personal model whenever events, weight, or labResults change
+    // Rebuild personal model whenever events or labResults change.
     useEffect(() => {
         if (labResults.length === 0) {
             setPersonalModel(null);
@@ -323,7 +338,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
 
         // Replay EKF from the prior using all sorted lab results
-        const newModel = replayPersonalModel(events, weight, labResults);
+        const newModel = replayPersonalModel(events, labResults);
 
         // Derive last diagnostics from the most recent lab point
         const sorted = [...labResults].sort((a, b) => a.timeH - b.timeH);
@@ -331,18 +346,18 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         // Build prior state (n-1 replayed) to get the update diagnostics
         const priorModel = labResults.length > 1
-            ? replayPersonalModel(events, weight, sorted.slice(0, -1))
+            ? replayPersonalModel(events, sorted.slice(0, -1))
             : initPersonalModel();
 
         const { diagnostics } = ekfUpdatePersonalModel(
-            events, weight, priorModel, lastLab,
+            events, priorModel, lastLab,
             labResults.length > 1 ? sorted[sorted.length - 2].timeH : undefined
         );
         setLastDiagnostics(diagnostics);
 
         setPersonalModel(newModel);
         savePersonalModel(newModel);
-    }, [events, weight, labResults]);
+    }, [events, labResults]);
 
     // Recompute CI bands whenever relevant state changes.
     // CI bands require at least one post-dose lab result — pre-dose labs only
@@ -352,9 +367,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             setSimCI(null);
             return;
         }
-        const ci = computeSimulationWithCI(simulation, events, weight, personalModel, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
+        const ci = computeSimulationWithCI(simulation, events, personalModel, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
         setSimCI(ci);
-    }, [simulation, personalModel, events, weight, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
+    }, [simulation, personalModel, events, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
 
     // Expose baseline from pre-dose labs so UI can offset the raw sim curve
     // even when no post-dose learning has occurred yet.
@@ -380,8 +395,6 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     const value = {
         events,
         setEvents,
-        weight,
-        setWeight,
         labResults,
         setLabResults,
         simulation,

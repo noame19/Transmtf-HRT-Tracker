@@ -7,6 +7,7 @@ export {
     SublingualTierParams,
     getBioavailabilityMultiplier,
     runSimulation,
+    weightAtTimeH,
     interpolateConcentration,
     interpolateConcentration_E2,
     interpolateConcentration_CPA,

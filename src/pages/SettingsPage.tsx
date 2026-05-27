@@ -24,6 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { DoseEvent, LabResult, decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
+import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import ImportModal from '../components/ImportModal';
@@ -54,7 +55,7 @@ const SettingsPage: React.FC = () => {
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
     const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-    const { events, setEvents, weight, setWeight, labResults, setLabResults } = useAppData();
+    const { events, setEvents, labResults, setLabResults } = useAppData();
     const { isDark, setIsDark } = useTheme();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -71,12 +72,13 @@ const SettingsPage: React.FC = () => {
         { value: 'ja', label: '日本語', icon: <img src={flagJP} alt="JP" className="w-5 h-5 rounded-sm object-contain" /> },
     ]), []);
 
-    const sanitizeImportedEvents = (raw: unknown): DoseEvent[] => {
+    const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { events: DoseEvent[]; migratedCount: number } => {
         if (!Array.isArray(raw)) {
             throw new Error('Invalid format');
         }
 
-        return raw
+        let migratedCount = 0;
+        const events = raw
             .map((entry): DoseEvent | null => {
                 if (!isRecord(entry)) return null;
 
@@ -85,6 +87,14 @@ const SettingsPage: React.FC = () => {
 
                 const doseNum = toNumber(entry.doseMG) ?? 0;
                 const extras = isRecord(entry.extras) ? entry.extras : {};
+                const weightNum = toNumber((entry as { weightKG?: unknown }).weightKG);
+                let weightKG: number;
+                if (weightNum !== null && weightNum > 0) {
+                    weightKG = weightNum;
+                } else {
+                    weightKG = fallbackWeight;
+                    migratedCount += 1;
+                }
 
                 return {
                     id: typeof entry.id === 'string' ? entry.id : uuidv4(),
@@ -92,10 +102,12 @@ const SettingsPage: React.FC = () => {
                     timeH: timeNum,
                     doseMG: doseNum,
                     ester: entry.ester as DoseEvent['ester'],
+                    weightKG,
                     extras: extras as DoseEvent['extras'],
                 };
             })
             .filter((entry): entry is DoseEvent => entry !== null);
+        return { events, migratedCount };
     };
 
     const sanitizeImportedLabResults = (raw: unknown): LabResult[] => {
@@ -126,40 +138,42 @@ const SettingsPage: React.FC = () => {
     const processImportedData = (parsed: unknown): boolean => {
         try {
             let newEvents: DoseEvent[] = [];
-            let newWeight: number | undefined;
             let newLabResults: LabResult[] = [];
+            let migratedCount = 0;
+            // Pick the fallback weight before sanitizing events so we can fill
+            // in any rows that lack their own weight (legacy export format).
+            let fallbackWeight = DEFAULT_WEIGHT_KG;
+            if (isRecord(parsed)) {
+                const topWeight = toNumber(parsed.weight);
+                if (topWeight !== null && topWeight > 0) fallbackWeight = topWeight;
+            }
 
             if (Array.isArray(parsed)) {
-                newEvents = sanitizeImportedEvents(parsed);
+                const r = sanitizeImportedEvents(parsed, fallbackWeight);
+                newEvents = r.events;
+                migratedCount = r.migratedCount;
             } else if (isRecord(parsed)) {
                 if (Array.isArray(parsed.events)) {
-                    newEvents = sanitizeImportedEvents(parsed.events);
-                }
-                const importedWeight = toNumber(parsed.weight);
-                if (importedWeight !== null && importedWeight > 0) {
-                    newWeight = importedWeight;
+                    const r = sanitizeImportedEvents(parsed.events, fallbackWeight);
+                    newEvents = r.events;
+                    migratedCount = r.migratedCount;
                 }
                 if (Array.isArray(parsed.labResults)) {
                     newLabResults = sanitizeImportedLabResults(parsed.labResults);
                 }
             }
 
-            if (!newEvents.length && newWeight === undefined && !newLabResults.length) {
+            if (!newEvents.length && !newLabResults.length) {
                 throw new Error('No valid entries');
             }
 
             const nextEvents = newEvents.length > 0 ? newEvents : events;
-            const nextWeight = newWeight !== undefined ? newWeight : weight;
             const nextLabResults = newLabResults;
 
             if (newEvents.length > 0) {
                 setEvents(newEvents);
                 localStorage.setItem('hrt-events', JSON.stringify(newEvents));
-            }
-
-            if (newWeight !== undefined) {
-                setWeight(newWeight);
-                localStorage.setItem('hrt-weight', newWeight.toString());
+                localStorage.setItem('hrt-weight', latestEventWeight(newEvents).toString());
             }
 
             setLabResults(newLabResults);
@@ -171,14 +185,18 @@ const SettingsPage: React.FC = () => {
             const langValue = localStorage.getItem('hrt-lang') || lang;
             const dataHash = computeDataHash({
                 events: nextEvents,
-                weight: nextWeight,
+                weight: latestEventWeight(nextEvents),
                 labResults: nextLabResults,
                 lang: langValue,
             });
             localStorage.setItem('hrt-data-hash', dataHash);
             window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-import', lastModified } }));
 
-            showDialog('alert', t('drawer.import_success'));
+            if (migratedCount > 0) {
+                showDialog('alert', t('migration.per_dose_weight'));
+            } else {
+                showDialog('alert', t('drawer.import_success'));
+            }
             return true;
         } catch (error) {
             console.error(error);
@@ -244,8 +262,8 @@ const SettingsPage: React.FC = () => {
         }
 
         const exportData = {
-            meta: { version: 1, exportedAt: new Date().toISOString() },
-            weight,
+            meta: { version: 2, exportedAt: new Date().toISOString() },
+            weight: latestEventWeight(events),
             events,
             labResults,
         };
@@ -273,8 +291,8 @@ const SettingsPage: React.FC = () => {
             return;
         }
         const exportData = {
-            meta: { version: 1, exportedAt: new Date().toISOString() },
-            weight,
+            meta: { version: 2, exportedAt: new Date().toISOString() },
+            weight: latestEventWeight(events),
             events,
             labResults,
         };
@@ -293,7 +311,7 @@ const SettingsPage: React.FC = () => {
             const langValue = localStorage.getItem('hrt-lang') || lang;
             const dataHash = computeDataHash({
                 events: [],
-                weight,
+                weight: DEFAULT_WEIGHT_KG,
                 labResults,
                 lang: langValue,
             });

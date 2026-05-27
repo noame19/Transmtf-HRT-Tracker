@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
+import { useAppData } from '../contexts/AppDataContext';
+import { prefillWeightKG } from '../utils/weight';
 import CustomSelect from './CustomSelect';
 import DoseFormModal from './DoseFormModal';
 import { getRouteIcon } from '../utils/helpers';
@@ -83,6 +85,7 @@ const formatGuideNumber = (val: number) => {
 const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSaveBatch }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
+    const { events: allEvents } = useAppData();
 
     const [step, setStep] = useState<'config' | 'preview'>('config');
 
@@ -107,6 +110,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const intervalDays = Math.max(1, parseInt(intervalDaysStr) || 1);
     const timesPerDay = Math.max(1, Math.min(4, parseInt(timesPerDayStr) || 1));
     const [timeSlots, setTimeSlots] = useState<string[]>([DEFAULT_TIMES[0]]);
+    const [weightStr, setWeightStr] = useState('');
 
     // Preview state
     const [previewEvents, setPreviewEvents] = useState<DoseEvent[]>([]);
@@ -157,6 +161,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setLastEditedField('bio');
             setPreviewEvents([]);
             setEditingEvent(null);
+            setWeightStr(prefillWeightKG(allEvents).toString());
         }
     }, [isOpen]);
 
@@ -323,6 +328,10 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                 : safeEster;
 
         const events: DoseEvent[] = [];
+        const parsedWeight = parseFloat(weightStr);
+        const weightKG = (Number.isFinite(parsedWeight) && parsedWeight > 0)
+            ? parsedWeight
+            : prefillWeightKG(allEvents);
         const current = new Date(start);
         while (current <= end) {
             for (const slot of timeSlots) {
@@ -336,6 +345,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                     ester: finalEster,
                     timeH,
                     doseMG: finalDoseMG,
+                    weightKG,
                     extras: { ...extrasTemplate },
                 });
             }
@@ -767,6 +777,16 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 </div>
 
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.weight_label')}</label>
+                                    <input
+                                        type="number" inputMode="decimal" min="20" max="300" step="0.1"
+                                        value={weightStr} onChange={e => setWeightStr(e.target.value)}
+                                        className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={inputStyle}
+                                        placeholder="70" />
+                                </div>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
@@ -900,6 +920,9 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                 </span>
                                                                 <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                                                                     {t(`route.${ev.route}`)}
+                                                                </span>
+                                                                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                                                    {ev.weightKG} {t('field.weight_unit')}
                                                                 </span>
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); removePreviewEvent(ev.id); }}
