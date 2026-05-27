@@ -132,8 +132,8 @@ const MainLayout: React.FC = () => {
     };
 
     return (
-        <div className="h-screen w-full flex flex-col select-none font-sans"
-            style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+        <div className="h-screen w-full overflow-x-hidden flex flex-col select-none font-sans"
+            style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', overscrollBehaviorX: 'none' }}>
 
             {/* ── Desktop top bar ── */}
             <header className="hidden md:flex shrink-0 items-center justify-between px-6 h-16 sticky top-0 z-20 glass"
@@ -212,12 +212,12 @@ const MainLayout: React.FC = () => {
             {/* ── Scrollable content ── */}
             <main
                 ref={mainScrollRef}
-                className="flex-1 overflow-y-auto"
-                style={{ background: 'var(--bg-secondary)' }}
+                className="flex-1 overflow-y-auto overflow-x-hidden"
+                style={{ background: 'var(--bg-secondary)', overscrollBehaviorX: 'none', touchAction: 'pan-y' }}
             >
                 <div
                     key={location.pathname}
-                    className="min-h-full"
+                    className="min-h-full max-w-full overflow-x-hidden"
                     style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
                 >
                     <Outlet context={{

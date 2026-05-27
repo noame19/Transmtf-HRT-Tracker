@@ -1118,7 +1118,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             </div>
             {/* Overview mini-map with draggable handles */}
             {overviewData.length > 1 && (
-                <div className="px-3 pb-4 mt-1">
+                <div
+                    className="px-3 pb-4 mt-1 touch-none select-none"
+                    style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+                    onTouchMoveCapture={(e) => e.preventDefault()}
+                >
                     <div className="w-full h-16 bg-[var(--bg-secondary)] border border-[var(--border-secondary)] rounded-none shadow-inner overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={overviewData} margin={{ top: 6, right: 8, left: -6, bottom: 6 }}>

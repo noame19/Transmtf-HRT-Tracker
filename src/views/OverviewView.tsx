@@ -33,6 +33,7 @@ function useAutoFitFontSize(
   text: string,
   maxPx: number,
   minPx: number,
+  fitRatio: number = 0.88,
 ): {
   containerRef: React.RefObject<HTMLDivElement>;
   measureRef: React.RefObject<HTMLSpanElement>;
@@ -74,7 +75,7 @@ function useAutoFitFontSize(
         apply({ fontSize: maxPx, letterSpacing: 0 });
         return;
       }
-      const availableWidth = Math.max(1, containerWidth - 2);
+      const availableWidth = Math.max(1, (containerWidth - 2) * fitRatio);
       const scaled = Math.floor(maxPx * (availableWidth / naturalWidth) * 0.98);
       if (scaled >= minPx) {
         apply({ fontSize: scaled, letterSpacing: 0 });
@@ -150,7 +151,7 @@ function useAutoFitFontSize(
     });
 
     return () => cleanups.forEach((fn) => fn());
-  }, [text, maxPx, minPx]);
+  }, [text, maxPx, minPx, fitRatio]);
 
   return {
     containerRef,
@@ -265,7 +266,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [hasPersonalCpaModel, simCI, h]);
 
   const currentCPA = personalCPA ?? rawCPA;
-  const E2_DOSE_MAX_FONT_PX = 38;
+  const E2_DOSE_MAX_FONT_PX = 24;
 
   const currentCPACI = useMemo(() => {
     if (!hasPersonalCpaModel) return null;
@@ -335,7 +336,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const { containerRef: e2DoseRef, measureRef: e2MeasureRef, fontSize: e2DoseFontSize, letterSpacing: e2DoseLetterSpacing } = useAutoFitFontSize(
     lastE2DoseStr,
     E2_DOSE_MAX_FONT_PX,
-    14,
+    12,
+    0.86,
   );
 
   // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
@@ -374,7 +376,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <>
-      <header className="relative px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+      <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
         <div className="grid md:grid-cols-3 gap-2.5 md:gap-4 md:items-stretch">
           {/* Main level card */}
           <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
@@ -654,8 +656,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               {/* Body: dose number — auto-fits to container width, always one line */}
               {lastE2Dose ? (
                 <div className="flex flex-col mt-3 md:mt-4 md:flex-1 md:justify-center min-w-0">
-                  <div ref={e2DoseRef} className="w-full min-w-0 relative">
-                    <p className="font-extrabold font-mono leading-none whitespace-nowrap"
+                  <div ref={e2DoseRef} className="w-full min-w-0 relative overflow-hidden">
+                    <p className="font-semibold font-mono leading-none whitespace-nowrap"
                       aria-label={lastE2DoseStr}
                       style={{ color: 'var(--text-secondary)', fontSize: `${e2DoseFontSize}px`, letterSpacing: `${e2DoseLetterSpacing}px` }}>
                       {lastE2DoseStr}
@@ -668,7 +670,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     <span
                       ref={e2MeasureRef}
                       aria-hidden
-                      className="font-extrabold font-mono whitespace-nowrap"
+                      className="font-semibold font-mono whitespace-nowrap"
                       style={{
                         position: 'absolute',
                         display: 'inline-block',
@@ -729,8 +731,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
       </header>
 
-      <main className="w-full px-3 md:px-4 py-4 md:py-6 rounded-t-3xl"
-        style={{ background: 'var(--bg-card)' }}>
+      <main className="w-full overflow-x-hidden px-3 md:px-4 py-4 md:py-6 rounded-t-3xl"
+        style={{ background: 'var(--bg-card)', overscrollBehaviorX: 'none' }}>
         <ResultChart
           sim={simulation}
           events={events}
