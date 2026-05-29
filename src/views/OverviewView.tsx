@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
-import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
 function hexToRgb(hex: string): string {
@@ -168,9 +168,7 @@ interface SimCI {
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<string, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>>;
 }
 
 interface OverviewViewProps {
@@ -214,8 +212,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const h = currentTime.getTime() / 3600000;
 
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
-  const hasPersonalCpaModel = !!simCI && simCI.cpaAdjusted.length === simCI.timeH.length && simCI.cpaAdjusted.length > 0;
   const hasDoseHistory = events.length > 0;
+
+  // The "primary" anti-androgen shown in the headline / side tile. When both a
+  // CPA and a BICA history exist (uncommon — they're clinical alternatives),
+  // bicalutamide takes precedence per the chart axis convention.
+  const primaryAA = useMemo<Ester | null>(() => {
+    const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
+    if (present.includes(Ester.BICA)) return Ester.BICA;
+    return present[0] ?? null;
+  }, [events]);
+  const primaryAASpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
+  const aaCI = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
+  const hasPersonalAaModel = !!aaCI && aaCI.adjusted.length === (simCI?.timeH.length ?? -1) && aaCI.adjusted.length > 0;
 
   const rawLevel = useMemo(() => {
     if (!simulation) return 0;
@@ -254,30 +263,31 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return null;
   }, [hasPersonalModel, simCI, h]);
 
-  const rawCPA = useMemo(() => {
-    if (!simulation) return 0;
-    return interpolateConcentration_CPA(simulation, h) || 0;
-  }, [simulation, h]);
+  // Anti-androgen current level (native ng/mL) for the primary compound.
+  const rawAA = useMemo(() => {
+    if (!simulation || !primaryAA) return 0;
+    return interpolateCompoundConcentration(simulation, primaryAA, h) || 0;
+  }, [simulation, primaryAA, h]);
 
-  const personalCPA = useMemo(() => {
-    if (!hasPersonalCpaModel) return null;
-    const v = interpAt(simCI!.timeH, simCI!.cpaAdjusted, h);
-    return (v > 0 && v < 5000) ? v : null;
-  }, [hasPersonalCpaModel, simCI, h]);
+  const personalAA = useMemo(() => {
+    if (!hasPersonalAaModel || !aaCI || !primaryAASpec) return null;
+    const v = interpAt(simCI!.timeH, aaCI.adjusted, h);
+    return (v > 0 && v <= primaryAASpec.ciMaxNative) ? v : null;
+  }, [hasPersonalAaModel, aaCI, primaryAASpec, simCI, h]);
 
-  const currentCPA = personalCPA ?? rawCPA;
+  const currentAA = personalAA ?? rawAA;
   const E2_DOSE_MAX_FONT_PX = 24;
 
-  const currentCPACI = useMemo(() => {
-    if (!hasPersonalCpaModel) return null;
-    if (simCI!.cpaCi95Low.length !== simCI!.timeH.length || simCI!.cpaCi95High.length !== simCI!.timeH.length) {
+  const currentAACI = useMemo(() => {
+    if (!hasPersonalAaModel || !aaCI) return null;
+    if (aaCI.ci95Low.length !== simCI!.timeH.length || aaCI.ci95High.length !== simCI!.timeH.length) {
       return null;
     }
-    const lo = interpAt(simCI!.timeH, simCI!.cpaCi95Low, h);
-    const hi = interpAt(simCI!.timeH, simCI!.cpaCi95High, h);
+    const lo = interpAt(simCI!.timeH, aaCI.ci95Low, h);
+    const hi = interpAt(simCI!.timeH, aaCI.ci95High, h);
     if (lo > 0 && hi > 0 && hi > lo) return { lo, hi };
     return null;
-  }, [hasPersonalCpaModel, simCI, h]);
+  }, [hasPersonalAaModel, aaCI, simCI, h]);
 
   const currentCI68 = useMemo(() => {
     if (!hasPersonalModel) return null;
@@ -288,13 +298,13 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return null;
   }, [hasPersonalModel, simCI, h]);
 
-  // Latest CPA dose (any route, ester = CPA). Skips events scheduled in the
-  // future so a batch-imported plan or a manually post-dated entry doesn't
-  // pretend to be "the last dose" on the homepage.
-  const lastCPADose = useMemo<DoseEvent | null>(() => {
+  // Latest anti-androgen dose (any route, ester ∈ {CPA, BICA}). Skips events
+  // scheduled in the future so a batch-imported plan or a manually post-dated
+  // entry doesn't pretend to be "the last dose" on the homepage.
+  const lastAntiandrogenDose = useMemo<DoseEvent | null>(() => {
     let latest: DoseEvent | null = null;
     for (const ev of events) {
-      if (ev.ester !== Ester.CPA) continue;
+      if (!isAntiandrogen(ev.ester)) continue;
       if (ev.timeH > h) continue;
       if (!latest || ev.timeH > latest.timeH) latest = ev;
     }
@@ -308,7 +318,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const lastE2Dose = useMemo<DoseEvent | null>(() => {
     let latest: DoseEvent | null = null;
     for (const ev of events) {
-      if (ev.ester === Ester.CPA) continue;
+      if (isAntiandrogen(ev.ester)) continue;
       if (ev.route === Route.oral) continue;
       if (ev.route === Route.patchRemove) continue;
       if (ev.timeH > h) continue;
@@ -372,7 +382,13 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [currentLevel, isDark]);
 
   const formatHeadlineE2 = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
-  const formatHeadlineCPA = (v: number) => (v >= 10 ? v.toFixed(1) : v.toFixed(2));
+  // Format an anti-androgen value for the headline, auto-scaling ng/mL → µg/mL.
+  const formatHeadlineAA = (ngml: number, spec: typeof primaryAASpec) => {
+    if (!spec) return { value: '--', unit: 'ng/mL' };
+    const { value, unit } = formatAntiandrogenConc(ngml, spec);
+    const text = value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+    return { value: text, unit };
+  };
 
   return (
     <>
@@ -501,21 +517,34 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 )}
               </div>
 
-              {/* CPA Display */}
+              {/* Anti-androgen Display (CPA / bicalutamide, auto-unit) */}
+              {(() => {
+                const aaLabel = primaryAA ?? 'CPA';
+                const aaColor = primaryAASpec?.color ?? (isDark ? '#c084fc' : '#9333ea');
+                const headline = formatHeadlineAA(currentAA, primaryAASpec);
+                const fmt = (v: number) => primaryAASpec
+                  ? formatAntiandrogenConc(v, primaryAASpec)
+                  : { value: v, unit: 'ng/mL' as const };
+                const fmtText = (v: number) => {
+                  const { value } = fmt(v);
+                  return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+                };
+                const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
+                return (
               <div className="space-y-1">
                 <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
-                  style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
-                  CPA
+                  style={{ color: aaColor }}>
+                  {aaLabel}
                 </div>
                 <div className="flex items-end gap-2">
-                  {currentCPA > 0 ? (
+                  {currentAA > 0 ? (
                     <>
                       <span className="text-4xl md:text-5xl font-black tracking-tight"
-                        style={{ color: isDark ? '#c084fc' : '#9333ea' }}>
-                        {formatHeadlineCPA(currentCPA)}
+                        style={{ color: aaColor }}>
+                        {headline.value}
                       </span>
                       <span className="text-sm md:text-base font-bold mb-1"
-                        style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>ng/mL</span>
+                        style={{ color: aaColor, opacity: 0.7 }}>{headline.unit}</span>
                     </>
                   ) : (
                     <span className="text-4xl md:text-5xl font-black tracking-tight"
@@ -524,48 +553,52 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     </span>
                   )}
                 </div>
-                {hasPersonalCpaModel && currentCPA > 0 && (
+                {hasPersonalAaModel && currentAA > 0 && (
                   <>
-                    {currentCPACI && (
+                    {currentAACI && (
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wide"
-                          style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>{t('chart.cpa_pop_range')}</span>
+                          style={{ color: aaColor, opacity: 0.8 }}>{t('chart.cpa_pop_range')}</span>
                         <span className="text-[11px] font-semibold"
-                          style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
-                          {currentCPACI.lo.toFixed(2)} – {currentCPACI.hi.toFixed(2)}
+                          style={{ color: aaColor }}>
+                          {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
                           <span className="text-[9px] font-normal ml-0.5"
-                            style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>ng/mL</span>
+                            style={{ color: aaColor, opacity: 0.8 }}>{fmt(currentAACI.hi).unit}</span>
                         </span>
                       </div>
                     )}
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wide"
-                        style={{ color: isDark ? '#a78bfa' : '#d8b4fe' }}>
-                        {t('chart.cpa_adherence')}
-                      </span>
-                      {personalCPA !== null && (
-                        <span className="text-[10px] font-semibold"
-                          style={{ color: isDark ? '#c084fc' : '#a855f7' }}>
-                          {personalCPA.toFixed(2)} ng/mL
+                    {primaryAASpec?.adherenceFromE2 && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wide"
+                          style={{ color: aaColor, opacity: 0.8 }}>
+                          {t('chart.cpa_adherence')}
                         </span>
-                      )}
-                    </div>
-                    {rawCPA > 0 && rawCPA !== personalCPA && (
+                        {personalAA !== null && (
+                          <span className="text-[10px] font-semibold"
+                            style={{ color: aaColor }}>
+                            {fmtText(personalAA)} {fmt(personalAA).unit}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {rawAA > 0 && rawAA !== personalAA && (
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Base</span>
                         <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                          {rawCPA.toFixed(2)} ng/mL
+                          {fmtText(rawAA)} {fmt(rawAA).unit}
                         </span>
                       </div>
                     )}
                   </>
                 )}
-                {currentCPA > 0 && (
+                {currentAA > 0 && (
                   <div className="mt-1 text-[9px] leading-tight italic" style={{ color: 'var(--text-tertiary)' }}>
-                    {t('chart.cpa_note')}
+                    {t(noteKey)}
                   </div>
                 )}
               </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -591,7 +624,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 </div>
               </div>
 
-              {/* Last CPA dose */}
+              {/* Last anti-androgen dose (CPA / bicalutamide) */}
               <div className="flex items-start gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0">
                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
                   style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
@@ -599,15 +632,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 </div>
                 <div className="leading-tight min-w-0 flex-1">
                   <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.last_cpa')}
+                    {t('overview.last_antiandrogen')}
                   </p>
-                  {lastCPADose ? (
+                  {lastAntiandrogenDose ? (
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
                       <p className="text-sm md:text-base font-bold font-mono truncate" style={{ color: 'var(--text-primary)' }}>
-                        {`${lastCPADose.doseMG.toFixed(lastCPADose.doseMG >= 10 ? 0 : 1)} mg`}
+                        {`${lastAntiandrogenDose.doseMG.toFixed(lastAntiandrogenDose.doseMG >= 10 ? 0 : 1)} mg`}
                       </p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                        {lastAntiandrogenDose.ester}
+                      </span>
                       <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {formatTimeAgo(lastCPADose.timeH)}
+                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
                       </span>
                     </div>
                   ) : (

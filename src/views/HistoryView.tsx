@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Activity, Plus, Layers } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime, getRouteIcon } from '../utils/helpers';
-import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor } from '../../logic';
+import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../../logic';
 
 interface HistoryViewProps {
   events: DoseEvent[];
@@ -109,7 +109,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ events, onAddEvent, onEditEve
                     {ev.route !== RouteEnum.patchRemove && !ev.extras[ExtraKey.releaseRateUGPerDay] && (
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: 'var(--text-primary)' }}>
                         <span>{`${t('timeline.dose_label')}: ${ev.doseMG.toFixed(2)} mg`}</span>
-                        {ev.ester !== Ester.E2 && ev.ester !== Ester.CPA && (
+                        {ev.ester !== Ester.E2 && !isAntiandrogen(ev.ester) && (
                           <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                             {`(${ (ev.doseMG * getToE2Factor(ev.ester)).toFixed(2) } mg E2)`}
                           </span>

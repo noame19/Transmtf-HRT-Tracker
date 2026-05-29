@@ -7,7 +7,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
     DoseEvent, SimulationResult, LabResult,
-    interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl,
+    interpolateConcentration_E2, interpolateCompoundConcentration, convertToPgMl,
+    isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, formatAntiandrogenConc, Ester,
 } from '../../logic';
 import ResultChartStatic from './ResultChartStatic';
 import { API_ORIGIN } from '../api/config';
@@ -19,9 +20,7 @@ interface SimCI {
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<string, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>>;
 }
 
 interface Props {
@@ -89,9 +88,21 @@ const ShareImageModal: React.FC<Props> = ({
     const h = now.getTime() / 3600000;
 
     const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
-    const hasPersonalCpaModel = !!simCI && simCI.cpaAdjusted.length === simCI.timeH.length && simCI.cpaAdjusted.length > 0;
-    const hasPersonalCpaCI = !!simCI && simCI.cpaCi95Low.length === simCI!.timeH.length;
-    const hasCPADoses = events.some(e => e.ester === 'CPA');
+    // Primary anti-androgen on the right axis (BICA precedence; they're alternatives).
+    const primaryAA: Ester | null = (() => {
+        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
+        if (present.includes(Ester.BICA)) return Ester.BICA;
+        return present[0] ?? null;
+    })();
+    const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
+    const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';
+    const aaScale = aaUnit === 'ug/mL' ? 1 / 1000 : 1;
+    const aaLabel = primaryAA ?? 'CPA';
+    const aaPersonalized = !!aaSpec?.adherenceFromE2;
+    const aaCISeries = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
+    const hasPersonalCpaModel = !!aaCISeries && !!simCI && aaCISeries.adjusted.length === simCI.timeH.length && aaCISeries.adjusted.length > 0;
+    const hasPersonalCpaCI = !!aaCISeries && !!simCI && aaCISeries.ci95Low.length === simCI.timeH.length;
+    const hasCPADoses = !!primaryAA;
     const hasData = !!simulation && events.length > 0;
     const hasDoseHistory = events.length > 0;
 
@@ -149,8 +160,8 @@ const ShareImageModal: React.FC<Props> = ({
     const personalE2 = hasPersonalModel ? interpAt(simCI!.timeH, simCI!.e2Adjusted, h) : null;
     const currentE2 = personalE2 ?? (rawE2 + baseShift);
 
-    const rawCPA = simulation ? (interpolateConcentration_CPA(simulation, h) || 0) : 0;
-    const personalCPA = hasPersonalCpaModel ? interpAt(simCI!.timeH, simCI!.cpaAdjusted, h) : null;
+    const rawCPA = (simulation && primaryAA) ? (interpolateCompoundConcentration(simulation, primaryAA, h) || 0) * aaScale : 0;
+    const personalCPA = (hasPersonalCpaModel && aaCISeries) ? interpAt(simCI!.timeH, aaCISeries.adjusted, h) * aaScale : null;
     const currentCPA = personalCPA ?? rawCPA;
 
     const currentCI = hasPersonalModel ? (() => {
@@ -159,9 +170,9 @@ const ShareImageModal: React.FC<Props> = ({
         return (lo > 0 && hi > lo) ? { lo, hi } : null;
     })() : null;
 
-    const currentCPACI = (hasPersonalCpaModel && hasPersonalCpaCI) ? (() => {
-        const lo = interpAt(simCI!.timeH, simCI!.cpaCi95Low, h);
-        const hi = interpAt(simCI!.timeH, simCI!.cpaCi95High, h);
+    const currentCPACI = (hasPersonalCpaModel && hasPersonalCpaCI && aaCISeries) ? (() => {
+        const lo = interpAt(simCI!.timeH, aaCISeries.ci95Low, h) * aaScale;
+        const hi = interpAt(simCI!.timeH, aaCISeries.ci95High, h) * aaScale;
         return (lo > 0 && hi > lo) ? { lo, hi } : null;
     })() : null;
 
@@ -261,9 +272,9 @@ const ShareImageModal: React.FC<Props> = ({
         cardGradient: `linear-gradient(135deg, rgba(${accentRgb},0.08), #ffffff 70%)`,
     };
 
-    // CPA fixed accent (purple, like UI)
-    const cpaPrimary = isDark ? '#c084fc' : '#9333ea';
-    const cpaSoft = isDark ? '#a78bfa' : '#d8b4fe';
+    // Anti-androgen accent (per-compound: CPA purple, bicalutamide amber)
+    const cpaPrimary = aaSpec?.color ?? (isDark ? '#c084fc' : '#9333ea');
+    const cpaSoft = aaSpec ? aaSpec.color : (isDark ? '#a78bfa' : '#d8b4fe');
 
     // ── Status badge logic (identical to OverviewView) ──
     const getLevelStatus = (conc: number) => {
@@ -278,7 +289,7 @@ const ShareImageModal: React.FC<Props> = ({
 
     // ── Number formatters ──
     const fmtE2 = (v: number) => v >= 100 ? v.toFixed(0) : v.toFixed(1);
-    const fmtCPA = (v: number) => v >= 10 ? v.toFixed(1) : v.toFixed(2);
+    const fmtCPA = (v: number) => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
 
     const handleDownload = async () => {
         if (!printRef.current) return;
@@ -660,7 +671,7 @@ const ShareImageModal: React.FC<Props> = ({
                             {hasCPADoses && (
                                 <div>
                                     <div style={{ fontSize: '16px', fontWeight: 800, color: cpaPrimary, textTransform: 'uppercase', letterSpacing: '0.2em', marginBottom: '8px' }}>
-                                        CPA
+                                        {aaLabel}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', whiteSpace: 'nowrap' }}>
                                         {currentCPA > 0 ? (
@@ -668,7 +679,7 @@ const ShareImageModal: React.FC<Props> = ({
                                                 <span style={{ fontSize: '110px', fontWeight: 900, color: cpaPrimary, lineHeight: 0.9, letterSpacing: '-0.03em' }}>
                                                     {fmtCPA(currentCPA)}
                                                 </span>
-                                                <span style={{ fontSize: '26px', fontWeight: 800, color: cpaSoft, marginBottom: '14px' }}>ng/mL</span>
+                                                <span style={{ fontSize: '26px', fontWeight: 800, color: cpaSoft, marginBottom: '14px' }}>{aaUnit}</span>
                                             </>
                                         ) : (
                                             <span style={{ fontSize: '110px', fontWeight: 900, color: palette.textTertiary, lineHeight: 0.9 }}>--</span>
@@ -684,22 +695,22 @@ const ShareImageModal: React.FC<Props> = ({
                                                     </span>
                                                     <span style={{ fontSize: '18px', fontWeight: 700, color: cpaPrimary }}>
                                                         {currentCPACI.lo.toFixed(2)} – {currentCPACI.hi.toFixed(2)}
-                                                        <span style={{ fontSize: '13px', fontWeight: 500, marginLeft: '6px', color: cpaSoft }}>ng/mL</span>
+                                                        <span style={{ fontSize: '13px', fontWeight: 500, marginLeft: '6px', color: cpaSoft }}>{aaUnit}</span>
                                                     </span>
                                                 </div>
                                             )}
-                                            {personalCPA !== null && (
+                                            {personalCPA !== null && aaPersonalized && (
                                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', whiteSpace: 'nowrap' }}>
                                                     <span style={{ fontSize: '13px', fontWeight: 800, color: cpaSoft, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                                                         Personal
                                                     </span>
-                                                    <span style={{ fontSize: '17px', fontWeight: 700, color: cpaPrimary }}>{personalCPA.toFixed(2)} ng/mL</span>
+                                                    <span style={{ fontSize: '17px', fontWeight: 700, color: cpaPrimary }}>{personalCPA.toFixed(2)} {aaUnit}</span>
                                                 </div>
                                             )}
                                             {rawCPA > 0 && rawCPA !== personalCPA && (
                                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', whiteSpace: 'nowrap' }}>
                                                     <span style={{ fontSize: '13px', fontWeight: 800, color: palette.textTertiary, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Base</span>
-                                                    <span style={{ fontSize: '17px', fontWeight: 700, color: palette.textSecondary }}>{rawCPA.toFixed(2)} ng/mL</span>
+                                                    <span style={{ fontSize: '17px', fontWeight: 700, color: palette.textSecondary }}>{rawCPA.toFixed(2)} {aaUnit}</span>
                                                 </div>
                                             )}
                                         </div>

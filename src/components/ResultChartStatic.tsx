@@ -8,7 +8,7 @@ import {
     XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot,
     Area, AreaChart, ComposedChart, Scatter
 } from 'recharts';
-import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateConcentration_CPA, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
 import { formatDate } from '../utils/helpers';
 
 interface SimCI {
@@ -18,9 +18,7 @@ interface SimCI {
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<string, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>>;
 }
 
 interface ChartPoint {
@@ -99,26 +97,40 @@ interface Props {
 }
 
 const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, baselineE2PGmL, xDomain, width, height, isDark = false, themeColors }) => {
-    const hasCPADoses = useMemo(() => events.some(e => e.ester === 'CPA'), [events]);
-    const hasPersonalModel = !!simCI;
-    const hasPersonalCpaModel = !!simCI && simCI.cpaAdjusted.length === simCI.timeH.length && simCI.cpaAdjusted.length > 0;
-    const hasPersonalCpaCI = !!simCI && simCI.cpaCi95Low.length === simCI.timeH.length;
+    const primaryAA = useMemo<Ester | null>(() => {
+        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
+        if (present.includes(Ester.BICA)) return Ester.BICA;
+        return present[0] ?? null;
+    }, [events]);
+    const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
+    const hasCPADoses = !!primaryAA;
+    const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';
+    const aaScale = aaUnit === 'ug/mL' ? 1 / 1000 : 1;
+    const aaColor = aaSpec?.color ?? '#8b5cf6';
+    const aaLabel = primaryAA ?? 'CPA';
+    const aaPersonalized = !!aaSpec?.adherenceFromE2;
+
+    const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
+    const aaCISeries = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
+    const hasPersonalCpaModel = !!aaCISeries && !!simCI && aaCISeries.adjusted.length === simCI.timeH.length && aaCISeries.adjusted.length > 0;
+    const hasPersonalCpaCI = !!aaCISeries && !!simCI && aaCISeries.ci95Low.length === simCI.timeH.length;
 
     const rawData = useMemo<ChartPoint[]>(() => {
         if (!sim || sim.timeH.length === 0) return [];
         const baseShift = (!hasPersonalModel && baselineE2PGmL && baselineE2PGmL > 0) ? baselineE2PGmL : 0;
+        const aaSeries = primaryAA ? sim.byCompound?.[primaryAA] : undefined;
         return sim.timeH.map((t, i) => {
             const timeMs = t * 3600000;
             const baseE2 = sim.concPGmL_E2[i] + baseShift;
-            const rawCPA = sim.concPGmL_CPA[i];
+            const rawCPA = (aaSeries ? aaSeries.values[i] : 0) * aaScale;
             const ci95Low = simCI ? interpAt(simCI.timeH, simCI.ci95Low, t) : undefined;
             const ci95High = simCI ? interpAt(simCI.timeH, simCI.ci95High, t) : undefined;
             const ci68Low = simCI ? interpAt(simCI.timeH, simCI.ci68Low, t) : undefined;
             const ci68High = simCI ? interpAt(simCI.timeH, simCI.ci68High, t) : undefined;
             const concPersonal = simCI ? interpAt(simCI.timeH, simCI.e2Adjusted, t) : undefined;
-            const concPersonalCPA = hasPersonalCpaModel ? interpAt(simCI!.timeH, simCI!.cpaAdjusted, t) : undefined;
-            const cpaCi95Low = hasPersonalCpaCI ? interpAt(simCI!.timeH, simCI!.cpaCi95Low, t) : undefined;
-            const cpaCi95High = hasPersonalCpaCI ? interpAt(simCI!.timeH, simCI!.cpaCi95High, t) : undefined;
+            const concPersonalCPA = (hasPersonalCpaModel && aaCISeries) ? interpAt(simCI!.timeH, aaCISeries.adjusted, t)! * aaScale : undefined;
+            const cpaCi95Low = (hasPersonalCpaCI && aaCISeries) ? interpAt(simCI!.timeH, aaCISeries.ci95Low, t)! * aaScale : undefined;
+            const cpaCi95High = (hasPersonalCpaCI && aaCISeries) ? interpAt(simCI!.timeH, aaCISeries.ci95High, t)! * aaScale : undefined;
             return {
                 time: timeMs,
                 concE2: baseE2,
@@ -133,7 +145,7 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
                 cpaCi95Band: (cpaCi95Low !== undefined && cpaCi95High !== undefined) ? Math.max(0, cpaCi95High - cpaCi95Low) : undefined,
             };
         });
-    }, [sim, simCI, hasPersonalModel, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL]);
+    }, [sim, simCI, hasPersonalModel, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL, primaryAA, aaCISeries, aaScale]);
 
     // ① Filter to xDomain FIRST so the downsample respects the user-selected window.
     // Include a small pad (one sample each side) so the line renders smoothly at the edges.
@@ -197,6 +209,10 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
     for (const d of visibleData) {
         if (d.concCPA && d.concCPA > cpaPeak) cpaPeak = d.concCPA;
         if (d.concPersonalCPA && d.concPersonalCPA > cpaPeak) cpaPeak = d.concPersonalCPA;
+        if (d.cpaCi95Band !== undefined && d.cpaCi95Low !== undefined) {
+            const ciHigh = d.cpaCi95Low + d.cpaCi95Band;
+            if (ciHigh > cpaPeak) cpaPeak = ciHigh;
+        }
     }
     const yDomainRight: [number, number] = [0, niceCeil(cpaPeak * 1.15, CPA_FALLBACK_MAX)];
 
@@ -204,15 +220,15 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
         if (!sim || !data.length) return null;
         const h = now / 3600000;
         const concE2Raw = interpolateConcentration_E2(sim, h);
-        const concCPA = interpolateConcentration_CPA(sim, h);
+        const concCPA = primaryAA ? interpolateCompoundConcentration(sim, primaryAA, h) : null;
         if (concE2Raw === null && concCPA === null) return null;
         const baseShift = (!hasPersonalModel && baselineE2PGmL && baselineE2PGmL > 0) ? baselineE2PGmL : 0;
         return {
             time: now,
             concE2: concE2Raw ? concE2Raw + baseShift : 0,
-            concCPA: concCPA || 0,
+            concCPA: (concCPA || 0) * aaScale,
         };
-    }, [sim, data, now, hasPersonalModel, baselineE2PGmL]);
+    }, [sim, data, now, hasPersonalModel, baselineE2PGmL, primaryAA, aaScale]);
 
     if (!sim || data.length === 0) return null;
 
@@ -236,10 +252,6 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
                 <linearGradient id="sColorConc" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={accent500} stopOpacity={0.22} />
                     <stop offset="95%" stopColor={accent500} stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="sColorCPA" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.22} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
                 </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -271,11 +283,11 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
                     orientation="right"
                     domain={yDomainRight}
                     tickFormatter={formatAxisTick}
-                    tick={{ fontSize: 18, fill: '#8b5cf6', fontWeight: 600 }}
+                    tick={{ fontSize: 18, fill: aaColor, fontWeight: 600 }}
                     axisLine={false}
                     tickLine={false}
                     width={70}
-                    label={{ value: 'CPA (ng/mL)', angle: 90, position: 'right', offset: 0, style: { fontSize: 16, fill: '#8b5cf6', fontWeight: 700, textAnchor: 'middle' } }}
+                    label={{ value: `${aaLabel} (${aaUnit})`, angle: 90, position: 'right', offset: 0, style: { fontSize: 16, fill: aaColor, fontWeight: 700, textAnchor: 'middle' } }}
                 />
             ) : (
                 <YAxis yAxisId="right" orientation="right" hide domain={[0, 1]} />
@@ -301,23 +313,23 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
                     <Area data={data} type="monotone" dataKey="ci68Band" yAxisId="left" stroke="none" fill={`${accent500}30`} fillOpacity={1} stackId="ci68" isAnimationActive={false} dot={false} activeDot={false} legendType="none" />
                 </>
             )}
-            {hasPersonalModel && hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
+            {hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
                 <>
                     <Area data={data} type="monotone" dataKey="cpaCi95Low" yAxisId="right" stroke="none" fill="none" stackId="cpaCi" isAnimationActive={false} dot={false} activeDot={false} legendType="none" />
-                    <Area data={data} type="monotone" dataKey="cpaCi95Band" yAxisId="right" stroke="none" fill="rgba(124,58,237,0.10)" fillOpacity={1} stackId="cpaCi" isAnimationActive={false} dot={false} activeDot={false} legendType="none" />
+                    <Area data={data} type="monotone" dataKey="cpaCi95Band" yAxisId="right" stroke="none" fill={`${aaColor}1A`} fillOpacity={1} stackId="cpaCi" isAnimationActive={false} dot={false} activeDot={false} legendType="none" />
                 </>
             )}
 
             {/* Main curves */}
             <Area data={data} type="monotone" dataKey="concE2" yAxisId="left" stroke={accent300} strokeWidth={3} fillOpacity={0.95} fill="url(#sColorConc)" isAnimationActive={false} dot={false} activeDot={false} />
             {hasCPADoses && (
-                <Area data={data} type="monotone" dataKey="concCPA" yAxisId="right" stroke="#8b5cf6" strokeWidth={3} fillOpacity={0.95} fill="url(#sColorCPA)" isAnimationActive={false} dot={false} activeDot={false} />
+                <Area data={data} type="monotone" dataKey="concCPA" yAxisId="right" stroke={aaColor} strokeWidth={3} fillOpacity={0.12} fill={aaColor} isAnimationActive={false} dot={false} activeDot={false} />
             )}
             {hasPersonalModel && (
                 <Area data={data} type="monotone" dataKey="concPersonal" yAxisId="left" stroke={accent500} strokeWidth={2.5} strokeDasharray="6 3" fill="none" isAnimationActive={false} dot={false} activeDot={false} />
             )}
-            {hasPersonalModel && hasPersonalCpaModel && hasCPADoses && (
-                <Area data={data} type="monotone" dataKey="concPersonalCPA" yAxisId="right" stroke="#7c3aed" strokeWidth={2.5} strokeDasharray="6 3" fill="none" isAnimationActive={false} dot={false} activeDot={false} />
+            {hasPersonalCpaModel && hasCPADoses && aaPersonalized && (
+                <Area data={data} type="monotone" dataKey="concPersonalCPA" yAxisId="right" stroke={aaColor} strokeWidth={2.5} strokeDasharray="6 3" fill="none" isAnimationActive={false} dot={false} activeDot={false} />
             )}
 
             {/* Now dot */}
@@ -329,7 +341,7 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
             {hasCPADoses && (
                 <Scatter data={nowPoint ? [nowPoint] : []} yAxisId="right" isAnimationActive={false}
                     shape={({ cx, cy }: any) => (
-                        <circle cx={cx} cy={cy} r={8} fill="#c4b5fd" stroke="white" strokeWidth={2.5} />
+                        <circle cx={cx} cy={cy} r={8} fill={aaColor} stroke="white" strokeWidth={2.5} />
                     )}
                 />
             )}
@@ -357,7 +369,7 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
             {dosePoints.length > 0 && (
                 <Scatter data={dosePoints} dataKey="concE2" yAxisId="left" isAnimationActive={false}
                     shape={({ cx, cy, payload }: any) => (
-                        <circle cx={cx} cy={cy} r={5} fill={payload?.ester === 'CPA' ? '#8b5cf6' : '#ec4899'} stroke="white" strokeWidth={2} />
+                        <circle cx={cx} cy={cy} r={5} fill={payload?.ester && isAntiandrogen(payload.ester) ? (ANTIANDROGENS[payload.ester as Ester]?.color ?? '#8b5cf6') : '#ec4899'} stroke="white" strokeWidth={2} />
                     )}
                 />
             )}

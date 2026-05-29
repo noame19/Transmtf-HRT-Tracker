@@ -9,7 +9,7 @@ import DoseFormModal from './DoseFormModal';
 import { getRouteIcon } from '../utils/helpers';
 import {
     Route, Ester, ExtraKey, DoseEvent,
-    getToE2Factor,
+    getToE2Factor, isAntiandrogen,
     SL_TIER_ORDER, SublingualTierParams,
 } from '../../logic';
 import {
@@ -119,7 +119,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const availableEsters = useMemo(() => {
         switch (route) {
             case Route.injection: return [Ester.EB, Ester.EV, Ester.EC, Ester.EN];
-            case Route.oral: return [Ester.E2, Ester.EV, Ester.CPA];
+            case Route.oral: return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
             case Route.sublingual: return [Ester.E2, Ester.EV];
             default: return [Ester.E2];
         }
@@ -290,7 +290,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                 e2Equivalent = rawVal * factor;
             }
         }
-        if (effectiveEster === Ester.CPA) {
+        if (isAntiandrogen(effectiveEster)) {
             const rawVal = parseFloat(rawDose);
             if (!Number.isFinite(rawVal) || rawVal <= 0) {
                 showDialog('alert', nonPositiveMsg);
@@ -419,7 +419,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
 
     const doseGuide = useMemo(() => {
-        if (safeEster === Ester.CPA) return null;
+        if (isAntiandrogen(safeEster)) return null;
         const cfg = DOSE_GUIDE_CONFIG[route];
         if (!cfg) return null;
         if (route === Route.patchApply && patchMode === 'dose' && cfg.requiresRate) {
@@ -491,8 +491,8 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const showE2Input = showDoseSection
         && (route !== Route.patchApply || patchMode === 'dose')
         && !(safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral))
-        && safeEster !== Ester.CPA;
-    const rawColSpan2 = (safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || safeEster === Ester.CPA;
+        && !isAntiandrogen(safeEster);
+    const rawColSpan2 = (safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || isAntiandrogen(safeEster);
     const e2ColSpan2 = safeEster === Ester.E2 && route !== Route.gel && route !== Route.oral && route !== Route.sublingual;
     const canGenerate = (() => {
         if (!startDate || !endDate) return false;
@@ -501,7 +501,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         if (!s || !e || s > e) return false;
         if (route === Route.patchRemove) return true;
         if (route === Route.patchApply && patchMode === 'rate') return !!patchRate;
-        if (safeEster === Ester.CPA) return !!rawDose;
+        if (isAntiandrogen(safeEster)) return !!rawDose;
         if (safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) return !!rawDose;
         return !!e2Dose;
     })();

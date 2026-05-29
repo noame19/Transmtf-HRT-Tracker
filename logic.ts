@@ -1,6 +1,6 @@
 // Re-export the shared domain model from dedicated files so existing imports
 // from `logic.ts` keep working while we progressively untangle responsibilities.
-export { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type LabResult } from './types';
+export { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type LabResult, type ConcUnit, type CompoundSeries } from './types';
 export {
     getToE2Factor,
     SL_TIER_ORDER,
@@ -11,6 +11,15 @@ export {
     interpolateConcentration,
     interpolateConcentration_E2,
     interpolateConcentration_CPA,
+    interpolateCompoundConcentration,
+    isAntiandrogen,
+    formatAntiandrogenConc,
+    bicalutamideConcNgML,
+    computeBicalutamideAmount,
+    ANTIANDROGENS,
+    ANTIANDROGEN_ESTERS,
+    BICA_PK,
+    type AntiandrogenSpec,
 } from './pk';
 export {
     convertToPgMl,

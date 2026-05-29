@@ -4,7 +4,7 @@ import {
     PersonalModelState, EKFDiagnostics, CalibrationModel,
     runSimulation, createCalibrationInterpolator,
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
-    ekfUpdatePersonalModel,
+    ekfUpdatePersonalModel, isAntiandrogen,
 } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
 import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
@@ -20,6 +20,12 @@ const LEGACY_WEIGHT_KEY = 'hrt-weight';
 
 export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
+interface CompoundCI {
+    adjusted: number[];
+    ci95Low: number[];
+    ci95High: number[];
+}
+
 interface SimCI {
     timeH: number[];
     e2Adjusted: number[];
@@ -27,9 +33,7 @@ interface SimCI {
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<string, CompoundCI>>;
 }
 
 interface AppDataContextType {
@@ -382,15 +386,31 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }, [events, labResults]);
 
     // Recompute CI bands whenever relevant state changes.
-    // CI bands require at least one post-dose lab result — pre-dose labs only
-    // provide a baseline offset and carry no PK parameter information.
+    // - E2 personal CI (e2Adjusted + ci bands) requires at least one post-dose
+    //   lab result; pre-dose labs only provide a baseline offset.
+    // - Anti-androgen population CI (CPA / BICA) does NOT need any E2 lab: it is
+    //   a population-PK uncertainty band. So when anti-androgen doses exist but
+    //   no E2 personal model is available yet, we still emit a simCI whose E2
+    //   personal arrays are empty (keeping the E2 "personal model" UI hidden)
+    //   while the antiandrogen map carries the population band.
     useEffect(() => {
-        if (!simulation || !personalModel || personalModel.postDoseObservationCount === 0 || labResults.length === 0) {
+        if (!simulation) {
             setSimCI(null);
             return;
         }
-        const ci = computeSimulationWithCI(simulation, events, personalModel, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
-        setSimCI(ci);
+        const hasE2Personal = !!personalModel && personalModel.postDoseObservationCount > 0 && labResults.length > 0;
+        const hasAntiandrogen = events.some(e => isAntiandrogen(e.ester));
+
+        if (hasE2Personal) {
+            const ci = computeSimulationWithCI(simulation, events, personalModel!, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
+            setSimCI(ci);
+        } else if (hasAntiandrogen) {
+            // Population-only path: no learned theta, no adherence coupling.
+            const ci = computeSimulationWithCI(simulation, events, initPersonalModel(), false, [], 'ekf', false);
+            setSimCI({ ...ci, e2Adjusted: [], ci95Low: [], ci95High: [], ci68Low: [], ci68High: [] });
+        } else {
+            setSimCI(null);
+        }
     }, [simulation, personalModel, events, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
 
     // Expose baseline from pre-dose labs so UI can offset the raw sim curve

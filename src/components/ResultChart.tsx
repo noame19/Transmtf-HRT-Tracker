@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateConcentration_CPA, LabResult, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
 import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
@@ -14,9 +14,7 @@ interface SimCI {
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<string, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>>;
 }
 
 interface ChartPoint {
@@ -155,7 +153,7 @@ function interpAt(timeH: number[], values: number[], h: number): number | undefi
     return Number.isFinite(v) ? v : undefined;
 }
 
-const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
+const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUnit = 'ng/mL', aaColor = '#8b5cf6', aaShowPersonal = true }: any) => {
     if (active && payload && payload.length) {
         // If it's a lab result point
         if (payload[0].payload.isLabResult) {
@@ -238,28 +236,38 @@ const CustomTooltip = ({ active, payload, label, t, lang }: any) => {
                 )}
                 {concCPA > 0 && (
                     <div className="flex items-baseline gap-1 mt-0.5">
-                        <span className="text-[9px] font-bold text-purple-400">CPA:</span>
-                        <span className="text-sm font-black text-purple-600 tracking-tight">
-                            {concCPA.toFixed(1)}
+                        <span className="text-[9px] font-bold" style={{ color: aaColor }}>{aaLabel}:</span>
+                        <span className="text-sm font-black tracking-tight" style={{ color: aaColor }}>
+                            {concCPA.toFixed(2)}
                         </span>
-                        <span className="text-[10px] font-bold text-purple-300">ng/mL</span>
+                        <span className="text-[10px] font-bold" style={{ color: aaColor, opacity: 0.7 }}>{aaUnit}</span>
                     </div>
                 )}
-                {concPersonalCPA !== undefined && concPersonalCPA > 0 && (
+                {/* Population CI for non-personalized compounds (BICA): no "personal" label. */}
+                {!aaShowPersonal && concCPA > 0 && cpaCiLow !== undefined && cpaCiHigh !== undefined && (
+                    <div className="flex items-center gap-1 ml-1 mt-0.5">
+                        <span className="text-[8px] font-bold uppercase w-12" style={{ color: 'var(--text-tertiary)' }}>{t('chart.cpa_pop_range')}</span>
+                        <span className="text-[9px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                            {cpaCiLow.toFixed(2)} – {cpaCiHigh.toFixed(2)}
+                            <span className="text-[8px] font-normal ml-0.5" style={{ color: 'var(--text-tertiary)' }}>{aaUnit}</span>
+                        </span>
+                    </div>
+                )}
+                {aaShowPersonal && concPersonalCPA !== undefined && concPersonalCPA > 0 && (
                     <div className="mt-0.5">
                         <div className="flex items-baseline gap-1">
-                            <span className="text-[9px] font-bold text-violet-500">{t('chart.personal_model')} CPA:</span>
-                            <span className="text-sm font-black text-violet-700 tracking-tight">
-                                {concPersonalCPA.toFixed(1)}
+                            <span className="text-[9px] font-bold" style={{ color: aaColor }}>{t('chart.personal_model')} {aaLabel}:</span>
+                            <span className="text-sm font-black tracking-tight" style={{ color: aaColor }}>
+                                {concPersonalCPA.toFixed(2)}
                             </span>
-                            <span className="text-[10px] font-bold text-violet-400">ng/mL</span>
+                            <span className="text-[10px] font-bold" style={{ color: aaColor, opacity: 0.7 }}>{aaUnit}</span>
                         </div>
                         {cpaCiLow !== undefined && cpaCiHigh !== undefined && (
                             <div className="flex items-center gap-1 ml-1 mt-0.5">
                                 <span className="text-[8px] font-bold uppercase w-8" style={{ color: 'var(--text-tertiary)' }}>{t('chart.ci_band')}</span>
                                 <span className="text-[9px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                                     {cpaCiLow.toFixed(2)} – {cpaCiHigh.toFixed(2)}
-                                    <span className="text-[8px] font-normal ml-0.5" style={{ color: 'var(--text-tertiary)' }}>ng/mL</span>
+                                    <span className="text-[8px] font-normal ml-0.5" style={{ color: 'var(--text-tertiary)' }}>{aaUnit}</span>
                                 </span>
                             </div>
                         )}
@@ -280,10 +288,28 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     onPointClick: (e: DoseEvent) => void;
     onShareImage?: () => void;
 }) => {
-    // Determine whether any CPA dosing events exist
-    const hasCPADoses = useMemo(() => {
-        return events.some(e => e.ester === 'CPA');
+    // The single anti-androgen plotted on the right axis. When both CPA and a
+    // BICA history exist, bicalutamide takes the axis (they're alternatives).
+    const primaryAA = useMemo<Ester | null>(() => {
+        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
+        if (present.includes(Ester.BICA)) return Ester.BICA;
+        return present[0] ?? null;
     }, [events]);
+    const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
+    const hasCPADoses = !!primaryAA; // "has anti-androgen on right axis"
+    // Display unit + scale: native is ng/mL; bicalutamide (large) shows as µg/mL.
+    const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';
+    const aaScale = aaUnit === 'ug/mL' ? 1 / 1000 : 1;
+    const aaColor = aaSpec?.color ?? '#8b5cf6';
+    const aaLabel = primaryAA ?? 'CPA';
+    // Only compounds that inherit E2 adherence (CPA) get an individualized
+    // "personal" curve/label. BICA is population-only, so it shows its raw curve
+    // plus a population CI band, never a "personal model" dashed line.
+    const aaPersonalized = !!aaSpec?.adherenceFromE2;
+    // "E2 personal model active" = a real post-dose calibration exists. This is
+    // distinct from `!!simCI`: simCI may be present purely to carry the
+    // anti-androgen population CI (E2 arrays empty) when there are no E2 labs.
+    const hasE2Personal = !!simCI && simCI.e2Adjusted.length > 0;
     const { t, lang } = useTranslation();
     const [xDomain, setXDomain] = useState<[number, number] | null>(null);
     const initializedRef = useRef(false);
@@ -323,10 +349,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
     };
 
     // Build CI lookup map for fast time-based access
-    const hasPersonalCpaModel = !!simCI && simCI.cpaAdjusted.length === simCI.timeH.length;
-    const hasPersonalCpaCI = !!simCI &&
-        simCI.cpaCi95Low.length === simCI.timeH.length &&
-        simCI.cpaCi95High.length === simCI.timeH.length;
+    const aaCISeries = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
+    const hasPersonalCpaModel = !!aaCISeries && !!simCI && aaCISeries.adjusted.length === simCI.timeH.length;
+    const hasPersonalCpaCI = !!aaCISeries && !!simCI &&
+        aaCISeries.ci95Low.length === simCI.timeH.length &&
+        aaCISeries.ci95High.length === simCI.timeH.length;
 
     const ciMap = useMemo(() => {
         if (!simCI) return null;
@@ -347,13 +374,13 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                 ci68Low: simCI.ci68Low[i],
                 ci68High: simCI.ci68High[i],
                 e2Adj: simCI.e2Adjusted[i],
-                cpaAdj: hasPersonalCpaModel ? simCI.cpaAdjusted[i] : undefined,
-                cpaCi95Low: hasPersonalCpaCI ? simCI.cpaCi95Low[i] : undefined,
-                cpaCi95High: hasPersonalCpaCI ? simCI.cpaCi95High[i] : undefined,
+                cpaAdj: hasPersonalCpaModel ? aaCISeries!.adjusted[i] * aaScale : undefined,
+                cpaCi95Low: hasPersonalCpaCI ? aaCISeries!.ci95Low[i] * aaScale : undefined,
+                cpaCi95High: hasPersonalCpaCI ? aaCISeries!.ci95High[i] * aaScale : undefined,
             });
         }
         return m;
-    }, [simCI, hasPersonalCpaModel, hasPersonalCpaCI]);
+    }, [simCI, aaCISeries, hasPersonalCpaModel, hasPersonalCpaCI, aaScale]);
 
     const rawData = useMemo<ChartPoint[]>(() => {
         if (!sim || sim.timeH.length === 0) return [];
@@ -361,7 +388,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
         // model is active (i.e. no post-dose lab results processed yet). This
         // makes the chart visually consistent with the "drug + endogenous" value
         // shown in the headline card.
-        const hasPersonalModelCurve = !!simCI;
+        const hasPersonalModelCurve = hasE2Personal;
         const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
             ? baselineE2PGmL
             : 0;
@@ -370,7 +397,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             const timeMs = t * 3600000;
             // E2: raw simulation (no calibrationFn; personal model curve shows the calibrated view)
             const baseE2 = sim.concPGmL_E2[i] + baseShift; // pg/mL (+ endogenous if no personal model)
-            const rawCPA_ngmL = sim.concPGmL_CPA[i]; // ng/mL
+            const aaSeries = primaryAA ? sim.byCompound?.[primaryAA] : undefined;
+            const rawCPA_ngmL = (aaSeries ? aaSeries.values[i] : 0) * aaScale; // display unit
 
             // Personal model CI data (from OU-Kalman calibration)
             const ciEntry = ciMap?.get(t);
@@ -411,7 +439,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                 cpaCi95High,
             };
         });
-    }, [sim, ciMap, simCI, baselineE2PGmL]);
+    }, [sim, ciMap, simCI, baselineE2PGmL, primaryAA, aaScale]);
 
     const data = useMemo(() => downsampleSeries(rawData, MAX_RENDER_POINTS), [rawData]);
     const overviewData = useMemo(() => downsampleSeries(rawData, MAX_OVERVIEW_POINTS), [rawData]);
@@ -435,7 +463,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             const timeMs = e.timeH * 3600000;
             // Interpolate E2 at dose time for y-position
             const concE2Raw = interpolateConcentration_E2(sim, e.timeH);
-            const hasPersonalModelCurve = !!simCI;
+            const hasPersonalModelCurve = hasE2Personal;
             const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
                 ? baselineE2PGmL
                 : 0;
@@ -496,8 +524,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             if (l.time >= visibleMin && l.time <= visibleMax) includeBase(l.conc);
         }
         // Ensure the endogenous baseline reference line is always within the axis range.
-        // Use !simCI (not hasPersonalModel which is declared after the early return).
-        if (!simCI && baselineE2PGmL && baselineE2PGmL > 0) {
+        if (!hasE2Personal && baselineE2PGmL && baselineE2PGmL > 0) {
             includeBase(baselineE2PGmL);
         }
 
@@ -548,20 +575,20 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
         const h = now / 3600000;
 
         const concE2Raw = interpolateConcentration_E2(sim, h);
-        const concCPA = interpolateConcentration_CPA(sim, h);
+        const concCPA = primaryAA ? (interpolateCompoundConcentration(sim, primaryAA, h) ?? null) : null;
         const concPersonal = simCI ? interpAt(simCI.timeH, simCI.e2Adjusted, h) : undefined;
         const ci95Low = simCI ? interpAt(simCI.timeH, simCI.ci95Low, h) : undefined;
         const ci95High = simCI ? interpAt(simCI.timeH, simCI.ci95High, h) : undefined;
         const ci68Low = simCI ? interpAt(simCI.timeH, simCI.ci68Low, h) : undefined;
         const ci68High = simCI ? interpAt(simCI.timeH, simCI.ci68High, h) : undefined;
-        const concPersonalCPA = hasPersonalCpaModel
-            ? interpAt(simCI!.timeH, simCI!.cpaAdjusted, h)
+        const concPersonalCPA = (hasPersonalCpaModel && aaCISeries)
+            ? interpAt(simCI!.timeH, aaCISeries.adjusted, h) * aaScale
             : undefined;
-        const cpaCi95Low = hasPersonalCpaCI
-            ? interpAt(simCI!.timeH, simCI!.cpaCi95Low, h)
+        const cpaCi95Low = (hasPersonalCpaCI && aaCISeries)
+            ? interpAt(simCI!.timeH, aaCISeries.ci95Low, h) * aaScale
             : undefined;
-        const cpaCi95High = hasPersonalCpaCI
-            ? interpAt(simCI!.timeH, simCI!.cpaCi95High, h)
+        const cpaCi95High = (hasPersonalCpaCI && aaCISeries)
+            ? interpAt(simCI!.timeH, aaCISeries.ci95High, h) * aaScale
             : undefined;
 
         const hasE2 = concE2Raw !== null && !Number.isNaN(concE2Raw);
@@ -571,8 +598,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
 
         // Apply the same baseline shift used in rawData so the "now" dot is
         // consistent with the underlying curve.
-        // Use !simCI directly — hasPersonalModel is declared after the early return.
-        const baseShift = (!simCI && baselineE2PGmL && baselineE2PGmL > 0)
+        const baseShift = (!hasE2Personal && baselineE2PGmL && baselineE2PGmL > 0)
             ? baselineE2PGmL
             : 0;
         const concE2 = hasE2 ? (concE2Raw! + baseShift) : 0;
@@ -580,7 +606,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
         return {
             time: now,
             concE2,                            // pg/mL, raw (+ endogenous offset if needed)
-            concCPA: hasCPA ? concCPA : 0,     // ng/mL, raw
+            concCPA: hasCPA ? concCPA * aaScale : 0,     // display unit (ng/mL or µg/mL)
             concPersonal,
             ci95Low,
             ci95High,
@@ -590,7 +616,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
             cpaCi95Low,
             cpaCi95High,
         };
-    }, [sim, simCI, data, now, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL]);
+    }, [sim, simCI, data, now, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL, primaryAA, aaCISeries, aaScale]);
 
     // Slider helpers for quick panning (helps mobile users)
     // Initialize view: center on "now" with a reasonable window (e.g. 14 days)
@@ -707,7 +733,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
         </div>
     );
 
-    const hasPersonalModel = !!simCI;
+    const hasPersonalModel = hasE2Personal;
 
     return (
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
@@ -768,10 +794,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 <stop offset="5%" stopColor="#f6c4d7" stopOpacity={0.18}/>
                                 <stop offset="95%" stopColor="#f6c4d7" stopOpacity={0}/>
                             </linearGradient>
-                            <linearGradient id="colorCPA" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.18}/>
-                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                            </linearGradient>
                             <linearGradient id="colorPersonal" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.12}/>
                                 <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
@@ -810,11 +832,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             dataKey="concCPA"
                             domain={yDomainRight}
                             tickFormatter={formatAxisTick}
-                            tick={{fontSize: 10, fill: '#8b5cf6', fontWeight: 600}}
+                            tick={{fontSize: 10, fill: aaColor, fontWeight: 600}}
                             axisLine={false}
                             tickLine={false}
                             width={50}
-                            label={{ value: 'CPA (ng/mL)', angle: 90, position: 'right', offset: 0, style: { fontSize: 11, fill: '#8b5cf6', fontWeight: 700, textAnchor: 'middle' } }}
+                            label={{ value: `${aaLabel} (${aaUnit})`, angle: 90, position: 'right', offset: 0, style: { fontSize: 11, fill: aaColor, fontWeight: 700, textAnchor: 'middle' } }}
                         />
                         )}
                         {/* Hidden right axis when no CPA data — Recharts requires at least one yAxisId="right" */}
@@ -827,7 +849,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                         />
                         )}
                         <Tooltip
-                            content={<CustomTooltip t={t} lang={lang} />}
+                            content={<CustomTooltip t={t} lang={lang} aaLabel={aaLabel} aaUnit={aaUnit} aaColor={aaColor} aaShowPersonal={aaPersonalized} />}
                             cursor={{ stroke: '#f6c4d7', strokeWidth: 1, strokeDasharray: '4 4' }}
                             trigger="hover"
                         />
@@ -909,7 +931,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                 />
                             </>
                         )}
-                        {hasPersonalModel && hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
+                        {hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
                             <>
                                 <Area
                                     data={data}
@@ -930,7 +952,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                     dataKey="cpaCi95Band"
                                     yAxisId="right"
                                     stroke="none"
-                                    fill="rgba(124,58,237,0.10)"
+                                    fill={`${aaColor}1A`}
                                     fillOpacity={1}
                                     stackId="cpaCi"
                                     isAnimationActive={false}
@@ -959,12 +981,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             type="monotone"
                             dataKey="concCPA"
                             yAxisId="right"
-                            stroke="#8b5cf6"
+                            stroke={aaColor}
                             strokeWidth={2.2}
-                            fillOpacity={0.95}
-                            fill="url(#colorCPA)"
+                            fillOpacity={0.12}
+                            fill={aaColor}
                             isAnimationActive={false}
-                            activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: '#7c3aed' }}
+                            activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: aaColor }}
                         />
                         )}
 
@@ -985,20 +1007,21 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                             />
                         )}
 
-                        {/* Personal model CPA curve (dashed purple line) */}
-                        {hasPersonalModel && hasPersonalCpaModel && hasCPADoses && (
+                        {/* Personal model anti-androgen curve (dashed line) —
+                            only for adherence-coupled compounds (CPA), not BICA. */}
+                        {hasPersonalCpaModel && hasCPADoses && aaPersonalized && (
                             <Area
                                 data={data}
                                 type="monotone"
                                 dataKey="concPersonalCPA"
                                 yAxisId="right"
-                                stroke="#7c3aed"
+                                stroke={aaColor}
                                 strokeWidth={1.8}
                                 strokeDasharray="5 3"
                                 fill="none"
                                 isAnimationActive={false}
                                 dot={false}
-                                activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#7c3aed' }}
+                                activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: aaColor }}
                             />
                         )}
 
@@ -1033,7 +1056,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                         <circle
                                             cx={cx} cy={cy}
                                             r={4}
-                                            fill="#c4b5fd"
+                                            fill={aaColor}
                                             stroke="white"
                                             strokeWidth={1.5}
                                         />
@@ -1105,7 +1128,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPo
                                             cx={cx}
                                             cy={cy}
                                             r={3}
-                                            fill={payload?.ester === 'CPA' ? '#8b5cf6' : '#ec4899'}
+                                            fill={payload?.ester && isAntiandrogen(payload.ester) ? (ANTIANDROGENS[payload.ester as Ester]?.color ?? '#8b5cf6') : '#ec4899'}
                                             stroke="white"
                                             strokeWidth={1.5}
                                         />

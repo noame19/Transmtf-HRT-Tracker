@@ -7,6 +7,9 @@ import {
     _analytic3C,
     oneCompAmount,
     weightAtTimeH,
+    isAntiandrogen,
+    ANTIANDROGENS,
+    ANTIANDROGEN_ESTERS,
 } from './pk';
 import {
     convertToPgMl,
@@ -67,7 +70,6 @@ const EKF_EPS_CPA = 0.001;
 const EKF_CHI2_95 = 3.841;
 const EKF_DELTA_K = 0.01;
 const EKF_CI_MAX_E2 = 5000;
-const EKF_CI_MAX_CPA = 500;
 const EKF_SIGMA_RESIDUAL_LOG = 0.27;
 const EKF_Q_REF_PERIOD_H = 30 * 24;
 
@@ -104,7 +106,7 @@ function computeEventAmountWithKScale(
 ): number {
     if (tau < 0) return 0;
     if (event.route === Route.patchRemove) return 0;
-    if (event.ester === Ester.CPA) return 0;
+    if (isAntiandrogen(event.ester)) return 0;
 
     const params = resolveParams(event);
     const k3 = params.k3 * kScale;
@@ -227,7 +229,7 @@ export function ekfUpdatePersonalModel(
     const hasDoseBeforeLab = events.some((ev) =>
         ev.timeH <= labResult.timeH &&
         ev.route !== Route.patchRemove &&
-        ev.ester !== Ester.CPA
+        !isAntiandrogen(ev.ester)
     );
 
     const obsPGmL = convertToPgMl(labResult.concValue, labResult.unit);
@@ -436,9 +438,7 @@ export function computeSimulationWithCI(
     ci95High: number[];
     ci68Low: number[];
     ci68High: number[];
-    cpaAdjusted: number[];
-    cpaCi95Low: number[];
-    cpaCi95High: number[];
+    antiandrogen: Partial<Record<Ester, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>>;
 } {
     const n = sim.timeH.length;
     if (n === 0) {
@@ -449,9 +449,7 @@ export function computeSimulationWithCI(
             ci95High: [],
             ci68Low: [],
             ci68High: [],
-            cpaAdjusted: [],
-            cpaCi95Low: [],
-            cpaCi95High: [],
+            antiandrogen: {},
         };
     }
 
@@ -554,33 +552,40 @@ export function computeSimulationWithCI(
         }
     }
 
-    const adherenceScale = applyE2LearningToCPA ? Math.exp(theta[0]) : 1;
-    const adherenceVar = applyE2LearningToCPA ? Math.max(0, P[0][0]) : 0;
-    const varLogCPA = adherenceVar + CPA_2COMP_PK.popLogVar;
-    const stdCPA = Math.sqrt(Math.max(0, varLogCPA));
+    // Per-compound anti-androgen adjusted curve + population PK CI band.
+    // CPA inherits the learned E2 adherence amplitude (when enabled); other
+    // anti-androgens (bicalutamide) are population-only with no learning.
+    const antiandrogen: Partial<Record<Ester, { adjusted: number[]; ci95Low: number[]; ci95High: number[] }>> = {};
+    for (const ester of ANTIANDROGEN_ESTERS) {
+        const series = sim.byCompound?.[ester];
+        if (!series) continue;
+        const spec = ANTIANDROGENS[ester]!;
+        const useAdherence = spec.adherenceFromE2 && applyE2LearningToCPA;
+        const scale = useAdherence ? Math.exp(theta[0]) : 1;
+        const adhVar = useAdherence ? Math.max(0, P[0][0]) : 0;
+        const std = Math.sqrt(Math.max(0, adhVar + spec.popLogVar));
 
-    const cpaAdjusted = new Array<number>(n).fill(0);
-    const cpaCi95Low = new Array<number>(n).fill(0);
-    const cpaCi95High = new Array<number>(n).fill(0);
-
-    // CPA only inherits the learned adherence amplitude, so we can reuse the
-    // population PK curve point-by-point instead of sparsely sampling and
-    // linearly interpolating across sharp oral peaks.
-    for (let i = 0; i < n; i++) {
-        const cpaPred = Math.max(0, sim.concPGmL_CPA[i] * adherenceScale);
-        const yhatCPA = Math.log(Math.max(cpaPred, EKF_EPS_CPA));
-        const [cpaCiLow, cpaCiHigh] = clampCI(
-            Math.exp(yhatCPA - 1.96 * stdCPA),
-            Math.exp(yhatCPA + 1.96 * stdCPA),
-            EKF_CI_MAX_CPA
-        );
-
-        cpaAdjusted[i] = cpaPred;
-        cpaCi95Low[i] = cpaCiLow;
-        cpaCi95High[i] = cpaCiHigh;
+        const adjusted = new Array<number>(n).fill(0);
+        const ci95Low = new Array<number>(n).fill(0);
+        const ci95High = new Array<number>(n).fill(0);
+        for (let i = 0; i < n; i++) {
+            const pred = Math.max(0, series.values[i] * scale);
+            const yhat = Math.log(Math.max(pred, EKF_EPS_CPA));
+            const [lo, hi] = clampCI(
+                Math.exp(yhat - 1.96 * std),
+                Math.exp(yhat + 1.96 * std),
+                spec.ciMaxNative
+            );
+            adjusted[i] = Math.min(pred, spec.ciMaxNative);
+            ci95Low[i] = lo;
+            ci95High[i] = hi;
+        }
+        antiandrogen[ester] = { adjusted, ci95Low, ci95High };
     }
 
-    if (applyCPAInhibitionToE2) {
+    // CPA → E2 clearance inhibition (CPA-specific; bicalutamide excluded).
+    const cpaAdjusted = antiandrogen[Ester.CPA]?.adjusted;
+    if (applyCPAInhibitionToE2 && cpaAdjusted) {
         for (let i = 0; i < n; i++) {
             const inhibition = computeCPAE2InhibitionFactor(cpaAdjusted[i]);
             const scale = 1 / (1 - inhibition);
@@ -604,8 +609,6 @@ export function computeSimulationWithCI(
         ci95High,
         ci68Low,
         ci68High,
-        cpaAdjusted,
-        cpaCi95Low,
-        cpaCi95High,
+        antiandrogen,
     };
 }

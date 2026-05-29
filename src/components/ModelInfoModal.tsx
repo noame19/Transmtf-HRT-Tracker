@@ -45,6 +45,16 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                                <Pill size={14} className="text-amber-500" />
+                            </div>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.bica.title')}</p>
+                        </div>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.bica.body')}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
                                 <BrainCircuit size={14} className="text-blue-500" />
                             </div>

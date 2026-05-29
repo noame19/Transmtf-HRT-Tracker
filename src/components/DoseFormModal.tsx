@@ -6,7 +6,7 @@ import { useAppData } from '../contexts/AppDataContext';
 import { prefillWeightKG } from '../utils/weight';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
-import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor } from '../../logic';
+import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor, isAntiandrogen } from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -343,7 +343,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             }
             finalDose = raw; // patch input is compound dose on patch
         } else if (route !== Route.patchRemove) {
-            if (effectiveEster === Ester.CPA) {
+            if (isAntiandrogen(effectiveEster)) {
                 const rawVal = parseFloat(rawDose);
                 if (!Number.isFinite(rawVal) || rawVal <= 0) {
                     showDialog('alert', nonPositiveMsg);
@@ -410,12 +410,12 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             return [Ester.EB, Ester.EV, Ester.EC, Ester.EN];
         
         // === 修改开始 ===
-        // 把 Oral (口服) 单独提出来，加上 Ester.CPA
-        case Route.oral: 
-            return [Ester.E2, Ester.EV, Ester.CPA]; 
+        // 口服 (Oral) 支持 E2/EV 以及口服抗雄药物 (CPA / 比卡鲁胺 BICA)
+        case Route.oral:
+            return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
 
-        // 舌下含服保持原样 (CPA 一般不含服)
-        case Route.sublingual: 
+        // 舌下含服保持原样 (抗雄药物一般不含服)
+        case Route.sublingual:
             return [Ester.E2, Ester.EV];
         // === 修改结束 ===
 
@@ -436,8 +436,8 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
 
     const doseGuide = useMemo(() => {
-        // CPA 没有剂量提示，因为参考范围不同
-        if (safeEster === Ester.CPA) return null;
+        // 抗雄药物 (CPA / BICA) 没有剂量提示，因为参考范围不同
+        if (isAntiandrogen(safeEster)) return null;
 
         const cfg = DOSE_GUIDE_CONFIG[route];
         if (!cfg) return null;
@@ -634,7 +634,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
                                         {(ester !== Ester.E2) && (
-                                            <div className={`space-y-2 ${ (ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || ester === Ester.CPA ? 'col-span-2' : '' }`}>
+                                            <div className={`space-y-2 ${ (ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || isAntiandrogen(ester) ? 'col-span-2' : '' }`}>
                                                 <label className="block text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.dose_raw')}</label>
                                                 <input
                                                     type="number" inputMode="decimal"
@@ -647,7 +647,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                                 />
                                             </div>
                                         )}
-                                        {!(ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) && ester !== Ester.CPA && (
+                                        {!(ester === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) && !isAntiandrogen(ester) && (
                                             <div className={`space-y-2 ${(ester === Ester.E2 && route !== Route.gel && route !== Route.oral && route !== Route.sublingual) ? "col-span-2" : ""}`}>
                                                 <label className="block text-xs font-bold text-pink-400 uppercase tracking-wider">
                                                     {route === Route.patchApply ? t('field.dose_raw') : t('field.dose_e2')}

@@ -36,7 +36,25 @@ export enum Ester {
     EV = "EV",
     EC = "EC",
     EN = "EN",
-    CPA = "CPA"
+    CPA = "CPA",
+    BICA = "BICA"
+}
+
+/**
+ * Concentration unit tags used by non-E2 compound component series.
+ *
+ * Anti-androgens are stored internally in ng/mL; the display layer may scale
+ * a value up to µg/mL ("ug/mL") when it grows large (e.g. bicalutamide).
+ */
+export type ConcUnit = 'pg/mL' | 'ng/mL' | 'ug/mL';
+
+/**
+ * A single non-E2 compound concentration curve on the shared simulation grid,
+ * tagged with the unit its `values` are expressed in.
+ */
+export interface CompoundSeries {
+    unit: ConcUnit;
+    values: number[];
 }
 
 /**
@@ -78,11 +96,22 @@ export interface DoseEvent {
  * curves so the UI can display combined or separated views without re-running
  * the full simulation.
  */
+/**
+ * Raw simulation output on the shared time grid.
+ *
+ * The engine keeps total concentration plus the E2 component curve, and a
+ * generic `byCompound` map for every non-E2 compound (anti-androgens such as
+ * CPA / bicalutamide), so the UI can display combined or separated views
+ * without re-running the full simulation. `concPGmL_CPA` is retained as a
+ * backwards-compatible mirror of `byCompound[Ester.CPA]` (it is, despite the
+ * legacy name, in ng/mL).
+ */
 export interface SimulationResult {
     timeH: number[];
     concPGmL: number[];
     concPGmL_E2: number[];
     concPGmL_CPA: number[];
+    byCompound: Partial<Record<Ester, CompoundSeries>>;
     auc: number;
 }
 

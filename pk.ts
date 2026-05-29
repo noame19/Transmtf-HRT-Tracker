@@ -1,4 +1,4 @@
-import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult } from './types';
+import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type ConcUnit } from './types';
 
 /**
  * Route-specific metadata for transdermal gel absorption.
@@ -60,13 +60,103 @@ export const CPA_2COMP_PK = {
     popLogVar: 0.09,
 };
 
+/**
+ * Bicalutamide apparent one-compartment oral PK constants ("chronic calibration"
+ * default set). Bicalutamide's clinically relevant activity comes from the
+ * (R)-enantiomer; we model that directly with apparent first-order absorption /
+ * elimination rather than splitting enantiomers or first-pass.
+ *
+ * Targets used for the calibration (FDA Casodex label, Table 3; SmPC):
+ * - single-dose Tmax ≈ 31 h, Cmax ≈ 0.77 µg/mL
+ * - terminal half-life ≈ 5.8 d
+ * - 50 mg once-daily steady state ≈ 9 µg/mL
+ *
+ * `vOverF` is an ABSOLUTE apparent volume (L), not per-kg, so the concentration
+ * conversion for bicalutamide does not scale with body weight.
+ */
+export const BICA_PK = {
+    ka: 0.10,                       // h^-1  (Tmax ≈ 31 h)
+    ke: Math.log(2) / (5.8 * 24),   // h^-1  (t½ ≈ 5.8 d)
+    vOverF: 50.2,                   // L (apparent V/F)
+    popLogVar: 0.10,                // ≈ 30% CV population PK uncertainty
+};
+
+/**
+ * Specification for a non-E2 anti-androgen compound. The registry below drives
+ * the PK engine, the personal-model CI layer, and the UI so that adding another
+ * anti-androgen later only requires registering one more entry here.
+ */
+export interface AntiandrogenSpec {
+    ester: Ester;
+    /** Unit the concentration values are stored in (always ng/mL today). */
+    nativeUnit: ConcUnit;
+    /** Chart / UI accent color. */
+    color: string;
+    /** Population PK log-variance used for the confidence band. */
+    popLogVar: number;
+    /** Upper clamp for adjusted value & CI bounds, in the native unit. */
+    ciMaxNative: number;
+    /** Whether the compound inherits the E2-inferred adherence amplitude. */
+    adherenceFromE2: boolean;
+    /** Convert a precomputed central-compartment amount (mg) to native conc. */
+    concFromAmountMG: (amountMG: number, weightKG: number) => number;
+}
+
+export const ANTIANDROGENS: Partial<Record<Ester, AntiandrogenSpec>> = {
+    [Ester.CPA]: {
+        ester: Ester.CPA,
+        nativeUnit: 'ng/mL',
+        color: '#8b5cf6',
+        popLogVar: CPA_2COMP_PK.popLogVar,
+        ciMaxNative: 500,
+        adherenceFromE2: true,
+        concFromAmountMG: (amountMG, weightKG) => {
+            const v1mL = CPA_2COMP_PK.V1_per_kg * weightKG * 1000;
+            return v1mL > 0 ? Math.max(0, (amountMG * 1e6) / v1mL) : 0;
+        },
+    },
+    [Ester.BICA]: {
+        ester: Ester.BICA,
+        nativeUnit: 'ng/mL',
+        color: '#f59e0b',
+        popLogVar: BICA_PK.popLogVar,
+        ciMaxNative: 20000,
+        adherenceFromE2: false,
+        // amount (mg) / V/F (L) -> mg/L; ×1000 -> ng/mL
+        concFromAmountMG: (amountMG) => Math.max(0, (amountMG / BICA_PK.vOverF) * 1000),
+    },
+};
+
+export const ANTIANDROGEN_ESTERS = Object.keys(ANTIANDROGENS) as Ester[];
+
+/** True when the ester is a tracked non-E2 anti-androgen (CPA / BICA / …). */
+export function isAntiandrogen(ester: Ester): boolean {
+    return Object.prototype.hasOwnProperty.call(ANTIANDROGENS, ester);
+}
+
+/**
+ * Scale a native (ng/mL) anti-androgen concentration into a display unit,
+ * auto-promoting to µg/mL once the value reaches 1000 ng/mL so large compounds
+ * (bicalutamide) don't render as "9000 ng/mL".
+ */
+export function formatAntiandrogenConc(
+    ngml: number,
+    spec: AntiandrogenSpec
+): { value: number; unit: ConcUnit } {
+    if (spec.nativeUnit === 'ng/mL' && ngml >= 1000) {
+        return { value: ngml / 1000, unit: 'ug/mL' };
+    }
+    return { value: ngml, unit: spec.nativeUnit };
+}
+
 const EsterInfo = {
     [Ester.E2]: { name: "Estradiol", mw: 272.38 },
     [Ester.EB]: { name: "Estradiol Benzoate", mw: 376.50 },
     [Ester.EV]: { name: "Estradiol Valerate", mw: 356.50 },
     [Ester.EC]: { name: "Estradiol Cypionate", mw: 396.58 },
     [Ester.EN]: { name: "Estradiol Enanthate", mw: 384.56 },
-    [Ester.CPA]: { name: "Cyproterone Acetate", mw: 416.94 }
+    [Ester.CPA]: { name: "Cyproterone Acetate", mw: 416.94 },
+    [Ester.BICA]: { name: "Bicalutamide", mw: 430.37 }
 };
 
 /**
@@ -237,7 +327,10 @@ export function resolveParams(event: DoseEvent): PKParams {
             return { Frac_fast: 0, k1_fast: 0, k1_slow: 0, k2: 0, k3: defaultK3, F: 0, rateMGh: 0, F_fast: 0, F_slow: 0 };
 
         case Route.oral: {
-            if (event.ester === Ester.CPA) {
+            if (isAntiandrogen(event.ester)) {
+                // Anti-androgens (CPA / bicalutamide) are dosed as raw compound
+                // mg and their amount is produced by their own model in
+                // PrecomputedEventModel; these params are not used for them.
                 return {
                     Frac_fast: 1.0,
                     k1_fast: 1.0,
@@ -284,6 +377,37 @@ export function compute2CompCPACentralAmount(doseMG: number, tau: number): numbe
         C * Math.exp(-beta * tau)
     );
     return Math.max(0, val);
+}
+
+/**
+ * Analytical single-dose oral bicalutamide central-compartment amount (mg) at
+ * elapsed time `tau` hours, using apparent one-compartment first-order
+ * absorption / elimination. Dividing this by `BICA_PK.vOverF` (and ×1000)
+ * yields ng/mL — see `ANTIANDROGENS[Ester.BICA].concFromAmountMG`.
+ */
+export function computeBicalutamideAmount(doseMG: number, tau: number): number {
+    if (tau < 0 || doseMG <= 0) return 0;
+    const { ka, ke } = BICA_PK;
+    if (Math.abs(ka - ke) < 1e-9) {
+        return Math.max(0, doseMG * ka * tau * Math.exp(-ke * tau));
+    }
+    return Math.max(0, doseMG * ka / (ka - ke) * (Math.exp(-ke * tau) - Math.exp(-ka * tau)));
+}
+
+/**
+ * Bicalutamide plasma concentration in ng/mL at a single time point, summed
+ * over all past oral BICA doses. Independent of the simulation grid (no time
+ * bound), so it is also used directly by unit tests.
+ */
+export function bicalutamideConcNgML(events: DoseEvent[], timeH: number): number {
+    const spec = ANTIANDROGENS[Ester.BICA]!;
+    let totalAmountMG = 0;
+    for (const ev of events) {
+        if (ev.ester !== Ester.BICA || ev.route !== Route.oral) continue;
+        if (ev.timeH > timeH) continue;
+        totalAmountMG += computeBicalutamideAmount(ev.doseMG, timeH - ev.timeH);
+    }
+    return spec.concFromAmountMG(totalAmountMG, 0);
 }
 
 /**
@@ -348,6 +472,9 @@ class PrecomputedEventModel {
                     if (tau < 0) return 0;
                     if (event.ester === Ester.CPA) {
                         return compute2CompCPACentralAmount(dose, tau);
+                    }
+                    if (event.ester === Ester.BICA) {
+                        return computeBicalutamideAmount(dose, tau);
                     }
                     return oneCompAmount(tau, dose, params);
                 };
@@ -464,6 +591,15 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
     const concPGmL: number[] = [];
     const concPGmL_E2: number[] = [];
     const concPGmL_CPA: number[] = [];
+    // Generic per-compound concentration series for every anti-androgen that
+    // actually appears in the event list (CPA / bicalutamide / …).
+    const presentAntiandrogens = ANTIANDROGEN_ESTERS.filter(
+        e => sortedEvents.some(ev => ev.ester === e)
+    );
+    const byCompound: Partial<Record<Ester, { unit: 'ng/mL'; values: number[] }>> = {};
+    for (const e of presentAntiandrogens) {
+        byCompound[e] = { unit: 'ng/mL', values: [] };
+    }
     let auc = 0;
 
     const stepSize = (endTime - startTime) / (steps - 1);
@@ -471,12 +607,12 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
     for (let i = 0; i < steps; i++) {
         const t = startTime + i * stepSize;
         let totalAmountMG_E2 = 0;
-        let totalAmountMG_CPA = 0;
+        const amountByCompound: Partial<Record<Ester, number>> = {};
 
         for (const { model, ester } of precomputed) {
             const amount = model.amount(t);
-            if (ester === Ester.CPA) {
-                totalAmountMG_CPA += amount;
+            if (isAntiandrogen(ester)) {
+                amountByCompound[ester] = (amountByCompound[ester] ?? 0) + amount;
             } else {
                 totalAmountMG_E2 += amount;
             }
@@ -484,10 +620,20 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
 
         const bodyWeightKG = weightAtTimeH(sortedEvents, t);
         const plasmaVolumeML_E2 = CorePK.vdPerKG * bodyWeightKG * 1000;
-        const plasmaVolumeML_CPA = CPA_2COMP_PK.V1_per_kg * bodyWeightKG * 1000;
 
         const currentConc_E2 = (totalAmountMG_E2 * 1e9) / plasmaVolumeML_E2;
-        const currentConc_CPA = (totalAmountMG_CPA * 1e6) / plasmaVolumeML_CPA;
+
+        // Convert each present anti-androgen's amount to its native (ng/mL) conc.
+        let currentConc_CPA = 0;
+        for (const e of presentAntiandrogens) {
+            const spec = ANTIANDROGENS[e]!;
+            const conc = spec.concFromAmountMG(amountByCompound[e] ?? 0, bodyWeightKG);
+            byCompound[e]!.values.push(conc);
+            if (e === Ester.CPA) currentConc_CPA = conc;
+        }
+
+        // Total curve keeps the historical behavior: E2 plus CPA scaled into
+        // pg/mL. Bicalutamide is intentionally NOT folded into the total.
         const currentConc = currentConc_E2 + (currentConc_CPA * 1000);
 
         timeH.push(t);
@@ -500,7 +646,7 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
         }
     }
 
-    return { timeH, concPGmL, concPGmL_E2, concPGmL_CPA, auc };
+    return { timeH, concPGmL, concPGmL_E2, concPGmL_CPA, byCompound, auc };
 }
 
 /**
@@ -546,6 +692,20 @@ export function interpolateConcentration_E2(sim: SimulationResult, hour: number)
     return interpolateSeries(sim.timeH, sim.concPGmL_E2, hour);
 }
 
+/**
+ * Interpolate a non-E2 compound's component curve (native unit, ng/mL) at the
+ * given hour. Returns null when the compound is not present in the simulation.
+ */
+export function interpolateCompoundConcentration(
+    sim: SimulationResult,
+    ester: Ester,
+    hour: number
+): number | null {
+    const series = sim.byCompound?.[ester];
+    if (!series) return null;
+    return interpolateSeries(sim.timeH, series.values, hour);
+}
+
 export function interpolateConcentration_CPA(sim: SimulationResult, hour: number): number | null {
-    return interpolateSeries(sim.timeH, sim.concPGmL_CPA, hour);
+    return interpolateCompoundConcentration(sim, Ester.CPA, hour);
 }
