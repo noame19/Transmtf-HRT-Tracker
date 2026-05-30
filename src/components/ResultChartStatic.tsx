@@ -8,7 +8,7 @@ import {
     XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot,
     Area, AreaChart, ComposedChart, Scatter
 } from 'recharts';
-import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
 import { formatDate } from '../utils/helpers';
 
 interface SimCI {
@@ -90,18 +90,18 @@ interface Props {
     simCI?: SimCI | null;
     baselineE2PGmL?: number | null;
     xDomain?: [number, number] | null;
+    nowH?: number;
     width?: number;
     height?: number;
     isDark?: boolean;
     themeColors?: { 50: string; 100: string; 200: string; 300: string; 400: string; 500: string; 600: string };
 }
 
-const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, baselineE2PGmL, xDomain, width, height, isDark = false, themeColors }) => {
-    const primaryAA = useMemo<Ester | null>(() => {
-        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
-        if (present.includes(Ester.BICA)) return Ester.BICA;
-        return present[0] ?? null;
-    }, [events]);
+const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, baselineE2PGmL, xDomain, nowH, width, height, isDark = false, themeColors }) => {
+    const primaryAA = useMemo<Ester | null>(
+        () => pickPrimaryAntiandrogen(events, nowH ?? Date.now() / 3600000),
+        [events, nowH]
+    );
     const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
     const hasCPADoses = !!primaryAA;
     const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';

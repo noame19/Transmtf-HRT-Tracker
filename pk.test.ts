@@ -4,6 +4,7 @@ import {
     bicalutamideConcNgML,
     runSimulation,
     isAntiandrogen,
+    pickPrimaryAntiandrogen,
     ANTIANDROGENS,
 } from './pk';
 import { computeSimulationWithCI, initPersonalModel, replayPersonalModel } from './personalModel';
@@ -196,6 +197,46 @@ describe('CPA + BICA coexisting', () => {
         const labs: LabResult[] = [{ id: 'l1', timeH: 5 * DAY, concValue: 50, unit: 'pg/ml' }];
         const state = replayPersonalModel(evs, labs);
         expect(state.postDoseObservationCount).toBe(0);
+    });
+});
+
+describe('pickPrimaryAntiandrogen', () => {
+    const cpa = (timeH: number): DoseEvent => ({ id: `c${timeH}`, route: Route.oral, timeH, doseMG: 50, ester: Ester.CPA, weightKG: 70, extras: {} });
+
+    it('returns null when there are no anti-androgen doses', () => {
+        const e2: DoseEvent = { id: 'e', route: Route.injection, timeH: 0, doseMG: 5, ester: Ester.EV, weightKG: 70, extras: {} };
+        expect(pickPrimaryAntiandrogen([e2], 10 * DAY)).toBeNull();
+    });
+
+    it('picks the most recently dosed anti-androgen at or before now', () => {
+        expect(pickPrimaryAntiandrogen([cpa(0), bicaEvent(DAY)], 2 * DAY)).toBe(Ester.BICA);
+        expect(pickPrimaryAntiandrogen([bicaEvent(0), cpa(DAY)], 2 * DAY)).toBe(Ester.CPA);
+    });
+
+    it('ignores future doses when an earlier dose is already taken', () => {
+        expect(pickPrimaryAntiandrogen([cpa(0), bicaEvent(10 * DAY)], DAY)).toBe(Ester.CPA);
+    });
+
+    it('falls back to the soonest upcoming when all doses are in the future', () => {
+        expect(pickPrimaryAntiandrogen([bicaEvent(10 * DAY), cpa(5 * DAY)], 0)).toBe(Ester.CPA);
+    });
+
+    it('handles single-compound histories', () => {
+        expect(pickPrimaryAntiandrogen([cpa(0), cpa(DAY)], 2 * DAY)).toBe(Ester.CPA);
+        expect(pickPrimaryAntiandrogen([bicaEvent(0), bicaEvent(DAY)], 2 * DAY)).toBe(Ester.BICA);
+    });
+
+    it('counts a dose exactly at now as already taken', () => {
+        expect(pickPrimaryAntiandrogen([cpa(0), bicaEvent(2 * DAY)], 2 * DAY)).toBe(Ester.BICA);
+    });
+
+    it('with nowH omitted, picks the latest dose by time (including future)', () => {
+        expect(pickPrimaryAntiandrogen([cpa(0), bicaEvent(10 * DAY)])).toBe(Ester.BICA);
+    });
+
+    it('breaks ties on equal timeH by event order (last recorded wins)', () => {
+        expect(pickPrimaryAntiandrogen([cpa(DAY), bicaEvent(DAY)], 2 * DAY)).toBe(Ester.BICA);
+        expect(pickPrimaryAntiandrogen([bicaEvent(DAY), cpa(DAY)], 2 * DAY)).toBe(Ester.CPA);
     });
 });
 

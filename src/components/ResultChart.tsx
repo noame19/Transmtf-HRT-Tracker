@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
 import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
@@ -279,22 +279,24 @@ const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUni
     return null;
 };
 
-const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, onPointClick, onShareImage }: {
+const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH, onPointClick, onShareImage }: {
     sim: SimulationResult | null;
     events: DoseEvent[];
     labResults?: LabResult[];
     simCI?: SimCI | null;
     baselineE2PGmL?: number | null;
+    nowH?: number;
     onPointClick: (e: DoseEvent) => void;
     onShareImage?: () => void;
 }) => {
-    // The single anti-androgen plotted on the right axis. When both CPA and a
-    // BICA history exist, bicalutamide takes the axis (they're alternatives).
-    const primaryAA = useMemo<Ester | null>(() => {
-        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
-        if (present.includes(Ester.BICA)) return Ester.BICA;
-        return present[0] ?? null;
-    }, [events]);
+    // The single anti-androgen plotted on the right axis = the most recently
+    // dosed one (CPA and BICA are alternatives with ~1000× different scales).
+    // `nowH` is passed reactively so the choice updates as planned doses cross
+    // the current time; falls back to render-time clock if not provided.
+    const primaryAA = useMemo<Ester | null>(
+        () => pickPrimaryAntiandrogen(events, nowH ?? Date.now() / 3600000),
+        [events, nowH]
+    );
     const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
     const hasCPADoses = !!primaryAA; // "has anti-androgen on right axis"
     // Display unit + scale: native is ng/mL; bicalutamide (large) shows as µg/mL.

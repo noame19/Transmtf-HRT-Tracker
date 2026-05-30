@@ -13,6 +13,7 @@ export {
     interpolateConcentration_CPA,
     interpolateCompoundConcentration,
     isAntiandrogen,
+    pickPrimaryAntiandrogen,
     formatAntiandrogenConc,
     bicalutamideConcNgML,
     computeBicalutamideAmount,

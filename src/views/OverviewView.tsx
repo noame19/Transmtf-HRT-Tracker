@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
-import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
 function hexToRgb(hex: string): string {
@@ -214,14 +214,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
   const hasDoseHistory = events.length > 0;
 
-  // The "primary" anti-androgen shown in the headline / side tile. When both a
-  // CPA and a BICA history exist (uncommon — they're clinical alternatives),
-  // bicalutamide takes precedence per the chart axis convention.
-  const primaryAA = useMemo<Ester | null>(() => {
-    const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
-    if (present.includes(Ester.BICA)) return Ester.BICA;
-    return present[0] ?? null;
-  }, [events]);
+  // The "primary" anti-androgen shown in the headline / side tile = the most
+  // recently dosed one (CPA and BICA are clinical alternatives).
+  const primaryAA = useMemo<Ester | null>(
+    () => pickPrimaryAntiandrogen(events, h),
+    [events, h]
+  );
   const primaryAASpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
   const aaCI = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
   const hasPersonalAaModel = !!aaCI && aaCI.adjusted.length === (simCI?.timeH.length ?? -1) && aaCI.adjusted.length > 0;
@@ -777,6 +775,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           labResults={labResults}
           simCI={simCI}
           baselineE2PGmL={baselineE2PGmL}
+          nowH={h}
           onShareImage={() => setShareImageOpen(true)}
         />
       </main>

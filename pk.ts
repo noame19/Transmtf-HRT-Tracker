@@ -135,6 +135,33 @@ export function isAntiandrogen(ester: Ester): boolean {
 }
 
 /**
+ * Pick which anti-androgen "owns" the shared right axis / headline: the most
+ * recently dosed anti-androgen. CPA and bicalutamide are clinical alternatives
+ * with ~1000× different scales, so only one is shown at a time — whichever the
+ * user took last.
+ *
+ * When `nowH` is given, doses already taken (timeH ≤ now) win; if every
+ * anti-androgen dose is still in the future, the soonest upcoming one is used.
+ * When `nowH` is omitted, the latest dose by time is chosen.
+ *
+ * Tie-break: when two anti-androgen doses share the winning timeH, the one
+ * appearing later in `events` wins (i.e. the most recently recorded), so the
+ * result is deterministic for a given input order.
+ */
+export function pickPrimaryAntiandrogen(events: DoseEvent[], nowH?: number): Ester | null {
+    const aa = events.filter(e => isAntiandrogen(e.ester));
+    if (aa.length === 0) return null;
+    if (nowH === undefined) {
+        return aa.reduce((a, b) => (b.timeH >= a.timeH ? b : a)).ester;
+    }
+    const past = aa.filter(e => e.timeH <= nowH);
+    if (past.length > 0) {
+        return past.reduce((a, b) => (b.timeH >= a.timeH ? b : a)).ester;
+    }
+    return aa.reduce((a, b) => (b.timeH < a.timeH ? b : a)).ester;
+}
+
+/**
  * Scale a native (ng/mL) anti-androgen concentration into a display unit,
  * auto-promoting to µg/mL once the value reaches 1000 ng/mL so large compounds
  * (bicalutamide) don't render as "9000 ng/mL".

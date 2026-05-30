@@ -8,7 +8,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import {
     DoseEvent, SimulationResult, LabResult,
     interpolateConcentration_E2, interpolateCompoundConcentration, convertToPgMl,
-    isAntiandrogen, ANTIANDROGEN_ESTERS, ANTIANDROGENS, formatAntiandrogenConc, Ester,
+    pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, Ester,
 } from '../../logic';
 import ResultChartStatic from './ResultChartStatic';
 import { API_ORIGIN } from '../api/config';
@@ -88,12 +88,8 @@ const ShareImageModal: React.FC<Props> = ({
     const h = now.getTime() / 3600000;
 
     const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
-    // Primary anti-androgen on the right axis (BICA precedence; they're alternatives).
-    const primaryAA: Ester | null = (() => {
-        const present = ANTIANDROGEN_ESTERS.filter(e => events.some(ev => ev.ester === e));
-        if (present.includes(Ester.BICA)) return Ester.BICA;
-        return present[0] ?? null;
-    })();
+    // Primary anti-androgen on the right axis = most recently dosed one.
+    const primaryAA: Ester | null = pickPrimaryAntiandrogen(events, h);
     const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
     const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';
     const aaScale = aaUnit === 'ug/mL' ? 1 / 1000 : 1;
@@ -754,6 +750,7 @@ const ShareImageModal: React.FC<Props> = ({
                                 simCI={simCI}
                                 baselineE2PGmL={baselineE2PGmL}
                                 xDomain={xDomain}
+                                nowH={h}
                                 width={CHART_W}
                                 height={CHART_H}
                                 isDark={isDark}
