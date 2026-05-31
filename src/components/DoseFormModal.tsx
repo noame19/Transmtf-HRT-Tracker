@@ -5,7 +5,13 @@ import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
 import { prefillWeightKG } from '../utils/weight';
 import CustomSelect from './CustomSelect';
+import QuickDosePanel from './QuickDosePanel';
 import { getRouteIcon } from '../utils/helpers';
+import {
+    ROUTE_DISPLAY_ORDER, getAvailableEsters,
+    isPresetDose, hasQuickDosePanel,
+    drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
+} from '../utils/doseForm';
 import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor, isAntiandrogen } from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -94,8 +100,13 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const [slTier, setSlTier] = useState(2);
     const [useCustomTheta, setUseCustomTheta] = useState(false);
     const [customTheta, setCustomTheta] = useState("");
+    const [useCustomDose, setUseCustomDose] = useState(false);
     const [lastEditedField, setLastEditedField] = useState<'raw' | 'bio'>('bio');
     const [weightStr, setWeightStr] = useState("");
+
+    // Tracks the drug key the per-drug dose memory was last loaded for, so the
+    // memory-restore effect only fires when the user actually switches compounds.
+    const prevDrugKeyRef = useRef<string | null>(null);
 
     const slExtras = useMemo(() => {
         if (route !== Route.sublingual) return null;
@@ -116,7 +127,13 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 setDateStr(iso);
                 setRoute(eventToEdit.route);
                 setEster(eventToEdit.ester);
-                
+                // Quick-dose panel: open manual entry when the event's dose isn't
+                // one of the presets, so a non-preset dose stays visible/editable.
+                setUseCustomDose(
+                    hasQuickDosePanel(eventToEdit.route, eventToEdit.ester) &&
+                    !isPresetDose(eventToEdit.ester, eventToEdit.doseMG)
+                );
+
                 if (eventToEdit.route === Route.patchApply && eventToEdit.extras[ExtraKey.releaseRateUGPerDay]) {
                     setPatchMode("rate");
                     setPatchRate(eventToEdit.extras[ExtraKey.releaseRateUGPerDay].toString());
@@ -169,49 +186,32 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                 setDateStr(iso);
 
-                // Auto-fill from last-used params (silent)
-                try {
-                    const saved = localStorage.getItem('hrt-dose-last-used');
-                    const tpl: DoseTemplate | null = saved ? JSON.parse(saved) : null;
-                    if (tpl) {
-                        setRoute(tpl.route);
-                        setEster(tpl.ester);
-                        setRawDose(tpl.rawDose);
-                        setE2Dose(tpl.e2Dose);
-                        setPatchMode(tpl.patchMode);
-                        setPatchRate(tpl.patchRate);
-                        setGelSite(tpl.gelSite);
-                        setSlTier(tpl.slTier);
-                        setUseCustomTheta(tpl.useCustomTheta);
-                        setCustomTheta(tpl.customTheta);
-                        setLastEditedField('raw');
-                        setWeightStr(prefillWeightKG(allEvents).toString());
-                        return;
-                    }
-                } catch { /* ignore */ }
+                // Land on the last drug used (sublingual + estradiol valerate as
+                // the cold-start default). The per-drug dose memory restore is
+                // handled by the dedicated effect below, keyed on route/ester.
+                const last = readLastDrug();
+                const initRoute: Route = last?.route ?? Route.sublingual;
+                const initEster: Ester = last?.ester ?? Ester.EV;
 
-                setRoute(Route.injection);
-                setEster(Ester.EV);
-                setRawDose("");
-                setE2Dose("");
-                setPatchMode("dose");
-                setPatchRate("");
-                setSlTier(2);
+                setRoute(initRoute);
+                setEster(initEster);
                 setGelSite(0);
-                setUseCustomTheta(false);
-                setCustomTheta("");
-                setLastEditedField('bio');
                 setWeightStr(prefillWeightKG(allEvents).toString());
+                // patchMode/patchRate + dose fields are restored per-drug by the
+                // dedicated effect below (keyed on route/ester).
             }
         }
     }, [isOpen, eventToEdit]);
 
-    const handleRawChange = (val: string) => {
+    // `activeEster` lets callers in the quick-dose path pass `safeEster`, so the
+    // mg<->E2 conversion uses the same compound the panel is displaying even in
+    // the brief window where `ester` hasn't been re-validated yet.
+    const handleRawChange = (val: string, activeEster: Ester = ester) => {
         setRawDose(val);
         setLastEditedField('raw');
         const v = parseFloat(val);
         if (!isNaN(v)) {
-            const factor = getToE2Factor(ester) || 1;
+            const factor = getToE2Factor(activeEster) || 1;
             const e2Equivalent = v * factor; // convert compound mg -> E2 equivalent (pre-bio)
             setE2Dose(e2Equivalent.toFixed(3));
         } else {
@@ -219,13 +219,13 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         }
     };
 
-    const handleE2Change = (val: string) => {
+    const handleE2Change = (val: string, activeEster: Ester = ester) => {
         setE2Dose(val);
         setLastEditedField('bio');
         const v = parseFloat(val);
         if (!isNaN(v)) {
-            const factor = getToE2Factor(ester) || 1;
-            if (ester === Ester.E2) {
+            const factor = getToE2Factor(activeEster) || 1;
+            if (activeEster === Ester.E2) {
                 setRawDose(v.toFixed(3));
             } else {
                 setRawDose((v / factor).toFixed(3));
@@ -233,6 +233,33 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         } else {
             setRawDose("");
         }
+    };
+
+    // A quick-panel preset is the dose of the compound itself (mg). For plain E2
+    // the visible field is the E2-equivalent (== compound), so route through
+    // handleE2Change; every other compound enters via the raw-dose field.
+    const applyQuickDose = (mg: number, activeEster: Ester) => {
+        const val = String(mg);
+        if (activeEster === Ester.E2) {
+            handleE2Change(val, activeEster);
+        } else {
+            handleRawChange(val, activeEster);
+        }
+    };
+
+    // Toggle between preset chips and manual entry. When leaving manual entry,
+    // clear any value that isn't one of the presets so a now-hidden custom dose
+    // can't be silently saved (the chips would show nothing selected).
+    const toggleCustomDose = (activeEster: Ester) => {
+        const next = !useCustomDose;
+        if (!next) {
+            const current = parseFloat(activeEster === Ester.E2 ? e2Dose : rawDose);
+            if (!isPresetDose(activeEster, current)) {
+                setRawDose("");
+                setE2Dose("");
+            }
+        }
+        setUseCustomDose(next);
     };
 
     useEffect(() => {
@@ -247,6 +274,44 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         }
     }, [ester]);
 
+    // Restore the per-drug remembered dose whenever the active compound changes
+    // (new-record mode only). Declared after the ester-sync effects so its loaded
+    // value is authoritative. Switching to a never-used compound clears the dose
+    // rather than carrying the previous compound's value over — this is the fix
+    // for doses leaking across drugs.
+    useEffect(() => {
+        if (!isOpen || eventToEdit) {
+            if (!isOpen) prevDrugKeyRef.current = null;
+            return;
+        }
+        const key = drugKeyOf(route, ester);
+        if (prevDrugKeyRef.current === key) return;
+        prevDrugKeyRef.current = key;
+
+        const memo = readDoseByDrug()[key];
+        if (memo) {
+            setRawDose(memo.rawDose ?? "");
+            setE2Dose(memo.e2Dose ?? "");
+            setPatchMode(memo.patchMode ?? "dose");
+            setPatchRate(memo.patchRate ?? "");
+            setSlTier(memo.slTier ?? 2);
+            setUseCustomTheta(memo.useCustomTheta ?? false);
+            setCustomTheta(memo.customTheta ?? "");
+            setUseCustomDose(memo.customDose ?? false);
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+        } else {
+            setRawDose("");
+            setE2Dose("");
+            setPatchMode("dose");
+            setPatchRate("");
+            setSlTier(2);
+            setUseCustomTheta(false);
+            setCustomTheta("");
+            setUseCustomDose(false);
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+        }
+    }, [isOpen, eventToEdit, route, ester]);
+
     const [isSaving, setIsSaving] = useState(false);
     const [templates, setTemplates] = useState<DoseTemplate[]>(() => {
         try {
@@ -260,6 +325,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const [renameValue, setRenameValue] = useState("");
 
     const applyTemplate = (tpl: DoseTemplate) => {
+        // Claim the target drug key up-front so the per-drug restore effect does
+        // not overwrite the template's dose when route/ester change below.
+        prevDrugKeyRef.current = drugKeyOf(tpl.route, tpl.ester);
         setRoute(tpl.route);
         setEster(tpl.ester);
         setRawDose(tpl.rawDose);
@@ -270,6 +338,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         setSlTier(tpl.slTier);
         setUseCustomTheta(tpl.useCustomTheta);
         setCustomTheta(tpl.customTheta);
+        // Match the quick-panel mode to the template dose (custom if it isn't a tier).
+        const tplDose = parseFloat(tpl.ester === Ester.E2 ? tpl.e2Dose : tpl.rawDose);
+        setUseCustomDose(hasQuickDosePanel(tpl.route, tpl.ester) && !isPresetDose(tpl.ester, tplDose));
         setLastEditedField('raw');
         setShowPanel(false);
     };
@@ -385,17 +456,18 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             extras
         };
 
-        // Silently remember last-used params for next new-record prefill
+        // Silently remember the last-used dose *per drug* (keyed by route+ester)
+        // so one compound's dose never prefills onto another, plus which drug was
+        // used last so the modal re-opens on it.
         if (!eventToEdit) {
-            try {
-                const lastUsed: DoseTemplate = {
-                    id: 'last-used', name: 'last-used',
-                    route, ester, rawDose, e2Dose,
-                    patchMode, patchRate, gelSite,
-                    slTier, useCustomTheta, customTheta,
-                };
-                localStorage.setItem('hrt-dose-last-used', JSON.stringify(lastUsed));
-            } catch { /* ignore */ }
+            // Key the memo by the compound actually saved (effectiveEster), so the
+            // memory can never disagree with the stored event.
+            writeDoseMemo(route, effectiveEster, {
+                rawDose, e2Dose,
+                patchMode, patchRate,
+                slTier, useCustomTheta, customTheta,
+                customDose: useCustomDose,
+            });
         }
 
         onSave(newEvent);
@@ -403,26 +475,8 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         onClose();
     };
 
-    // Calculate availableEsters unconditionally
-    const availableEsters = useMemo(() => {
-    switch (route) {
-        case Route.injection: 
-            return [Ester.EB, Ester.EV, Ester.EC, Ester.EN];
-        
-        // === 修改开始 ===
-        // 口服 (Oral) 支持 E2/EV 以及口服抗雄药物 (CPA / 比卡鲁胺 BICA)
-        case Route.oral:
-            return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
-
-        // 舌下含服保持原样 (抗雄药物一般不含服)
-        case Route.sublingual:
-            return [Ester.E2, Ester.EV];
-        // === 修改结束 ===
-
-        default: 
-            return [Ester.E2];
-    }
-}, [route]);
+    // Calculate availableEsters unconditionally (shared with BatchDoseModal)
+    const availableEsters = useMemo(() => getAvailableEsters(route), [route]);
 
     // Ensure ester is valid when route changes (e.g. switching from Injection to Gel should force E2)
     useEffect(() => {
@@ -563,7 +617,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                         label={t('field.route')}
                         value={route}
                         onChange={(val) => setRoute(val as Route)}
-                        options={Object.values(Route).map(r => ({
+                        options={ROUTE_DISPLAY_ORDER.map(r => ({
                             value: r,
                             label: t(`route.${r}`),
                             icon: getRouteIcon(r)
@@ -631,6 +685,17 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
                             {/* Dose Inputs */}
                             {(route !== Route.patchApply || patchMode === "dose") && (
+                                hasQuickDosePanel(route, safeEster) ? (
+                                    <QuickDosePanel
+                                        ester={safeEster}
+                                        rawDose={rawDose}
+                                        e2Dose={e2Dose}
+                                        useCustomDose={useCustomDose}
+                                        onToggleCustom={() => toggleCustomDose(safeEster)}
+                                        onSelectPreset={(mg) => applyQuickDose(mg, safeEster)}
+                                        onCustomChange={(val) => safeEster === Ester.E2 ? handleE2Change(val, safeEster) : handleRawChange(val, safeEster)}
+                                    />
+                                ) : (
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
                                         {(ester !== Ester.E2) && (
@@ -670,6 +735,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         </p>
                                     )}
                                 </>
+                                )
                             )}
 
                             {route === Route.patchApply && patchMode === "rate" && (

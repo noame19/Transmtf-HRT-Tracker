@@ -1,12 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
 import { prefillWeightKG } from '../utils/weight';
 import CustomSelect from './CustomSelect';
+import QuickDosePanel from './QuickDosePanel';
 import DoseFormModal from './DoseFormModal';
 import { getRouteIcon } from '../utils/helpers';
+import {
+    ROUTE_DISPLAY_ORDER, getAvailableEsters,
+    isPresetDose, hasQuickDosePanel,
+    drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
+} from '../utils/doseForm';
 import {
     Route, Ester, ExtraKey, DoseEvent,
     getToE2Factor, isAntiandrogen,
@@ -100,7 +106,12 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const [slTier, setSlTier] = useState(2);
     const [useCustomTheta, setUseCustomTheta] = useState(false);
     const [customTheta, setCustomTheta] = useState('');
+    const [useCustomDose, setUseCustomDose] = useState(false);
     const [lastEditedField, setLastEditedField] = useState<'raw' | 'bio'>('bio');
+
+    // Tracks the drug key the per-drug dose memory was last loaded for, so the
+    // memory-restore effect only fires when the user actually switches compounds.
+    const prevDrugKeyRef = useRef<string | null>(null);
 
     // Schedule params
     const [startDate, setStartDate] = useState('');
@@ -116,14 +127,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const [previewEvents, setPreviewEvents] = useState<DoseEvent[]>([]);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
 
-    const availableEsters = useMemo(() => {
-        switch (route) {
-            case Route.injection: return [Ester.EB, Ester.EV, Ester.EC, Ester.EN];
-            case Route.oral: return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
-            case Route.sublingual: return [Ester.E2, Ester.EV];
-            default: return [Ester.E2];
-        }
-    }, [route]);
+    const availableEsters = useMemo(() => getAvailableEsters(route), [route]);
 
     const slExtras = useMemo(() => {
         if (route !== Route.sublingual) return null;
@@ -136,7 +140,8 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         return { [ExtraKey.sublingualTier]: slTier } as Partial<Record<ExtraKey, number>>;
     }, [route, useCustomTheta, customTheta, slTier]);
 
-    // Reset when modal opens
+    // Reset when modal opens. Land on the last drug used (sublingual + EV as the
+    // cold-start default); dose fields are restored per-drug by the effect below.
     useEffect(() => {
         if (isOpen) {
             setStep('config');
@@ -148,17 +153,10 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setIntervalDaysStr('1');
             setTimesPerDayStr('1');
             setTimeSlots([DEFAULT_TIMES[0]]);
-            setRoute(Route.injection);
-            setEster(Ester.EV);
-            setRawDose('');
-            setE2Dose('');
-            setPatchMode('dose');
-            setPatchRate('');
+            const last = readLastDrug();
+            setRoute(last?.route ?? Route.sublingual);
+            setEster(last?.ester ?? Ester.EV);
             setGelSite(0);
-            setSlTier(2);
-            setUseCustomTheta(false);
-            setCustomTheta('');
-            setLastEditedField('bio');
             setPreviewEvents([]);
             setEditingEvent(null);
             setWeightStr(prefillWeightKG(allEvents).toString());
@@ -171,6 +169,42 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         }
     }, [availableEsters, ester]);
 
+    // Restore the per-drug remembered dose whenever the active compound changes.
+    // Switching to a never-used compound clears the dose rather than carrying the
+    // previous compound's value over (the fix for doses leaking across drugs).
+    useEffect(() => {
+        if (!isOpen) {
+            prevDrugKeyRef.current = null;
+            return;
+        }
+        const key = drugKeyOf(route, ester);
+        if (prevDrugKeyRef.current === key) return;
+        prevDrugKeyRef.current = key;
+
+        const memo = readDoseByDrug()[key];
+        if (memo) {
+            setRawDose(memo.rawDose ?? '');
+            setE2Dose(memo.e2Dose ?? '');
+            setPatchMode(memo.patchMode ?? 'dose');
+            setPatchRate(memo.patchRate ?? '');
+            setSlTier(memo.slTier ?? 2);
+            setUseCustomTheta(memo.useCustomTheta ?? false);
+            setCustomTheta(memo.customTheta ?? '');
+            setUseCustomDose(memo.customDose ?? false);
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+        } else {
+            setRawDose('');
+            setE2Dose('');
+            setPatchMode('dose');
+            setPatchRate('');
+            setSlTier(2);
+            setUseCustomTheta(false);
+            setCustomTheta('');
+            setUseCustomDose(false);
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+        }
+    }, [isOpen, route, ester]);
+
     useEffect(() => {
         setTimeSlots(prev => {
             const copy = [...prev];
@@ -181,28 +215,53 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         });
     }, [timesPerDay]);
 
-    const handleRawChange = (val: string) => {
+    // `activeEster` lets the quick-dose path pass `safeEster`, so the mg<->E2
+    // conversion uses the compound the panel is displaying even in the brief
+    // window before `ester` is re-validated.
+    const handleRawChange = (val: string, activeEster: Ester = ester) => {
         setRawDose(val);
         setLastEditedField('raw');
         const v = parseFloat(val);
         if (!isNaN(v)) {
-            const factor = getToE2Factor(ester) || 1;
+            const factor = getToE2Factor(activeEster) || 1;
             setE2Dose((v * factor).toFixed(3));
         } else {
             setE2Dose('');
         }
     };
 
-    const handleE2Change = (val: string) => {
+    const handleE2Change = (val: string, activeEster: Ester = ester) => {
         setE2Dose(val);
         setLastEditedField('bio');
         const v = parseFloat(val);
         if (!isNaN(v)) {
-            const factor = getToE2Factor(ester) || 1;
-            setRawDose(ester === Ester.E2 ? v.toFixed(3) : (v / factor).toFixed(3));
+            const factor = getToE2Factor(activeEster) || 1;
+            setRawDose(activeEster === Ester.E2 ? v.toFixed(3) : (v / factor).toFixed(3));
         } else {
             setRawDose('');
         }
+    };
+
+    // Quick-panel preset = compound mg; route plain E2 through the E2-equivalent
+    // field, everything else through the raw-dose field.
+    const applyQuickDose = (mg: number, activeEster: Ester) => {
+        const val = String(mg);
+        if (activeEster === Ester.E2) handleE2Change(val, activeEster);
+        else handleRawChange(val, activeEster);
+    };
+
+    // Leaving manual entry clears a non-preset value so it can't be silently kept
+    // while hidden behind the preset chips.
+    const toggleCustomDose = (activeEster: Ester) => {
+        const next = !useCustomDose;
+        if (!next) {
+            const current = parseFloat(activeEster === Ester.E2 ? e2Dose : rawDose);
+            if (!isPresetDose(activeEster, current)) {
+                setRawDose('');
+                setE2Dose('');
+            }
+        }
+        setUseCustomDose(next);
     };
 
     useEffect(() => {
@@ -374,6 +433,14 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         if (previewEvents.length === 0) return;
         const result = await showDialog('confirm', t('batch.warning'));
         if (result === 'confirm') {
+            // Remember this drug's dose config only once the batch is actually
+            // committed (per-drug, device-local), mirroring the single-add modal.
+            writeDoseMemo(route, safeEster, {
+                rawDose, e2Dose,
+                patchMode, patchRate,
+                slTier, useCustomTheta, customTheta,
+                customDose: useCustomDose,
+            });
             onSaveBatch(previewEvents);
             onClose();
         }
@@ -441,7 +508,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
 
     if (!isOpen) return null;
 
-    const routeOptions = Object.values(Route).map(r => ({
+    const routeOptions = ROUTE_DISPLAY_ORDER.map(r => ({
         value: r,
         label: t(`route.${r}`),
         icon: getRouteIcon(r),
@@ -621,6 +688,17 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
 
                                 {/* Dose inputs */}
                                 {showDoseSection && (route !== Route.patchApply || patchMode === 'dose') && (
+                                    hasQuickDosePanel(route, safeEster) ? (
+                                        <QuickDosePanel
+                                            ester={safeEster}
+                                            rawDose={rawDose}
+                                            e2Dose={e2Dose}
+                                            useCustomDose={useCustomDose}
+                                            onToggleCustom={() => toggleCustomDose(safeEster)}
+                                            onSelectPreset={(mg) => applyQuickDose(mg, safeEster)}
+                                            onCustomChange={(val) => safeEster === Ester.E2 ? handleE2Change(val, safeEster) : handleRawChange(val, safeEster)}
+                                        />
+                                    ) : (
                                     <>
                                         <div className="grid grid-cols-2 gap-4">
                                             {showRawInput && (
@@ -656,6 +734,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                             </p>
                                         )}
                                     </>
+                                    )
                                 )}
 
                                 {/* Patch rate input */}

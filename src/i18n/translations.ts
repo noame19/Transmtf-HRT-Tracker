@@ -149,6 +149,7 @@ export const TRANSLATIONS_BASE = {
         "field.patch_total": "总剂量 (mg)",
         "field.sl_duration": "含服时长 (分钟)",
         "field.sl_custom": "自定义 θ",
+        "dose.quick.custom": "自定义",
         "field.gel_site": "涂抹部位",
 
         "dose.guide.title": "剂量级别参考",
@@ -821,6 +822,7 @@ export const TRANSLATIONS_BASE = {
         "field.patch_total": "Total Dose (mg)",
         "field.sl_duration": "Hold Duration (minutes)",
         "field.sl_custom": "Custom θ",
+        "dose.quick.custom": "Custom",
         "field.gel_site": "Application Site",
 
         "dose.guide.title": "Dose Guidance",
