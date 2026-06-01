@@ -57,7 +57,7 @@ const CustomGelManager: React.FC = () => {
         });
     };
 
-    const field = (key: keyof GelForm, label: string, opts?: { text?: boolean }) => (
+    const field = (key: keyof GelForm, label: string, opts?: { text?: boolean; hint?: string }) => (
         <label className="text-xs block" style={{ color: 'var(--text-tertiary)' }}>
             {label}
             <input
@@ -67,6 +67,11 @@ const CustomGelManager: React.FC = () => {
                 className="w-full mt-1 p-2 rounded-lg glass-input outline-none"
                 style={{ color: 'var(--text-primary)' }}
             />
+            {opts?.hint && (
+                <span className="mt-1 block leading-snug" style={{ color: 'var(--text-tertiary)', fontSize: '0.68rem' }}>
+                    {opts.hint}
+                </span>
+            )}
         </label>
     );
 
@@ -105,12 +110,12 @@ const CustomGelManager: React.FC = () => {
             {/* Add / edit form */}
             {editingId !== null ? (
                 <div className="p-3 space-y-2 rounded-xl border" style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                    {field('name', t('gel.custom.name'), { text: true })}
+                    {field('name', t('gel.custom.name'), { text: true, hint: t('gel.custom.name_hint') })}
                     <div className="grid grid-cols-2 gap-2">
-                        {field('conc', t('gel.custom.conc'))}
-                        {field('area', t('gel.custom.area'))}
-                        {field('bio', t('gel.custom.bio'))}
-                        {field('halflife', t('gel.custom.halflife'))}
+                        {field('conc', t('gel.custom.conc'), { hint: t('gel.custom.conc_hint') })}
+                        {field('area', t('gel.custom.area'), { hint: t('gel.custom.area_hint') })}
+                        {field('bio', t('gel.custom.bio'), { hint: t('gel.custom.bio_hint') })}
+                        {field('halflife', t('gel.custom.halflife'), { hint: t('gel.custom.halflife_hint') })}
                     </div>
                     <div className="flex gap-2 pt-1">
                         <button type="button" onClick={save} className="flex-1 py-2 text-sm font-bold rounded-lg" style={{ background: 'var(--accent-500)', color: '#fff' }}>{t('btn.save')}</button>
