@@ -5,7 +5,11 @@
  * and the per-drug "last dose" memory keeps the single-add and batch-add modals
  * from drifting apart (they previously diverged on route order and defaults).
  */
-import { Route, Ester } from '../../logic';
+import {
+    Route, Ester, ExtraKey, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID, GEL_CUSTOM_ID_BASE,
+    sanitizeGelProducts,
+    type DoseEvent, type GelProductSpec,
+} from '../../logic';
 
 /**
  * Display order for the route selector. Decoupled from the `Route` enum
@@ -161,4 +165,75 @@ export const readLastDrug = (): { route: Route; ester: Ester } | null => {
     } catch {
         return null;
     }
+};
+
+// --- Custom transdermal-gel products ----------------------------------------
+//
+// Preset gels live in `GEL_PRODUCTS` (code). User-created products are stored
+// here and CLOUD-SYNCED via AppDataContext (SYNC_FIELDS 'gelProducts'), so a
+// custom gel follows the user across devices. Validation reuses the single
+// canonical `sanitizeGelProduct(s)` from pk.ts so every entry point agrees.
+export const GEL_PRODUCTS_KEY = 'hrt-gel-products';
+
+const asNum = (v: unknown, fallback: number): number =>
+    (typeof v === 'number' && Number.isFinite(v)) ? v : fallback;
+
+/** Re-exported so callers (SettingsPage import) keep a single import surface. */
+export { sanitizeGelProducts };
+
+/** Read the user's custom gel products (validated). Presets are NOT included. */
+export const readCustomGelProducts = (): GelProductSpec[] => {
+    try {
+        const saved = localStorage.getItem(GEL_PRODUCTS_KEY);
+        if (!saved) return [];
+        return sanitizeGelProducts(JSON.parse(saved));
+    } catch {
+        return [];
+    }
+};
+
+/** Persist the custom gel products list (caller passes the full custom array). */
+export const writeCustomGelProducts = (products: GelProductSpec[]) => {
+    try {
+        localStorage.setItem(GEL_PRODUCTS_KEY, JSON.stringify(sanitizeGelProducts(products)));
+    } catch {
+        /* ignore */
+    }
+};
+
+/** Presets followed by the user's custom products, for the product selector. */
+export const getAllGelProducts = (custom: GelProductSpec[] = readCustomGelProducts()): GelProductSpec[] =>
+    [...GEL_PRODUCTS, ...custom];
+
+/** Next free custom id (monotonic above any existing custom product). */
+export const nextGelProductId = (custom: GelProductSpec[]): number =>
+    custom.reduce((max, p) => Math.max(max, p.id), GEL_CUSTOM_ID_BASE - 1) + 1;
+
+export interface LastGelPrefill {
+    productId: number;
+    gelSite: number;
+    areaCM2: number;
+    doseMG: number;
+    washAfterH: number;
+}
+
+/**
+ * Pull the most recent gel administration out of the saved events so the form
+ * can pre-fill the same product / site / area / wash. The numeric gel params are
+ * read straight from the event's `extras` JSON, matching the per-event storage.
+ */
+export const readLastGelEvent = (events: DoseEvent[]): LastGelPrefill | null => {
+    let latest: DoseEvent | null = null;
+    for (const e of events) {
+        if (e.route === Route.gel && (!latest || e.timeH > latest.timeH)) latest = e;
+    }
+    if (!latest) return null;
+    const ex = latest.extras ?? {};
+    return {
+        productId: asNum(ex[ExtraKey.gelProductId], GEL_DEFAULT_PRODUCT_ID),
+        gelSite: asNum(ex[ExtraKey.gelSite], 0),
+        areaCM2: asNum(ex[ExtraKey.areaCM2], 0),
+        doseMG: latest.doseMG,
+        washAfterH: asNum(ex[ExtraKey.gelWashAfterH], 0),
+    };
 };

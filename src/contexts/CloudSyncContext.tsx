@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import apiClient from '../api/client';
 import { useAuth } from './AuthContext';
 import { useSecurityPassword } from './SecurityPasswordContext';
-import { computeDataHash } from '../utils/dataHash';
+import { computeDataHash, projectForSync, SYNC_HASH_SCHEMA } from '../utils/dataHash';
+import { classifyChanges } from '../utils/syncDecision';
 import { DEFAULT_WEIGHT_KG } from '../utils/weight';
 import { isLogoutInProgress } from '../utils/authSessionState';
 import type { ConflictState, FieldDiff } from '../components/SyncConflictModal';
@@ -56,18 +57,34 @@ const SYNC_FIELDS = [
   'events', 'weight', 'labResults', 'lang',
   'calibrationModel', 'applyE2LearningToCPA',
   'applyCPAInhibitionToE2', 'themeColor', 'darkMode',
+  'gelProducts',
 ] as const;
 
 function computeFieldDiffs(localData: Record<string, any>, cloudData: Record<string, any>): FieldDiff[] {
+  // Normalize both sides through the shared projection so an absent field on one
+  // side (e.g. an older client that never wrote gelProducts) compares equal to
+  // the other side's default instead of producing a spurious diff.
+  const lp = projectForSync(localData);
+  const cp = projectForSync(cloudData);
   const diffs: FieldDiff[] = [];
   for (const field of SYNC_FIELDS) {
-    const localVal = localData[field];
-    const cloudVal = cloudData[field];
-    if (!deepEqual(localVal, cloudVal)) {
-      diffs.push({ field, localValue: localVal, cloudValue: cloudVal });
+    if (!deepEqual(lp[field], cp[field])) {
+      diffs.push({ field, localValue: lp[field], cloudValue: cp[field] });
     }
   }
   return diffs;
+}
+
+// Synced lists we refuse to clear silently: pulling an empty/absent cloud copy
+// over a non-empty local list is treated as a conflict, not an auto-overwrite.
+const PROTECTED_LIST_FIELDS = ['events', 'labResults', 'gelProducts'] as const;
+
+function pullWouldClearLocalList(localData: Record<string, any>, cloudData: Record<string, any>): boolean {
+  return PROTECTED_LIST_FIELDS.some((f) => {
+    const lv = localData[f];
+    const cv = cloudData[f];
+    return Array.isArray(lv) && lv.length > 0 && (!Array.isArray(cv) || cv.length === 0);
+  });
 }
 
 export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -104,6 +121,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const applyCPARaw = localStorage.getItem('hrt-apply-cpa-inhibition-to-e2');
     const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
     const darkModeRaw = localStorage.getItem('hrt-dark-mode');
+    const gelProductsRaw = localStorage.getItem('hrt-gel-products');
 
     const storedLastModified = localStorage.getItem('hrt-last-modified');
     const storedLastDataUpdated = localStorage.getItem(LAST_DATA_UPDATED_KEY);
@@ -114,6 +132,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const applyE2LearningToCPA = applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true';
     const applyCPAInhibitionToE2 = applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true';
     const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
+    const gelProducts = gelProductsRaw ? JSON.parse(gelProductsRaw) : [];
     const dataHash = computeDataHash({
       events: parsedEvents,
       weight: parsedWeight,
@@ -124,6 +143,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       applyCPAInhibitionToE2,
       themeColor,
       darkMode,
+      gelProducts,
     });
     localStorage.setItem('hrt-data-hash', dataHash);
 
@@ -137,6 +157,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       applyCPAInhibitionToE2,
       themeColor,
       darkMode,
+      gelProducts,
       lastModified: storedLastModified,
       lastDataUpdated: storedLastDataUpdated,
       dataHash,
@@ -154,6 +175,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     applyCPAInhibitionToE2?: boolean;
     themeColor?: string;
     darkMode?: boolean;
+    gelProducts?: any[];
     lastModified: string;
     lastDataUpdated?: string | null;
   }) => {
@@ -177,6 +199,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         applyCPAInhibitionToE2: localData.applyCPAInhibitionToE2,
         themeColor: localData.themeColor,
         darkMode: localData.darkMode,
+        gelProducts: localData.gelProducts,
       });
       setLastSyncTime(now);
       localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
@@ -223,6 +246,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (data?.applyCPAInhibitionToE2 !== undefined) localStorage.setItem('hrt-apply-cpa-inhibition-to-e2', data.applyCPAInhibitionToE2 ? '1' : '0');
     if (data?.themeColor) localStorage.setItem('hrt-theme-color', data.themeColor);
     if (data?.darkMode !== undefined) localStorage.setItem('hrt-dark-mode', data.darkMode ? '1' : '0');
+    if (data?.gelProducts !== undefined) localStorage.setItem('hrt-gel-products', JSON.stringify(data.gelProducts));
     if (data?.lastModified || fallbackTimestamp) localStorage.setItem('hrt-last-modified', data?.lastModified || fallbackTimestamp || '');
     if (data?.lastDataUpdated || fallbackTimestamp) localStorage.setItem(LAST_DATA_UPDATED_KEY, data?.lastDataUpdated || fallbackTimestamp || '');
     const dataHash = computeDataHash({
@@ -235,6 +259,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       applyCPAInhibitionToE2: data?.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
       themeColor: data?.themeColor || localData.themeColor,
       darkMode: data?.darkMode ?? localData.darkMode,
+      gelProducts: data?.gelProducts ?? localData.gelProducts,
     });
     localStorage.setItem('hrt-data-hash', dataHash);
     // After applying cloud data locally, our local state == cloud state,
@@ -296,6 +321,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         applyCPAInhibitionToE2: cloudData.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
         themeColor: cloudData.themeColor || localData.themeColor,
         darkMode: cloudData.darkMode ?? localData.darkMode,
+        gelProducts: cloudData.gelProducts || [],
       });
 
       if (cloudHash === localData.dataHash) {
@@ -321,20 +347,40 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const cloudDataUpdated = cloudData.lastDataUpdated as string | undefined;
       const localDataUpdated = localData.lastDataUpdated as string | null;
 
-      const hasBaseline = Boolean(lastKnownCloudUpdated || lastKnownCloudHash);
+      // Classify whether each side changed since the baseline (pure, tested in
+      // src/utils/syncDecision.test.ts — handles the hash-schema-evolution case).
+      const { cloudChanged: cloudChangedSinceBaseline, localChanged: localChangedSinceBaseline } = classifyChanges({
+        lastKnownCloudUpdated,
+        lastKnownCloudHash,
+        cloudDataUpdated,
+        cloudHash,
+        localHash: localData.dataHash,
+        localLastModified: localData.lastModified,
+        schemaPrefix: SYNC_HASH_SCHEMA,
+      });
 
-      // Conservative defaults when baseline is missing (first run after upgrade,
-      // fresh install, post-logout): assume both sides may have diverged so we
-      // never silently overwrite a real difference.
-      const cloudChangedSinceBaseline = hasBaseline
-        ? (lastKnownCloudUpdated && cloudDataUpdated
-            ? cloudDataUpdated !== lastKnownCloudUpdated
-            : (lastKnownCloudHash ? cloudHash !== lastKnownCloudHash : true))
-        : true;
-
-      const localChangedSinceBaseline = hasBaseline
-        ? (lastKnownCloudHash ? localData.dataHash !== lastKnownCloudHash : true)
-        : Boolean(localData.lastModified); // no baseline → assume changed iff user ever edited
+      // Pull cloud → local, but NEVER silently clear a non-empty local list with
+      // an empty/absent cloud copy — escalate to a conflict instead. Used by every
+      // pull path (incl. the step-⑤ fallback) so a stale-schema baseline that lands
+      // in fallback can't route around the guard. Returns true if it escalated.
+      const tryPull = (fallbackTs?: string): boolean => {
+        if (pullWouldClearLocalList(localData, cloudData)) {
+          const diffs = computeFieldDiffs(localData, cloudData);
+          if (diffs.length > 0) {
+            conflictPendingRef.current = true;
+            setPendingConflict({
+              localData,
+              cloudData,
+              diffs,
+              localTime: localDataUpdated || '',
+              cloudTime: cloudDataUpdated || '',
+            });
+            return true;
+          }
+        }
+        applyCloudToLocal(cloudData, localData, fallbackTs);
+        return false;
+      };
 
       if (!cloudChangedSinceBaseline && localChangedSinceBaseline) {
         // Only local changed → safe to push without prompting
@@ -349,8 +395,8 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       if (cloudChangedSinceBaseline && !localChangedSinceBaseline) {
-        // Only cloud changed → silently pull
-        applyCloudToLocal(cloudData, localData);
+        // Only cloud changed → pull, guarded against silently clearing local lists.
+        if (tryPull()) return;
         setLastSyncTime(now);
         localStorage.setItem(LAST_SYNC_TIME_KEY, now.toISOString());
         localStorage.setItem(LAST_PULL_TIME_KEY, now.toISOString());
@@ -386,21 +432,19 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (cloudLM && localLM) {
         if (new Date(localLM) > new Date(cloudLM)) {
           await pushLocalDataToCloud(localData);
-        } else if (new Date(cloudLM) > new Date(localLM)) {
-          applyCloudToLocal(cloudData, localData);
         } else {
-          // Same lastModified, different hashes — prefer cloud (avoid silent local-overwrite race)
-          applyCloudToLocal(cloudData, localData);
+          // Cloud newer, or equal lastModified with different hashes — prefer cloud,
+          // but guard against silently clearing local lists (escalates to conflict).
+          if (tryPull()) return;
         }
       } else if (!cloudLM && localLM) {
         await pushLocalDataToCloud({ ...localData, lastModified: localLM });
       } else if (cloudLM && !localLM) {
-        applyCloudToLocal(cloudData, localData);
+        if (tryPull()) return;
       } else {
-        // Neither has timestamps — prefer cloud (server-authoritative on cold start).
-        // Avoid the previous merge-and-push, which could resurrect deleted records.
-        const fallback = now.toISOString();
-        applyCloudToLocal(cloudData, localData, fallback);
+        // Neither has timestamps — prefer cloud (server-authoritative on cold start),
+        // still guarded so a cold-start pull can't wipe non-empty local lists.
+        if (tryPull(now.toISOString())) return;
       }
 
       setLastSyncTime(now);
@@ -468,7 +512,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.storageArea !== localStorage) return;
-      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2', 'hrt-theme-color', 'hrt-dark-mode'];
+      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2', 'hrt-theme-color', 'hrt-dark-mode', 'hrt-gel-products'];
       if (e.key && syncKeys.includes(e.key)) performSync();
     };
 

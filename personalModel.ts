@@ -6,6 +6,7 @@ import {
     compute2CompCPACentralAmount,
     _analytic3C,
     oneCompAmount,
+    gelEventCentralAmount,
     weightAtTimeH,
     isAntiandrogen,
     ANTIANDROGENS,
@@ -119,6 +120,9 @@ function computeEventAmountWithKScale(
                    _analytic3C(tau, doseSlow, params.F, params.k1_slow, params.k2, k3);
         }
         case Route.gel:
+            // Layered transdermal model, resolved from the gel product registry;
+            // the EKF clearance scale flows in through k3.
+            return gelEventCentralAmount(event, tau, k3);
         case Route.oral: {
             const paramsK = { ...params, k3 };
             return oneCompAmount(tau, event.doseMG, paramsK);

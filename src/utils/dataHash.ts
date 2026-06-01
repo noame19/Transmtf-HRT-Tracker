@@ -8,7 +8,32 @@ type HashableData = {
     applyCPAInhibitionToE2?: boolean;
     themeColor?: string;
     darkMode?: boolean;
+    gelProducts?: unknown[];
 };
+
+// Bump this whenever the synced field set changes. The hash is prefixed with it
+// so the sync layer can tell "data changed" apart from "hash formula changed"
+// (an old baseline hash with a different prefix must NOT be read as a local edit).
+export const SYNC_HASH_SCHEMA = 'v2';
+
+/**
+ * Canonical projection of the synced fields to their default values. Shared by
+ * `computeDataHash` AND the conflict diff so that an absent field (e.g. an older
+ * client that never wrote `gelProducts`) compares equal to the local default
+ * rather than registering as a spurious difference.
+ */
+export const projectForSync = (data: Partial<HashableData>): Record<string, unknown> => ({
+    events: data.events || [],
+    weight: Number.isFinite(data.weight as number) ? (data.weight as number) : 0,
+    labResults: data.labResults || [],
+    lang: data.lang || '',
+    calibrationModel: data.calibrationModel || '',
+    applyE2LearningToCPA: data.applyE2LearningToCPA ?? false,
+    applyCPAInhibitionToE2: data.applyCPAInhibitionToE2 ?? false,
+    themeColor: data.themeColor || '',
+    darkMode: data.darkMode ?? false,
+    gelProducts: data.gelProducts || [],
+});
 
 const stableStringify = (value: unknown): string => {
     if (value === null || value === undefined) {
@@ -34,17 +59,5 @@ const hashString = (input: string): string => {
     return (hash >>> 0).toString(16);
 };
 
-export const computeDataHash = (data: HashableData): string => {
-    const payload = {
-        events: data.events || [],
-        weight: Number.isFinite(data.weight) ? data.weight : 0,
-        labResults: data.labResults || [],
-        lang: data.lang || '',
-        calibrationModel: data.calibrationModel || '',
-        applyE2LearningToCPA: data.applyE2LearningToCPA ?? false,
-        applyCPAInhibitionToE2: data.applyCPAInhibitionToE2 ?? false,
-        themeColor: data.themeColor || '',
-        darkMode: data.darkMode ?? false,
-    };
-    return hashString(stableStringify(payload));
-};
+export const computeDataHash = (data: HashableData): string =>
+    `${SYNC_HASH_SCHEMA}:${hashString(stableStringify(projectForSync(data)))}`;

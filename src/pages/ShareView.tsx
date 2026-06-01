@@ -5,7 +5,7 @@ import apiClient from '../api/client';
 import ResultChart from '../components/ResultChart';
 import PINInput from '../components/PINInput';
 import { Share2, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
-import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator } from '../../logic';
+import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator, setCustomGelProducts, type GelProductSpec } from '../../logic';
 import { backfillEventWeights, eventsNeedWeightMigration, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const ShareView: React.FC = () => {
@@ -19,6 +19,7 @@ const ShareView: React.FC = () => {
     events: DoseEvent[];
     weight: number;
     labResults: LabResult[];
+    gelProducts: GelProductSpec[];
   } | null>(null);
   const [simulation, setSimulation] = useState<SimulationResult | null>(null);
 
@@ -30,6 +31,9 @@ const ShareView: React.FC = () => {
 
   useEffect(() => {
     if (shareData) {
+      // Resolve any shared custom gels so gel events render with their real
+      // kinetics rather than falling back to the default product.
+      setCustomGelProducts(shareData.gelProducts);
       const events = eventsNeedWeightMigration(shareData.events)
         ? backfillEventWeights(shareData.events, shareData.weight)
         : shareData.events;
@@ -52,6 +56,7 @@ const ShareView: React.FC = () => {
         events: response.data.data.events || [],
         weight: response.data.data.weight || DEFAULT_WEIGHT_KG,
         labResults: response.data.data.labResults || [],
+        gelProducts: (response.data.data as { gelProducts?: GelProductSpec[] }).gelProducts || [],
       });
     } else {
       if (response.status === 400) {

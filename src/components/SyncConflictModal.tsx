@@ -33,6 +33,7 @@ const FIELD_KEYS: Record<string, string> = {
   darkMode: 'sync.conflict.field.darkMode',
   applyE2LearningToCPA: 'sync.conflict.field.applyE2LearningToCPA',
   applyCPAInhibitionToE2: 'sync.conflict.field.applyCPAInhibitionToE2',
+  gelProducts: 'sync.conflict.field.gelProducts',
 };
 
 const LANG_NAMES: Record<string, string> = {
@@ -119,6 +120,7 @@ function formatFieldValue(field: string, value: any, t: (k: string) => string): 
     case 'events':
       return Array.isArray(value) ? `${value.length} ${t('sync.conflict.items')}` : '—';
     case 'labResults':
+    case 'gelProducts':
       return Array.isArray(value) ? `${value.length} ${t('sync.conflict.items')}` : '—';
     case 'weight':
       return `${value} kg`;

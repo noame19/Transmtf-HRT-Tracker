@@ -4,9 +4,10 @@ import {
     PersonalModelState, EKFDiagnostics, CalibrationModel,
     runSimulation, createCalibrationInterpolator,
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
-    ekfUpdatePersonalModel, isAntiandrogen,
+    ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
 } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
+import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
 import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const PERSONAL_MODEL_KEY = 'hrt-personal-model';
@@ -53,6 +54,9 @@ interface AppDataContextType {
     setApplyCPAInhibitionToE2: React.Dispatch<React.SetStateAction<boolean>>;
     calibrationModel: CalibrationModel;
     setCalibrationModel: React.Dispatch<React.SetStateAction<CalibrationModel>>;
+    /** User-created custom transdermal-gel products (cloud-synced). Presets live in code. */
+    gelProducts: GelProductSpec[];
+    setGelProducts: React.Dispatch<React.SetStateAction<GelProductSpec[]>>;
     resetPersonalModel: () => void;
     /**
      * Endogenous baseline E2 in pg/mL derived from pre-dose lab results.
@@ -164,6 +168,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (raw === null) return false;
         return raw === '1' || raw.toLowerCase() === 'true';
     });
+    const [gelProducts, setGelProducts] = useState<GelProductSpec[]>(() => readCustomGelProducts());
 
     const suppressLocalUpdateRef = useRef({
         events: false,
@@ -171,6 +176,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         calibrationModel: false,
         applyE2LearningToCPA: false,
         applyCPAInhibitionToE2: false,
+        gelProducts: false,
     });
     const isInitialLoadRef = useRef({
         events: true,
@@ -178,6 +184,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         calibrationModel: true,
         applyE2LearningToCPA: true,
         applyCPAInhibitionToE2: true,
+        gelProducts: true,
     });
 
     const markExternalUpdate = (key: keyof typeof suppressLocalUpdateRef.current) => {
@@ -229,15 +236,21 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         localStorage.setItem(CALIBRATION_MODEL_KEY, calibrationModel);
         finalizeLocalUpdate('calibrationModel', CALIBRATION_MODEL_KEY);
     }, [calibrationModel]);
+    useEffect(() => {
+        writeCustomGelProducts(gelProducts);
+        finalizeLocalUpdate('gelProducts', GEL_PRODUCTS_KEY);
+    }, [gelProducts]);
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
         const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
         const darkModeRaw = localStorage.getItem('hrt-dark-mode');
         const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
-        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode });
+        const gelProductsRaw = localStorage.getItem(GEL_PRODUCTS_KEY);
+        const gelProductsParsed = gelProductsRaw ? JSON.parse(gelProductsRaw) : [];
+        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode, gelProducts: gelProductsParsed });
         localStorage.setItem('hrt-data-hash', hash);
-    }, [events, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2]);
+    }, [events, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, gelProducts]);
 
     // Update current time every minute
     useEffect(() => {
@@ -247,7 +260,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY];
+            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY, GEL_PRODUCTS_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -306,7 +319,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 if (saved !== null) setApplyCPAInhibitionToE2(saved === '1' || saved.toLowerCase() === 'true');
             }
 
+            if (e.key === GEL_PRODUCTS_KEY && isOtherTabSync) {
+                markExternalUpdate('gelProducts');
+                setGelProducts(readCustomGelProducts());
+            }
+
             if (isCloudSync) {
+                markExternalUpdate('gelProducts');
+                setGelProducts(readCustomGelProducts());
                 markExternalUpdate('calibrationModel');
                 const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
                 if (saved === 'ou-kalman' || saved === 'ekf') {
@@ -343,18 +363,29 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         return () => window.removeEventListener('storage', handleStorageChange);
     }, []);
 
-    // Run simulation when events change (per-event weight is read from events).
+    // Keep the PK engine's custom-gel registry in sync so gel events (which only
+    // store a product id) resolve their kinetics correctly. Done before any
+    // simulation so editing a custom product re-resolves all of its records.
     useEffect(() => {
+        setCustomGelProducts(gelProducts);
+    }, [gelProducts]);
+
+    // Run simulation when events (or the custom-gel registry) change. Per-event
+    // weight is read from events; gel kinetics are resolved from the registry.
+    useEffect(() => {
+        setCustomGelProducts(gelProducts);
         if (events.length > 0) {
             const res = runSimulation(events);
             setSimulation(res);
         } else {
             setSimulation(null);
         }
-    }, [events]);
+    }, [events, gelProducts]);
 
-    // Rebuild personal model whenever events or labResults change.
+    // Rebuild personal model whenever events, labResults, or the custom-gel
+    // registry change (gel calibration resolves kinetics from the registry).
     useEffect(() => {
+        setCustomGelProducts(gelProducts);
         if (labResults.length === 0) {
             setPersonalModel(null);
             setLastDiagnostics(null);
@@ -383,7 +414,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         setPersonalModel(newModel);
         savePersonalModel(newModel);
-    }, [events, labResults]);
+    }, [events, labResults, gelProducts]);
 
     // Recompute CI bands whenever relevant state changes.
     // - E2 personal CI (e2Adjusted + ci bands) requires at least one post-dose
@@ -451,6 +482,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setApplyCPAInhibitionToE2,
         calibrationModel,
         setCalibrationModel,
+        gelProducts,
+        setGelProducts,
         resetPersonalModel,
         baselineE2PGmL,
     };

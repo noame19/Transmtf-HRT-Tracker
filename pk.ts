@@ -6,19 +6,294 @@ import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type Con
  * These definitions live in the PK module because they directly affect
  * bioavailability calculations and are not useful outside the simulation layer.
  */
-enum GelSite {
+export enum GelSite {
     arm = "arm",
     thigh = "thigh",
-    scrotal = "scrotal"
+    scrotal = "scrotal",
+    abdomen = "abdomen"
 }
 
-const GEL_SITE_ORDER = ["arm", "thigh", "scrotal"] as const;
+// `abdomen` is appended AFTER `scrotal` so legacy events (gelSite index 0/1/2 =
+// arm/thigh/scrotal) keep resolving to the same site; the UI orders sites
+// separately for display.
+export const GEL_SITE_ORDER = ["arm", "thigh", "scrotal", "abdomen"] as const;
 
-const GelSiteParams = {
-    [GelSite.arm]: 0.05,
-    [GelSite.thigh]: 0.05,
-    [GelSite.scrotal]: 0.40
+/**
+ * Relative transdermal penetration factor per application site, applied as a
+ * multiplier on a product's base penetration rate `kPenBase`.
+ *
+ * Genital (scrotal) skin is markedly more permeable to steroids; the 8× factor
+ * is a research-mode prior extrapolated from scrotal testosterone studies, not
+ * a value validated for estradiol gel, and is surfaced as such in the UI.
+ */
+export const GEL_SITE_FACTORS: Record<GelSite, number> = {
+    [GelSite.arm]: 1.0,
+    [GelSite.thigh]: 1.0,
+    [GelSite.abdomen]: 1.1,
+    [GelSite.scrotal]: 8.0,
 };
+
+/**
+ * A transdermal estradiol gel product. The registry below drives both the PK
+ * engine and the dose-entry UI, so adding a gel only means registering one
+ * entry — and end users can save custom products that follow the same shape.
+ *
+ * Kinetics follow a 3-compartment cascade (surface → skin reservoir → systemic
+ * central, see {@link gel3CompCentralAmount}):
+ *   - systemic absorbed fraction ≈ kPenBase / (kPenBase + kLoss) at the
+ *     reference (non-genital) site and reference dose density
+ *   - kRel sets the slow reservoir release that dominates the terminal phase
+ * All numbers are population PRIORS to be calibrated against product labels.
+ */
+export interface GelProductSpec {
+    id: number;                 // stable id (presets 1..N; custom products ≥ 1000)
+    nameKey: string;            // i18n key for the display name (presets)
+    name?: string;              // literal display name for user-created products
+    concentrationMGmL: number;  // estradiol strength (mg/g ≈ mg/mL)
+    defaultAreaCM2: number;     // typical single-dose application area
+    refDoseMG: number;          // reference E2 dose used to anchor dose-density
+    kPenBase: number;           // base penetration rate (h^-1) at reference site/density
+    kLoss: number;              // surface loss rate (h^-1): evaporation/transfer/wash
+    kRel: number;               // skin-reservoir → central release (h^-1)
+    color?: string;
+}
+
+// Priors. The SURFACE clears fast (kPen + kLoss ≈ 1.4/h, t½ ≈ 0.5 h: solvent
+// dries and drug either partitions into skin or is lost), so its split — not its
+// timescale — sets the absorbed fraction F_ref = kPen/(kPen+kLoss). The slow
+// terminal phase comes from the skin RESERVOIR releasing at kRel ≈ 0.022
+// (t½ ≈ 31 h). Systemic ke = CorePK.kClear (0.41 h^-1). This reproduces tmax ≈ 8 h
+// (EstroGel/Divigel range) and a 1 h-wash exposure retention ≈ 0.75 (labels: −22%
+// EstroGel / −30% Divigel). kPenBase = F_ref·λ_s; kLoss = (1−F_ref)·λ_s, λ_s = 1.4.
+export const GEL_PRODUCTS: GelProductSpec[] = [
+    { id: 1, nameKey: 'gel.product.oestrogel', concentrationMGmL: 0.6, defaultAreaCM2: 750, refDoseMG: 1.5, kPenBase: 0.140, kLoss: 1.260, kRel: 0.022, color: '#ec4899' },
+    { id: 2, nameKey: 'gel.product.estreva',   concentrationMGmL: 1.0, defaultAreaCM2: 400, refDoseMG: 1.5, kPenBase: 0.154, kLoss: 1.246, kRel: 0.022, color: '#f43f5e' },
+    { id: 3, nameKey: 'gel.product.estrogel',  concentrationMGmL: 0.6, defaultAreaCM2: 750, refDoseMG: 1.5, kPenBase: 0.140, kLoss: 1.260, kRel: 0.022, color: '#d946ef' },
+    { id: 4, nameKey: 'gel.product.divigel',   concentrationMGmL: 1.0, defaultAreaCM2: 200, refDoseMG: 1.0, kPenBase: 0.168, kLoss: 1.232, kRel: 0.024, color: '#a855f7' },
+    { id: 5, nameKey: 'gel.product.diy',       concentrationMGmL: 1.0, defaultAreaCM2: 400, refDoseMG: 2.0, kPenBase: 0.112, kLoss: 1.288, kRel: 0.022, color: '#8b5cf6' },
+];
+
+export const GEL_DEFAULT_PRODUCT_ID = 1;
+
+/** Look up a PRESET gel product by id, defaulting to Oestrogel. */
+export function getGelProduct(id: number | undefined): GelProductSpec {
+    return GEL_PRODUCTS.find(p => p.id === id) ?? GEL_PRODUCTS[0];
+}
+
+// User-defined custom gel products. Gel dose events only store the product id;
+// the kinetics are resolved from this registry at SIMULATION time so editing a
+// custom product (in Settings) propagates to every record that uses it. The app
+// keeps this mirror in sync via `setCustomGelProducts` whenever the cloud-synced
+// `gelProducts` list changes. Presets always resolve from code, so a viewer
+// without the custom list still renders preset gels correctly.
+let CUSTOM_GEL_PRODUCTS: GelProductSpec[] = [];
+
+/** Custom (user-created) gel product ids start here so they never collide with presets. */
+export const GEL_CUSTOM_ID_BASE = 1000;
+
+/**
+ * Validate ONE untrusted custom gel product (from import / share / cloud / stored
+ * registry) into a usable spec, or `null` if unusable.
+ *
+ * This is the single canonical sanitizer reused by the engine registry and by
+ * `doseForm.ts`, so the two entry points can never diverge. Policy:
+ *   - id must be finite AND ≥ GEL_CUSTOM_ID_BASE (never shadow a preset)
+ *   - ONLY the three rate constants (kPenBase/kLoss/kRel) are non-defaultable: a
+ *     missing/NaN rate DROPS the entry rather than fabricating a plausible-but-
+ *     wrong curve. Metadata (concentration/area/refDose) is given a sane default
+ *     so a valid-kinetics product that merely omits a display field survives.
+ *   - finite-but-out-of-range values are clamped; kRel is held inside the
+ *     UI-editable half-life window [1, 240] h so imported products stay editable.
+ */
+export function sanitizeGelProduct(v: unknown): GelProductSpec | null {
+    if (!v || typeof v !== 'object') return null;
+    const o = v as Record<string, unknown>;
+    const fin = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+    const id = fin(o.id);
+    if (id === null || id < GEL_CUSTOM_ID_BASE) return null;
+
+    const kPenBase = fin(o.kPenBase), kLoss = fin(o.kLoss), kRel = fin(o.kRel);
+    if (kPenBase === null || kLoss === null || kRel === null) return null;
+
+    const conc = fin(o.concentrationMGmL);
+    const area = fin(o.defaultAreaCM2);
+    const refDose = fin(o.refDoseMG);
+    const areaC = area !== null ? clamp(area, 1, 5000) : 400;
+    const KREL_MIN = Math.log(2) / 240, KREL_MAX = Math.log(2) / 1; // t½ ∈ [1, 240] h
+    return {
+        id: Math.round(id),
+        nameKey: '',
+        name: typeof o.name === 'string' ? o.name : undefined,
+        concentrationMGmL: conc !== null ? clamp(conc, 0.01, 100) : 1.0,
+        defaultAreaCM2: areaC,
+        refDoseMG: refDose !== null ? clamp(refDose, 0.01, 100) : areaC * 0.002,
+        kPenBase: clamp(kPenBase, 1e-4, 5),
+        kLoss: clamp(kLoss, 0, 10),
+        kRel: clamp(kRel, KREL_MIN, KREL_MAX),
+        color: typeof o.color === 'string' ? o.color : undefined,
+    };
+}
+
+/** Validate an array of untrusted custom gel products (drops bad entries + dup ids). */
+export function sanitizeGelProducts(list: unknown): GelProductSpec[] {
+    if (!Array.isArray(list)) return [];
+    const out: GelProductSpec[] = [];
+    for (const item of list) {
+        const p = sanitizeGelProduct(item);
+        if (p && !out.some(q => q.id === p.id)) out.push(p);
+    }
+    return out;
+}
+
+/**
+ * Replace the in-engine custom gel registry (called by AppDataContext / ShareView).
+ * Every entry is validated so untrusted input cannot inject non-physical kinetics.
+ */
+export function setCustomGelProducts(list: GelProductSpec[]): void {
+    CUSTOM_GEL_PRODUCTS = sanitizeGelProducts(list);
+}
+
+/** True when the id maps to a real preset or known custom product (not a fallback). */
+export function gelProductExists(id: number | undefined): boolean {
+    return GEL_PRODUCTS.some(p => p.id === id) || CUSTOM_GEL_PRODUCTS.some(p => p.id === id);
+}
+
+/** Resolve a gel product id against presets first, then custom products. */
+export function getGelProductById(id: number | undefined): GelProductSpec {
+    return GEL_PRODUCTS.find(p => p.id === id)
+        ?? CUSTOM_GEL_PRODUCTS.find(p => p.id === id)
+        ?? GEL_PRODUCTS[0];
+}
+
+// Soft-saturation half-point for dose density σ = dose/area (mg·cm⁻²). Spreading
+// the same dose over a larger area lowers σ and raises fractional absorption;
+// concentrating it raises σ and lowers absorption. The factor is normalized to
+// 1.0 at each product's reference density so the product's F_ref is preserved.
+const GEL_SIGMA_SAT = 0.008;
+
+export interface GelKinetics { kPen: number; kLoss: number; kRel: number; }
+
+/**
+ * Resolve a product + site + dose + area into the EFFECTIVE cascade rate
+ * constants. Called at simulation time (not persisted on the event) so editing a
+ * custom product re-resolves the kinetics for every record that references it.
+ */
+export function resolveGelKinetics(
+    product: GelProductSpec,
+    site: GelSite,
+    doseMG: number,
+    areaCM2: number
+): GelKinetics {
+    const rSite = GEL_SITE_FACTORS[site] ?? 1.0;
+    const area = areaCM2 > 0 ? areaCM2 : product.defaultAreaCM2;
+    const sigma = doseMG > 0 ? doseMG / area : 0;
+    const sigmaRef = product.defaultAreaCM2 > 0 ? product.refDoseMG / product.defaultAreaCM2 : 0;
+    let densityFactor = sigma > 0
+        ? (1 + sigmaRef / GEL_SIGMA_SAT) / (1 + sigma / GEL_SIGMA_SAT)
+        : 1;
+    densityFactor = Math.min(2.0, Math.max(0.5, densityFactor));
+    return { kPen: product.kPenBase * rSite * densityFactor, kLoss: product.kLoss, kRel: product.kRel };
+}
+
+// --- 3-compartment cascade closed form (surface → reservoir → central) -------
+
+// Nudge near-equal eigenvalues apart so the symmetric partial-fraction form
+// never divides by zero. The perturbation is ~1e-6 h^-1, far below any
+// physically meaningful resolution, so the curve is unaffected.
+function separateEigs(a: number, b: number, c: number): [number, number, number] {
+    const eps = 1e-6;
+    let x = a, y = b, z = c;
+    if (Math.abs(x - y) < eps) y += eps;
+    if (Math.abs(x - z) < eps) z += eps;
+    if (Math.abs(y - z) < eps) z += eps;
+    return [x, y, z];
+}
+
+// Central amount for a surface depot of `doseMG` decaying at l1, feeding a
+// reservoir (release l2) that feeds the central compartment (clearance l3).
+function gelCentral3(doseMG: number, kPen: number, kRel: number, l1: number, l2: number, l3: number, t: number): number {
+    const [a, b, c] = separateEigs(l1, l2, l3);
+    const e1 = Math.exp(-a * t) / ((b - a) * (c - a));
+    const e2 = Math.exp(-b * t) / ((a - b) * (c - b));
+    const e3 = Math.exp(-c * t) / ((a - c) * (b - c));
+    return doseMG * kPen * kRel * (e1 + e2 + e3);
+}
+
+// Reservoir (skin) amount for the same surface depot.
+function gelSkin2(doseMG: number, kPen: number, l1: number, l2: number, t: number): number {
+    const a = l1, b = Math.abs(l1 - l2) < 1e-6 ? l2 + 1e-6 : l2;
+    return doseMG * kPen * (Math.exp(-a * t) - Math.exp(-b * t)) / (b - a);
+}
+
+/**
+ * Layered transdermal-gel central-compartment amount (mg) at `tau` hours after a
+ * single application of `doseMG`.
+ *
+ * Surface → skin reservoir → systemic central linear cascade:
+ *   M_s'    = −(kPen + kLoss)·M_s
+ *   M_skin' =   kPen·M_s − kRel·M_skin
+ *   M_c'    =   kRel·M_skin − ke·M_c       ← returned
+ *
+ * `washAfterH`: at that time the remaining surface film is removed (washed /
+ * rubbed off), so only the surface present in [0, washAfterH] contributes —
+ * implemented as a two-segment solve.
+ */
+export function gel3CompCentralAmount(
+    doseMG: number,
+    tau: number,
+    kPen: number,
+    kLoss: number,
+    kRel: number,
+    ke: number,
+    washAfterH?: number
+): number {
+    // Reject any non-physical / non-finite rate so a corrupt product (e.g. from
+    // a hand-edited share payload) can never inject NaN/Inf into the curve.
+    if (!Number.isFinite(doseMG) || !Number.isFinite(tau) ||
+        !Number.isFinite(kPen) || !Number.isFinite(kLoss) ||
+        !Number.isFinite(kRel) || !Number.isFinite(ke)) return 0;
+    if (tau <= 0 || doseMG <= 0 || kPen <= 0 || kRel <= 0 || ke <= 0 ||
+        kLoss < 0 || (kPen + kLoss) <= 0) return 0;
+    const l1 = kPen + kLoss; // surface
+    const l2 = kRel;         // reservoir release
+    const l3 = ke;           // systemic clearance
+    const wash = (typeof washAfterH === 'number' && Number.isFinite(washAfterH) && washAfterH > 0)
+        ? washAfterH : Infinity;
+
+    if (tau <= wash) {
+        return Math.max(0, gelCentral3(doseMG, kPen, kRel, l1, l2, l3, tau));
+    }
+    // Phase 2: surface removed at `wash`; carry reservoir + central forward.
+    const mSkinWash = gelSkin2(doseMG, kPen, l1, l2, wash);
+    const mcWash = gelCentral3(doseMG, kPen, kRel, l1, l2, l3, wash);
+    const s = tau - wash;
+    const b = l2, c = Math.abs(l2 - l3) < 1e-6 ? l3 + 1e-6 : l3;
+    const mc = mcWash * Math.exp(-c * s)
+        + kRel * mSkinWash * (Math.exp(-b * s) - Math.exp(-c * s)) / (c - b);
+    return Math.max(0, mc);
+}
+
+/**
+ * Central-compartment amount (mg) for one gel event at `tau` hours, with the
+ * systemic clearance `ke` supplied by the caller (the EKF layer scales it).
+ *
+ * The event stores only the product id + per-application site/area/wash; the
+ * product's intrinsic kinetics are resolved from the registry here, so editing a
+ * custom product updates every record that references it.
+ */
+export function gelEventCentralAmount(event: DoseEvent, tau: number, ke: number): number {
+    if (tau <= 0 || event.doseMG <= 0) return 0;
+    const ex = event.extras ?? {};
+    const product = getGelProductById(ex[ExtraKey.gelProductId]);
+    const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(ex[ExtraKey.gelSite] ?? 0)));
+    const site = (GEL_SITE_ORDER[siteIdx] ?? GelSite.arm) as GelSite;
+    const areaRaw = ex[ExtraKey.areaCM2];
+    const area = (typeof areaRaw === 'number' && areaRaw > 0) ? areaRaw : product.defaultAreaCM2;
+    const k = resolveGelKinetics(product, site, event.doseMG, area);
+    return gel3CompCentralAmount(event.doseMG, tau, k.kPen, k.kLoss, k.kRel, ke, ex[ExtraKey.gelWashAfterH]);
+}
 
 /**
  * Shared PK constants used by the population model.
@@ -261,10 +536,15 @@ export function getBioavailabilityMultiplier(
             return (theta + (1 - theta) * OralPK.bioavailability) * mwFactor;
         }
         case Route.gel: {
+            // Systemic absorbed fraction of the layered model = kPen/(kPen+kLoss),
+            // resolved from the event's product id + site + area at compute time.
+            const product = getGelProductById(extras[ExtraKey.gelProductId]);
             const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(extras[ExtraKey.gelSite] ?? 0)));
-            const siteKey = GEL_SITE_ORDER[siteIdx] ?? GelSite.arm;
-            const bio = GelSiteParams[siteKey] ?? 0.05;
-            return bio * mwFactor;
+            const site = (GEL_SITE_ORDER[siteIdx] ?? GelSite.arm) as GelSite;
+            const areaRaw = extras[ExtraKey.areaCM2];
+            const area = (typeof areaRaw === 'number' && areaRaw > 0) ? areaRaw : product.defaultAreaCM2;
+            const k = resolveGelKinetics(product, site, product.refDoseMG, area);
+            return (k.kPen / (k.kPen + k.kLoss)) * mwFactor;
         }
         case Route.patchApply:
             return 1.0 * mwFactor;
@@ -493,6 +773,8 @@ class PrecomputedEventModel {
                 };
                 break;
             case Route.gel:
+                this.model = (timeH: number) => gelEventCentralAmount(event, timeH - startTime, CorePK.kClear);
+                break;
             case Route.oral:
                 this.model = (timeH: number) => {
                     const tau = timeH - startTime;

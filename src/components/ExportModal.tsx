@@ -1,15 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { DoseEvent, LabResult } from '../../logic';
+import { DoseEvent, LabResult, type GelProductSpec } from '../../logic';
 import { X, Download, Copy } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
-const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight }: { isOpen: boolean, onClose: () => void, onExport: (encrypt: boolean) => void, events: DoseEvent[], labResults: LabResult[], weight: number }) => {
+const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight, gelProducts = [] }: { isOpen: boolean, onClose: () => void, onExport: (encrypt: boolean) => void, events: DoseEvent[], labResults: LabResult[], weight: number, gelProducts?: GelProductSpec[] }) => {
     const { t } = useTranslation();
     const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
 
     const hasData = events.length > 0 || labResults.length > 0;
-    const rawDataString = useMemo(() => hasData ? JSON.stringify({ weight, events, labResults }) : '', [events, weight, labResults, hasData]);
+    const rawDataString = useMemo(() => hasData ? JSON.stringify({ weight, events, labResults, gelProducts }) : '', [events, weight, labResults, gelProducts, hasData]);
 
     const handleCopy = async () => {
         if (!rawDataString) return;

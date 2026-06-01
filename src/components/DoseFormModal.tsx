@@ -11,8 +11,15 @@ import {
     ROUTE_DISPLAY_ORDER, getAvailableEsters,
     isPresetDose, hasQuickDosePanel,
     drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
+    getAllGelProducts, readLastGelEvent,
 } from '../utils/doseForm';
-import { Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams, getToE2Factor, isAntiandrogen } from '../../logic';
+import { buildGelExtras } from '../utils/gelForm';
+import {
+    Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams,
+    getToE2Factor, isAntiandrogen,
+    GelSite, GEL_SITE_ORDER, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID,
+    type GelProductSpec,
+} from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -81,8 +88,14 @@ export interface DoseFormModalProps {
 const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
-    const { events: allEvents } = useAppData();
+    const { events: allEvents, gelProducts } = useAppData();
     const dateInputRef = useRef<HTMLInputElement>(null);
+
+    // Presets + the user's custom gel products, for the gel product selector.
+    const allGelProducts = useMemo(() => getAllGelProducts(gelProducts), [gelProducts]);
+    const findGelProduct = (id: number): GelProductSpec =>
+        allGelProducts.find(p => p.id === id) ?? GEL_PRODUCTS[0];
+    const gelProductLabel = (p: GelProductSpec): string => p.name || t(p.nameKey);
 
     // Form State
     const [dateStr, setDateStr] = useState("");
@@ -96,6 +109,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const [patchRate, setPatchRate] = useState("");
 
     const [gelSite, setGelSite] = useState(0); // Index in GEL_SITE_ORDER
+    const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
+    const [gelArea, setGelArea] = useState("");     // application area, cm²
+    const [gelWash, setGelWash] = useState("");     // wash-off after N hours; "" = no wash
 
     const [slTier, setSlTier] = useState(2);
     const [useCustomTheta, setUseCustomTheta] = useState(false);
@@ -174,7 +190,13 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 }
 
                 if (eventToEdit.route === Route.gel) {
-                    setGelSite(eventToEdit.extras[ExtraKey.gelSite] ?? 0);
+                    const ex = eventToEdit.extras;
+                    setGelSite(ex[ExtraKey.gelSite] ?? 0);
+                    setGelProductId(ex[ExtraKey.gelProductId] ?? GEL_DEFAULT_PRODUCT_ID);
+                    const areaRaw = ex[ExtraKey.areaCM2];
+                    setGelArea(typeof areaRaw === 'number' && areaRaw > 0 ? String(areaRaw) : "");
+                    const washRaw = ex[ExtraKey.gelWashAfterH];
+                    setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : "");
                 } else {
                     setGelSite(0);
                 }
@@ -312,6 +334,44 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         }
     }, [isOpen, eventToEdit, route, ester]);
 
+    // Pre-fill the gel product / site / area / wash from the most recent gel
+    // administration (read straight from the saved events JSON), so re-entering a
+    // gel dose starts from "what I used last time". New-record mode only; the
+    // dose itself is restored by the per-drug memo effect above ('gel:E2').
+    const gelPrefilledRef = useRef(false);
+    useEffect(() => {
+        if (!isOpen || eventToEdit || route !== Route.gel) {
+            if (!isOpen || route !== Route.gel) gelPrefilledRef.current = false;
+            return;
+        }
+        if (gelPrefilledRef.current) return;
+        gelPrefilledRef.current = true;
+        const last = readLastGelEvent(allEvents);
+        if (last) {
+            // Prefill the last product verbatim. If it was deleted, the selector's
+            // "missing product" warning prompts a re-pick — we don't auto-reset
+            // here (that misfired during the cloud-sync race and dragged the old
+            // application area onto the default product).
+            setGelProductId(last.productId);
+            setGelSite(last.gelSite);
+            const prod = findGelProduct(last.productId);
+            setGelArea(last.areaCM2 > 0 ? String(last.areaCM2) : String(prod.defaultAreaCM2));
+            setGelWash(last.washAfterH > 0 ? String(last.washAfterH) : "");
+        } else {
+            setGelProductId(GEL_DEFAULT_PRODUCT_ID);
+            setGelSite(0);
+            setGelArea(String(GEL_PRODUCTS[0].defaultAreaCM2));
+            setGelWash("");
+        }
+    }, [isOpen, eventToEdit, route, allEvents]);
+
+    const handleGelProductSelect = (val: string) => {
+        const id = parseInt(val, 10);
+        if (!Number.isFinite(id)) return;
+        setGelProductId(id);
+        setGelArea(String(findGelProduct(id).defaultAreaCM2));
+    };
+
     const [isSaving, setIsSaving] = useState(false);
     const [templates, setTemplates] = useState<DoseTemplate[]>(() => {
         try {
@@ -438,7 +498,19 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         }
 
         if (route === Route.gel) {
-            extras[ExtraKey.gelSite] = gelSite;
+            // Store only the product reference + per-application site/area/wash;
+            // kinetics resolve from the registry at simulation time. buildGelExtras
+            // persists the SELECTED product id verbatim (never a fallback).
+            const product = findGelProduct(gelProductId);
+            const areaVal = parseFloat(gelArea);
+            const area = (Number.isFinite(areaVal) && areaVal > 0) ? areaVal : product.defaultAreaCM2;
+            const washVal = parseFloat(gelWash);
+            Object.assign(extras, buildGelExtras({
+                productId: gelProductId,
+                gelSite,
+                areaCM2: area,
+                washAfterH: (Number.isFinite(washVal) && washVal > 0) ? washVal : undefined,
+            }));
         }
 
         const parsedWeight = parseFloat(weightStr);
@@ -645,13 +717,57 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                 />
                             )}
 
-                            {/* Gel Site Selector */}
+                            {/* Gel: product + site + area + wash */}
                             {route === Route.gel && (
-                                <div className="mb-4 space-y-2">
-                                    <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_site')}</label>
-                                    <div className="p-4 border border-dashed rounded-xl text-sm font-medium select-none" style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-tertiary)' }}>
-                                        {t('gel.site_disabled')}
+                                <div className="mb-4 space-y-3">
+                                    {/* Product selector (custom products are managed in Settings) */}
+                                    <CustomSelect
+                                        label={t('field.gel_product')}
+                                        value={String(gelProductId)}
+                                        onChange={handleGelProductSelect}
+                                        options={[
+                                            // Surface a missing/deleted product so editing an old record
+                                            // doesn't silently masquerade as the default gel.
+                                            ...(!allGelProducts.some(p => p.id === gelProductId)
+                                                ? [{ value: String(gelProductId), label: t('gel.product.missing') }]
+                                                : []),
+                                            ...allGelProducts.map(p => ({ value: String(p.id), label: gelProductLabel(p) })),
+                                        ]}
+                                    />
+                                    {!allGelProducts.some(p => p.id === gelProductId) && (
+                                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-2 rounded-lg">
+                                            {t('gel.product.missing_note')}
+                                        </div>
+                                    )}
+
+                                    {/* Site selector (display order: arm, thigh, abdomen, scrotal) */}
+                                    <CustomSelect
+                                        label={t('field.gel_site')}
+                                        value={String(gelSite)}
+                                        onChange={(val) => setGelSite(parseInt(val, 10) || 0)}
+                                        options={[0, 1, 3, 2].map(idx => ({
+                                            value: String(idx),
+                                            label: t(`gel.site.${GEL_SITE_ORDER[idx]}`),
+                                        }))}
+                                    />
+                                    {GEL_SITE_ORDER[gelSite] === GelSite.scrotal && (
+                                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-2 rounded-lg">
+                                            {t('gel.site.scrotal_note')}
+                                        </div>
+                                    )}
+
+                                    {/* Application area */}
+                                    <div className="space-y-1">
+                                        <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_area')}</label>
+                                        <input value={gelArea} onChange={e => setGelArea(e.target.value)} inputMode="decimal" placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)} className="w-full p-3 rounded-xl glass-input outline-none" />
                                     </div>
+
+                                    {/* Optional wash-off */}
+                                    <div className="space-y-1">
+                                        <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_wash')}</label>
+                                        <input value={gelWash} onChange={e => setGelWash(e.target.value)} inputMode="decimal" placeholder={t('gel.wash_none')} className="w-full p-3 rounded-xl glass-input outline-none" />
+                                    </div>
+
                                     <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
                                         {t('beta.gel')}
                                     </div>

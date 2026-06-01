@@ -69,7 +69,13 @@ export enum ExtraKey {
     releaseRateUGPerDay = "releaseRateUGPerDay",
     sublingualTheta = "sublingualTheta",
     sublingualTier = "sublingualTier",
-    gelSite = "gelSite"
+    gelSite = "gelSite",
+    // Transdermal-gel event fields. The event references a gel product by id and
+    // records only the per-application site / area / wash; the product's intrinsic
+    // kinetics live in the GEL_PRODUCTS registry (pk.ts) and are resolved at
+    // simulation time, so editing a custom product updates all of its records.
+    gelProductId = "gelProductId",      // stable id of the selected gel product
+    gelWashAfterH = "gelWashAfterH"     // wash-off time after application (h); 0/absent = no wash
 }
 
 /**

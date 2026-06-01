@@ -20,13 +20,15 @@ import {
     Moon,
     Sun,
 } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 
-import { DoseEvent, LabResult, decryptData } from '../../logic';
+import { decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
+import { writeCustomGelProducts } from '../utils/doseForm';
+import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
 import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
+import CustomGelManager from '../components/CustomGelManager';
 import ImportModal from '../components/ImportModal';
 import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
@@ -40,22 +42,26 @@ import flagTW from '../flag_svg/🇹🇼.svg';
 import flagUS from '../flag_svg/🇺🇸.svg';
 import flagJP from '../flag_svg/🇯🇵.svg';
 
-type JsonRecord = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is JsonRecord => {
-    return typeof value === 'object' && value !== null;
-};
-
-const toNumber = (value: unknown): number | null => {
-    const next = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(next) ? next : null;
+// The remaining synced settings (read from localStorage) so a locally-written
+// data hash matches CloudSync's full snapshot hash and is never固化 incomplete.
+const readExtraSyncFields = () => {
+    const applyE2Raw = localStorage.getItem('hrt-apply-e2-learning-to-cpa');
+    const applyCPARaw = localStorage.getItem('hrt-apply-cpa-inhibition-to-e2');
+    const darkRaw = localStorage.getItem('hrt-dark-mode');
+    return {
+        calibrationModel: localStorage.getItem('hrt-calibration-model') || 'ekf',
+        applyE2LearningToCPA: applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true',
+        applyCPAInhibitionToE2: applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true',
+        themeColor: localStorage.getItem('hrt-theme-color') || 'sakura',
+        darkMode: darkRaw === '1' || darkRaw === 'true',
+    };
 };
 
 const SettingsPage: React.FC = () => {
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
     const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-    const { events, setEvents, labResults, setLabResults } = useAppData();
+    const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
     const { isDark, setIsDark } = useTheme();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -72,103 +78,18 @@ const SettingsPage: React.FC = () => {
         { value: 'ja', label: '日本語', icon: <img src={flagJP} alt="JP" className="w-5 h-5 rounded-sm object-contain" /> },
     ]), []);
 
-    const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { events: DoseEvent[]; migratedCount: number } => {
-        if (!Array.isArray(raw)) {
-            throw new Error('Invalid format');
-        }
-
-        let migratedCount = 0;
-        const events = raw
-            .map((entry): DoseEvent | null => {
-                if (!isRecord(entry)) return null;
-
-                const timeNum = toNumber(entry.timeH);
-                if (timeNum === null) return null;
-
-                const doseNum = toNumber(entry.doseMG) ?? 0;
-                const extras = isRecord(entry.extras) ? entry.extras : {};
-                const weightNum = toNumber((entry as { weightKG?: unknown }).weightKG);
-                let weightKG: number;
-                if (weightNum !== null && weightNum > 0) {
-                    weightKG = weightNum;
-                } else {
-                    weightKG = fallbackWeight;
-                    migratedCount += 1;
-                }
-
-                return {
-                    id: typeof entry.id === 'string' ? entry.id : uuidv4(),
-                    route: entry.route as DoseEvent['route'],
-                    timeH: timeNum,
-                    doseMG: doseNum,
-                    ester: entry.ester as DoseEvent['ester'],
-                    weightKG,
-                    extras: extras as DoseEvent['extras'],
-                };
-            })
-            .filter((entry): entry is DoseEvent => entry !== null);
-        return { events, migratedCount };
-    };
-
-    const sanitizeImportedLabResults = (raw: unknown): LabResult[] => {
-        if (!Array.isArray(raw)) {
-            return [];
-        }
-
-        return raw
-            .map((entry): LabResult | null => {
-                if (!isRecord(entry)) return null;
-
-                const timeNum = toNumber(entry.timeH);
-                const valueNum = toNumber(entry.concValue);
-                if (timeNum === null || valueNum === null) return null;
-
-                const unit = entry.unit === 'pg/ml' || entry.unit === 'pmol/l' ? entry.unit : 'pmol/l';
-
-                return {
-                    id: typeof entry.id === 'string' ? entry.id : uuidv4(),
-                    timeH: timeNum,
-                    concValue: valueNum,
-                    unit,
-                };
-            })
-            .filter((entry): entry is LabResult => entry !== null);
-    };
-
     const processImportedData = (parsed: unknown): boolean => {
         try {
-            let newEvents: DoseEvent[] = [];
-            let newLabResults: LabResult[] = [];
-            let migratedCount = 0;
-            // Pick the fallback weight before sanitizing events so we can fill
-            // in any rows that lack their own weight (legacy export format).
-            let fallbackWeight = DEFAULT_WEIGHT_KG;
-            if (isRecord(parsed)) {
-                const topWeight = toNumber(parsed.weight);
-                if (topWeight !== null && topWeight > 0) fallbackWeight = topWeight;
-            }
+            const fallbackWeight = importFallbackWeight(parsed, DEFAULT_WEIGHT_KG);
+            const { events: newEvents, labResults: newLabResults, gelProducts: newGelProducts, migratedCount } =
+                parseImportedBackup(parsed, fallbackWeight);
 
-            if (Array.isArray(parsed)) {
-                const r = sanitizeImportedEvents(parsed, fallbackWeight);
-                newEvents = r.events;
-                migratedCount = r.migratedCount;
-            } else if (isRecord(parsed)) {
-                if (Array.isArray(parsed.events)) {
-                    const r = sanitizeImportedEvents(parsed.events, fallbackWeight);
-                    newEvents = r.events;
-                    migratedCount = r.migratedCount;
-                }
-                if (Array.isArray(parsed.labResults)) {
-                    newLabResults = sanitizeImportedLabResults(parsed.labResults);
-                }
-            }
-
-            if (!newEvents.length && !newLabResults.length) {
+            if (!importHasContent({ events: newEvents, labResults: newLabResults, gelProducts: newGelProducts, migratedCount })) {
                 throw new Error('No valid entries');
             }
 
             const nextEvents = newEvents.length > 0 ? newEvents : events;
-            const nextLabResults = newLabResults;
+            const nextLabResults = newLabResults ?? labResults;
 
             if (newEvents.length > 0) {
                 setEvents(newEvents);
@@ -176,8 +97,19 @@ const SettingsPage: React.FC = () => {
                 localStorage.setItem('hrt-weight', latestEventWeight(newEvents).toString());
             }
 
-            setLabResults(newLabResults);
-            localStorage.setItem('hrt-lab-results', JSON.stringify(newLabResults));
+            // Only overwrite labs when the file actually carried a labResults
+            // section; a gel-only / events-only backup leaves existing labs intact.
+            if (newLabResults !== null) {
+                setLabResults(newLabResults);
+                localStorage.setItem('hrt-lab-results', JSON.stringify(newLabResults));
+            }
+
+            // Restore custom gel products so imported gel events resolve their real
+            // kinetics instead of silently falling back to the default product.
+            if (newGelProducts !== null) {
+                setGelProducts(newGelProducts);
+                writeCustomGelProducts(newGelProducts);
+            }
 
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
@@ -188,6 +120,8 @@ const SettingsPage: React.FC = () => {
                 weight: latestEventWeight(nextEvents),
                 labResults: nextLabResults,
                 lang: langValue,
+                gelProducts: newGelProducts ?? gelProducts,
+                ...readExtraSyncFields(),
             });
             localStorage.setItem('hrt-data-hash', dataHash);
             window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-import', lastModified } }));
@@ -256,7 +190,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleQuickExport = () => {
-        if (events.length === 0 && labResults.length === 0) {
+        if (events.length === 0 && labResults.length === 0 && gelProducts.length === 0) {
             showDialog('alert', t('drawer.empty_export'));
             return;
         }
@@ -266,6 +200,7 @@ const SettingsPage: React.FC = () => {
             weight: latestEventWeight(events),
             events,
             labResults,
+            gelProducts,
         };
 
         navigator.clipboard.writeText(JSON.stringify(exportData, null, 2)).then(() => {
@@ -286,7 +221,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleExport = () => {
-        if (events.length === 0 && labResults.length === 0) {
+        if (events.length === 0 && labResults.length === 0 && gelProducts.length === 0) {
             showDialog('alert', t('drawer.empty_export'));
             return;
         }
@@ -295,6 +230,7 @@ const SettingsPage: React.FC = () => {
             weight: latestEventWeight(events),
             events,
             labResults,
+            gelProducts,
         };
         downloadFile(JSON.stringify(exportData, null, 2), `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
     };
@@ -314,6 +250,8 @@ const SettingsPage: React.FC = () => {
                 weight: DEFAULT_WEIGHT_KG,
                 labResults,
                 lang: langValue,
+                gelProducts,
+                ...readExtraSyncFields(),
             });
             localStorage.setItem('hrt-data-hash', dataHash);
             window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-events', lastModified } }));
@@ -387,6 +325,14 @@ const SettingsPage: React.FC = () => {
                             options={languageOptions}
                         />
                     </div>
+                </section>
+
+                {/* Custom gels Section */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.gels') || 'Custom gels'}
+                    </h2>
+                    <CustomGelManager />
                 </section>
 
                 {/* Data Section */}
