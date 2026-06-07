@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves } from 'lucide-react';
+import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves, Clock, History } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel } from '../../logic';
+import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel, CalibrationMode } from '../../logic';
 
 interface LabViewProps {
   labResults: LabResult[];
@@ -14,6 +14,8 @@ interface LabViewProps {
   onSetApplyCPAInhibitionToE2: (enabled: boolean) => void;
   calibrationModel: CalibrationModel;
   onSetCalibrationModel: (model: CalibrationModel) => void;
+  calibrationMode: CalibrationMode;
+  onSetCalibrationMode: (mode: CalibrationMode) => void;
   onAddLabResult: () => void;
   onEditLabResult: (result: LabResult) => void;
   onClearLabResults: () => void;
@@ -270,6 +272,8 @@ const LabView: React.FC<LabViewProps> = ({
   onSetApplyCPAInhibitionToE2,
   calibrationModel,
   onSetCalibrationModel,
+  calibrationMode,
+  onSetCalibrationMode,
   onAddLabResult,
   onEditLabResult,
   onClearLabResults,
@@ -326,6 +330,34 @@ const LabView: React.FC<LabViewProps> = ({
             con={t('lab.model_ou_con')}
             selected={calibrationModel === 'ou-kalman'}
             onSelect={() => onSetCalibrationModel('ou-kalman')}
+          />
+        </div>
+      </div>
+
+      {/* Personalized curve temporal mode: causal vs retrospective */}
+      <div className="mx-4 glass-card p-4 space-y-3">
+        <div>
+          <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('lab.mode_selector')}</p>
+          <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{t('lab.mode_selector_desc')}</p>
+        </div>
+        <div className="space-y-2">
+          <ModelOption
+            icon={<Clock size={14} className={calibrationMode === 'causal' ? 'text-[var(--accent-500)]' : ''} style={calibrationMode !== 'causal' ? { color: 'var(--text-tertiary)' } : undefined} />}
+            label={t('lab.mode_causal_label')}
+            desc={t('lab.mode_causal_desc')}
+            pros={[t('lab.mode_causal_pro1'), t('lab.mode_causal_pro2')]}
+            con={t('lab.mode_causal_con')}
+            selected={calibrationMode === 'causal'}
+            onSelect={() => onSetCalibrationMode('causal')}
+          />
+          <ModelOption
+            icon={<History size={14} className={calibrationMode === 'retrospective' ? 'text-[var(--accent-500)]' : ''} style={calibrationMode !== 'retrospective' ? { color: 'var(--text-tertiary)' } : undefined} />}
+            label={t('lab.mode_retrospective_label')}
+            desc={t('lab.mode_retrospective_desc')}
+            pros={[t('lab.mode_retrospective_pro1'), t('lab.mode_retrospective_pro2')]}
+            con={t('lab.mode_retrospective_con')}
+            selected={calibrationMode === 'retrospective'}
+            onSelect={() => onSetCalibrationMode('retrospective')}
           />
         </div>
       </div>

@@ -45,6 +45,8 @@ export {
     OU_DEFAULT_PARAMS,
     buildOUKalmanCalibration,
     type CalibrationModel,
+    type CalibrationMode,
+    type OUKalmanMode,
     type OUCalibParams,
 } from './calibration';
 export {
@@ -53,10 +55,12 @@ export {
     computeE2AtTimeWithTheta,
     ekfUpdatePersonalModel,
     replayPersonalModel,
+    replayPersonalModelTimeline,
     computeCPAE2InhibitionFactor,
     computeSimulationWithCI,
     type ResidualAnchor,
     type PersonalModelState,
+    type PersonalSnapshot,
     type EKFDiagnostics,
 } from './personalModel';
 export { encryptData, decryptData } from './src/utils/dataEncryption';

@@ -18,7 +18,7 @@ import {
     type GelProductSpec,
     CorePK,
 } from './pk';
-import { computeSimulationWithCI, initPersonalModel, replayPersonalModel } from './personalModel';
+import { computeSimulationWithCI, initPersonalModel, replayPersonalModel, replayPersonalModelTimeline } from './personalModel';
 
 const HOUR = 1;
 const DAY = 24;
@@ -392,6 +392,121 @@ describe('layered transdermal gel model', () => {
         const high = gelEventCentralAmount(event, 8, CorePK.kClear);
         expect(high).toBeGreaterThan(low);
         setCustomGelProducts([]); // reset engine registry for other tests
+    });
+});
+
+describe('causal vs retrospective personalization (time causality)', () => {
+    const e2Inj = (timeH: number, doseMG = 5): DoseEvent => ({
+        id: `ev-${timeH}`, route: Route.injection, timeH, doseMG, ester: Ester.EV, weightKG: 70, extras: {},
+    });
+
+    // E2 doses spanning ~3 weeks so labs land inside the simulated horizon.
+    const events = [e2Inj(0), e2Inj(7 * DAY), e2Inj(14 * DAY)];
+    const labEarly: LabResult = { id: 'l1', timeH: 5 * DAY, concValue: 220, unit: 'pg/ml' };
+    const labLate: LabResult = { id: 'l2', timeH: 12 * DAY, concValue: 55, unit: 'pg/ml' };
+
+    const resolveAt = (timeline: ReturnType<typeof replayPersonalModelTimeline>, t: number) => {
+        let chosen = timeline[0].state;
+        for (const snap of timeline) {
+            if (snap.timeH <= t) chosen = snap.state;
+            else break;
+        }
+        return chosen;
+    };
+
+    it('causal: a later lab does NOT change the snapshot used before it; it DOES change the final params', () => {
+        const tlEarly = replayPersonalModelTimeline(events, [labEarly]);
+        const tlBoth = replayPersonalModelTimeline(events, [labEarly, labLate]);
+
+        // At day 8 (after labEarly, before labLate) both timelines resolve to the
+        // exact same state — the future lab cannot rewrite the past.
+        const sEarly = resolveAt(tlEarly, 8 * DAY);
+        const sBoth = resolveAt(tlBoth, 8 * DAY);
+        expect(sBoth.thetaMean).toEqual(sEarly.thetaMean);
+        expect(sBoth.thetaCov).toEqual(sEarly.thetaCov);
+
+        // But the FINAL learned params (what retrospective applies everywhere) do
+        // change once the later lab is incorporated.
+        const finalEarly = tlEarly[tlEarly.length - 1].state.thetaMean;
+        const finalBoth = tlBoth[tlBoth.length - 1].state.thetaMean;
+        expect(finalBoth).not.toEqual(finalEarly);
+    });
+
+    it('causal curve: adding a later lab leaves the pre-lab E2 estimate untouched', () => {
+        const sim = runSimulation(events)!;
+        const modelEarly = replayPersonalModel(events, [labEarly]);
+        const modelBoth = replayPersonalModel(events, [labEarly, labLate]);
+
+        const causalEarly = computeSimulationWithCI(sim, events, modelEarly, true, [labEarly], 'ekf', false, 'causal');
+        const causalBoth = computeSimulationWithCI(sim, events, modelBoth, true, [labEarly, labLate], 'ekf', false, 'causal');
+
+        // The curve is computed exactly per grid point. Day 7 sits after labEarly
+        // but before labLate (day 12), so causal mode must produce an identical
+        // estimate with or without the later lab.
+        const i7 = sim.timeH.findIndex((t) => t >= 7 * DAY);
+        expect(i7).toBeGreaterThan(0);
+        expect(causalBoth.e2Adjusted[i7]).toBeCloseTo(causalEarly.e2Adjusted[i7], 6);
+    });
+
+    it('retrospective curve: adding a later lab DOES rewrite the pre-lab E2 estimate', () => {
+        const sim = runSimulation(events)!;
+        const modelEarly = replayPersonalModel(events, [labEarly]);
+        const modelBoth = replayPersonalModel(events, [labEarly, labLate]);
+
+        const retroEarly = computeSimulationWithCI(sim, events, modelEarly, true, [labEarly], 'ekf', false, 'retrospective');
+        const retroBoth = computeSimulationWithCI(sim, events, modelBoth, true, [labEarly, labLate], 'ekf', false, 'retrospective');
+
+        const i7 = sim.timeH.findIndex((t) => t >= 7 * DAY);
+        expect(i7).toBeGreaterThan(0);
+        // The later (low) lab pulls the final amplitude down, reshaping the past.
+        expect(Math.abs(retroBoth.e2Adjusted[i7] - retroEarly.e2Adjusted[i7])).toBeGreaterThan(1);
+    });
+});
+
+describe('dose-causality: a dose logged after all labs never moves the past', () => {
+    const e2Inj = (timeH: number, doseMG = 5): DoseEvent => ({
+        id: `ev-${timeH}`, route: Route.injection, timeH, doseMG, ester: Ester.EV, weightKG: 70, extras: {},
+    });
+    const baseEvents = [e2Inj(0), e2Inj(7 * DAY)];
+    const labs: LabResult[] = [{ id: 'l1', timeH: 5 * DAY, concValue: 180, unit: 'pg/ml' }];
+
+    it('a dose after the last lab leaves the learned parameters unchanged', () => {
+        const modelA = replayPersonalModel(baseEvents, labs);
+        const modelB = replayPersonalModel([...baseEvents, e2Inj(20 * DAY)], labs);
+        // A dose can only influence calibration through a lab AFTER it; here there
+        // is none, so theta/baseline must be identical.
+        expect(modelB.thetaMean).toEqual(modelA.thetaMean);
+        expect(modelB.thetaCov).toEqual(modelA.thetaCov);
+        expect(modelB.baselinePGmL).toEqual(modelA.baselinePGmL);
+    });
+
+    it('retrospective curve value at past times is unchanged after adding a future dose', () => {
+        const moreEvents = [...baseEvents, e2Inj(20 * DAY)];
+        const simA = runSimulation(baseEvents)!;
+        const simB = runSimulation(moreEvents)!;
+        const modelA = replayPersonalModel(baseEvents, labs);
+        const modelB = replayPersonalModel(moreEvents, labs);
+
+        const ciA = computeSimulationWithCI(simA, baseEvents, modelA, true, labs, 'ekf', false, 'retrospective');
+        const ciB = computeSimulationWithCI(simB, moreEvents, modelB, true, labs, 'ekf', false, 'retrospective');
+
+        // runSimulation rescales the grid when events change, so compare via linear
+        // interpolation at the SAME real times in the region before the new dose.
+        const interp = (timeHArr: number[], values: number[], t: number) => {
+            if (t <= timeHArr[0]) return values[0];
+            if (t >= timeHArr[timeHArr.length - 1]) return values[values.length - 1];
+            let lo = 0, hi = timeHArr.length - 1;
+            while (hi - lo > 1) { const m = (lo + hi) >> 1; if (timeHArr[m] <= t) lo = m; else hi = m; }
+            const f = (t - timeHArr[lo]) / (timeHArr[hi] - timeHArr[lo]);
+            return values[lo] + (values[hi] - values[lo]) * f;
+        };
+
+        for (const t of [2 * DAY, 4 * DAY, 6 * DAY, 10 * DAY]) {
+            const va = interp(simA.timeH, ciA.e2Adjusted, t);
+            const vb = interp(simB.timeH, ciB.e2Adjusted, t);
+            // Exact-per-point curves differ only by sub-grid interpolation error.
+            expect(Math.abs(vb - va) / Math.max(va, 1)).toBeLessThan(0.02);
+        }
     });
 });
 

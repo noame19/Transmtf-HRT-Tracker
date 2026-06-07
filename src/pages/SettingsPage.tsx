@@ -50,6 +50,7 @@ const readExtraSyncFields = () => {
     const darkRaw = localStorage.getItem('hrt-dark-mode');
     return {
         calibrationModel: localStorage.getItem('hrt-calibration-model') || 'ekf',
+        calibrationMode: localStorage.getItem('hrt-calibration-mode') || 'retrospective',
         applyE2LearningToCPA: applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true',
         applyCPAInhibitionToE2: applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true',
         themeColor: localStorage.getItem('hrt-theme-color') || 'sakura',

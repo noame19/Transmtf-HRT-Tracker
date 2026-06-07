@@ -4,6 +4,7 @@ type HashableData = {
     labResults: unknown[];
     lang?: string;
     calibrationModel?: string;
+    calibrationMode?: string;
     applyE2LearningToCPA?: boolean;
     applyCPAInhibitionToE2?: boolean;
     themeColor?: string;
@@ -14,7 +15,7 @@ type HashableData = {
 // Bump this whenever the synced field set changes. The hash is prefixed with it
 // so the sync layer can tell "data changed" apart from "hash formula changed"
 // (an old baseline hash with a different prefix must NOT be read as a local edit).
-export const SYNC_HASH_SCHEMA = 'v2';
+export const SYNC_HASH_SCHEMA = 'v3';
 
 /**
  * Canonical projection of the synced fields to their default values. Shared by
@@ -28,6 +29,7 @@ export const projectForSync = (data: Partial<HashableData>): Record<string, unkn
     labResults: data.labResults || [],
     lang: data.lang || '',
     calibrationModel: data.calibrationModel || '',
+    calibrationMode: data.calibrationMode || '',
     applyE2LearningToCPA: data.applyE2LearningToCPA ?? false,
     applyCPAInhibitionToE2: data.applyCPAInhibitionToE2 ?? false,
     themeColor: data.themeColor || '',

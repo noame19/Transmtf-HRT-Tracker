@@ -15,7 +15,9 @@ import {
 import {
     convertToPgMl,
     buildOUKalmanCalibration,
+    OU_DEFAULT_PARAMS,
     type CalibrationModel,
+    type CalibrationMode,
 } from './calibration';
 
 export interface ResidualAnchor {
@@ -197,6 +199,30 @@ export function computeCPAAtTimeWithTheta(
 }
 
 /**
+ * Compute E2 (pg/mL) at one time from already time-sorted events, so callers
+ * that evaluate the curve at many points pay the sort cost only once. Only doses
+ * at or before `timeH` contribute (the curve is causal in doses by construction).
+ */
+function e2AtTimeWithThetaSorted(
+    sortedEvents: DoseEvent[],
+    timeH: number,
+    theta: [number, number]
+): number {
+    const s = Math.exp(theta[0]);
+    const kScale = Math.exp(theta[1]);
+
+    let totalMG = 0;
+    for (const event of sortedEvents) {
+        if (event.timeH > timeH) break; // sorted ascending → nothing later contributes
+        totalMG += computeEventAmountWithKScale(event, sortedEvents, timeH - event.timeH, kScale);
+    }
+
+    const weight = weightAtTimeH(sortedEvents, timeH);
+    const plasmaVolML = CorePK.vdPerKG * weight * 1000;
+    return Math.max(0, (totalMG * 1e9) / plasmaVolML * s);
+}
+
+/**
  * Compute E2 plasma concentration in pg/mL at a single time point using the
  * personalized scaling parameters theta = [theta_s, theta_k].
  */
@@ -205,19 +231,8 @@ export function computeE2AtTimeWithTheta(
     timeH: number,
     theta: [number, number]
 ): number {
-    const s = Math.exp(theta[0]);
-    const kScale = Math.exp(theta[1]);
     const sorted = [...events].sort((a, b) => a.timeH - b.timeH);
-
-    let totalMG = 0;
-    for (const event of sorted) {
-        if (event.timeH > timeH) continue;
-        totalMG += computeEventAmountWithKScale(event, sorted, timeH - event.timeH, kScale);
-    }
-
-    const weight = weightAtTimeH(sorted, timeH);
-    const plasmaVolML = CorePK.vdPerKG * weight * 1000;
-    return Math.max(0, (totalMG * 1e9) / plasmaVolML * s);
+    return e2AtTimeWithThetaSorted(sorted, timeH, theta);
 }
 
 /**
@@ -390,21 +405,81 @@ export function ekfUpdatePersonalModel(
 }
 
 /**
+ * A personal-model state together with the time from which it becomes valid.
+ * `timeH` is the lab time that produced this state; the very first snapshot uses
+ * `-Infinity` (the population prior, valid before any observation exists).
+ */
+export interface PersonalSnapshot {
+    /** Earliest time at which this state is the most up-to-date estimate. */
+    timeH: number;
+    state: PersonalModelState;
+}
+
+/**
+ * Replay all lab results from the population prior, capturing the personal-model
+ * state *after each* observation. The result is the causal timeline of the
+ * model: snapshot `k` reflects only the labs at index `< k+1` (i.e. up to and
+ * including lab `k`), so it can be used to estimate historical points using just
+ * the information that existed at the time — without letting future labs or
+ * doses rewrite the past.
+ */
+export function replayPersonalModelTimeline(
+    events: DoseEvent[],
+    labResults: LabResult[]
+): PersonalSnapshot[] {
+    let state = initPersonalModel();
+    const sorted = [...labResults].sort((a, b) => a.timeH - b.timeH);
+    const snapshots: PersonalSnapshot[] = [{ timeH: -Infinity, state }];
+    for (let i = 0; i < sorted.length; i++) {
+        const prevTimeH = i > 0 ? sorted[i - 1].timeH : undefined;
+        const { newState } = ekfUpdatePersonalModel(events, state, sorted[i], prevTimeH);
+        state = newState;
+        snapshots.push({ timeH: sorted[i].timeH, state });
+    }
+    return snapshots;
+}
+
+/**
  * Replay all lab results from the population prior to rebuild the personal
- * model after events or labs are edited.
+ * model after events or labs are edited. Returns the *final* state (all labs
+ * applied); for the per-time causal timeline use
+ * {@link replayPersonalModelTimeline}.
  */
 export function replayPersonalModel(
     events: DoseEvent[],
     labResults: LabResult[]
 ): PersonalModelState {
-    let state = initPersonalModel();
-    const sorted = [...labResults].sort((a, b) => a.timeH - b.timeH);
-    for (let i = 0; i < sorted.length; i++) {
-        const prevTimeH = i > 0 ? sorted[i - 1].timeH : undefined;
-        const { newState } = ekfUpdatePersonalModel(events, state, sorted[i], prevTimeH);
-        state = newState;
-    }
-    return state;
+    const timeline = replayPersonalModelTimeline(events, labResults);
+    return timeline[timeline.length - 1].state;
+}
+
+/**
+ * Build a resolver that, given a time, returns the latest personal-model state
+ * whose snapshot time is `<= timeH`. When `timeline` is null (retrospective
+ * mode) the resolver always returns `fallback` — i.e. the final learned state is
+ * applied to the whole curve, which is the legacy behaviour.
+ */
+function makeSnapshotResolver(
+    timeline: PersonalSnapshot[] | null,
+    fallback: PersonalModelState
+): (timeH: number) => PersonalModelState {
+    if (!timeline || timeline.length === 0) return () => fallback;
+    return (timeH: number): PersonalModelState => {
+        // timeline[0].timeH === -Infinity, so `ans` is always a valid index.
+        let lo = 0;
+        let hi = timeline.length - 1;
+        let ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (timeline[mid].timeH <= timeH) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return timeline[ans].state;
+    };
 }
 
 /**
@@ -434,7 +509,8 @@ export function computeSimulationWithCI(
     applyE2LearningToCPA: boolean = true,
     labResults: LabResult[] = [],
     calibrationModel: CalibrationModel = 'ekf',
-    applyCPAInhibitionToE2: boolean = false
+    applyCPAInhibitionToE2: boolean = false,
+    calibrationMode: CalibrationMode = 'retrospective'
 ): {
     timeH: number[];
     e2Adjusted: number[];
@@ -457,12 +533,20 @@ export function computeSimulationWithCI(
         };
     }
 
-    const theta = state.thetaMean;
-    const P = state.thetaCov;
+    // Temporal semantics of the personalised curve. In `causal` mode each point
+    // is estimated from only the labs available up to that time (a per-lab
+    // snapshot timeline), so adding later labs or doses never rewrites the past.
+    // In `retrospective` mode the resolver always returns the final learned
+    // `state`, i.e. the whole curve is re-fit from hindsight (legacy behaviour).
+    const timeline = calibrationMode === 'causal'
+        ? replayPersonalModelTimeline(events, labResults)
+        : null;
+    const resolveState = makeSnapshotResolver(timeline, state);
     // Baseline endogenous E2 from pre-dose calibration; 0 if none available.
-    const baselinePGmL = (state.baselinePGmL !== undefined && Number.isFinite(state.baselinePGmL))
-        ? Math.max(0, state.baselinePGmL)
-        : 0;
+    const baselineOf = (st: PersonalModelState): number =>
+        (st.baselinePGmL !== undefined && Number.isFinite(st.baselinePGmL))
+            ? Math.max(0, st.baselinePGmL)
+            : 0;
 
     const clampCI = (low: number, high: number, hardMax: number): [number, number] => {
         const lo = Number.isFinite(low) ? Math.max(0, low) : 0;
@@ -477,9 +561,16 @@ export function computeSimulationWithCI(
     const ci68High = new Array<number>(n);
 
     if (calibrationModel === 'ou-kalman') {
-        const ou = buildOUKalmanCalibration(sim, labResults);
+        // Causal → forward filter only; retrospective → forward + RTS smoother.
+        const ou = buildOUKalmanCalibration(
+            sim,
+            labResults,
+            OU_DEFAULT_PARAMS,
+            calibrationMode === 'causal' ? 'forward' : 'smooth'
+        );
 
         for (let i = 0; i < n; i++) {
+            const baselinePGmL = baselineOf(resolveState(sim.timeH[i]));
             const c0 = Math.max(sim.concPGmL_E2[i], EKF_EPS);
             const mean = ou.m[i];
             const std = Math.sqrt(Math.max(0, ou.P[i]));
@@ -503,56 +594,43 @@ export function computeSimulationWithCI(
             ci68High[i] = hi68;
         }
     } else {
-        const ekfStep = Math.max(1, Math.floor(n / 100));
-        const ekfIndices: number[] = [];
-        for (let i = 0; i < n; i += ekfStep) ekfIndices.push(i);
-        if (ekfIndices[ekfIndices.length - 1] !== n - 1) ekfIndices.push(n - 1);
+        // Evaluate the personalised E2 and CI EXACTLY at every grid point — no
+        // sub-sampling or interpolation. This makes the displayed value at a given
+        // time a deterministic function of (theta, doses ≤ t), so logging a dose
+        // after the last lab — which leaves theta unchanged — never shifts earlier
+        // points, even though runSimulation rescales the whole time grid when
+        // events change. Events are sorted once and reused across all points.
+        const sortedEvents = [...events].sort((a, b) => a.timeH - b.timeH);
 
-        const ekfSamples: {
-            idx: number;
-            e2Adj: number;
-            ci95Lo: number;
-            ci95Hi: number;
-            ci68Lo: number;
-            ci68Hi: number;
-        }[] = [];
-
-        for (const idx of ekfIndices) {
-            const timeH = sim.timeH[idx];
-            const e2Base = computeE2AtTimeWithTheta(events, timeH, theta);
+        for (let i = 0; i < n; i++) {
+            const timeH = sim.timeH[i];
+            const st = resolveState(timeH);
+            const theta = st.thetaMean;
+            const P = st.thetaCov;
+            const baselinePGmL = baselineOf(st);
+            const e2Base = e2AtTimeWithThetaSorted(sortedEvents, timeH, theta);
             const yhat = Math.log(Math.max(e2Base, EKF_EPS));
             const thetaKPlus: [number, number] = [theta[0], theta[1] + EKF_DELTA_K];
-            const yhatPlus = Math.log(Math.max(computeE2AtTimeWithTheta(events, timeH, thetaKPlus), EKF_EPS));
+            const yhatPlus = Math.log(Math.max(e2AtTimeWithThetaSorted(sortedEvents, timeH, thetaKPlus), EKF_EPS));
             const H1 = (yhatPlus - yhat) / EKF_DELTA_K;
             const rawSigma2Param = P[0][0] + 2 * H1 * P[0][1] + H1 * H1 * P[1][1];
             const sigma2Param = Number.isFinite(rawSigma2Param) && rawSigma2Param > 0 ? rawSigma2Param : 0;
             const sigmaTotal = Math.sqrt(sigma2Param + EKF_SIGMA_RESIDUAL_LOG * EKF_SIGMA_RESIDUAL_LOG);
-            const e2AdjMean = Math.min(baselinePGmL + e2Base * Math.exp(0.5 * sigma2Param), EKF_CI_MAX_E2);
+            e2Adjusted[i] = Math.min(baselinePGmL + e2Base * Math.exp(0.5 * sigma2Param), EKF_CI_MAX_E2);
             const [lo95, hi95] = clampCI(
                 baselinePGmL + e2Base * Math.exp(-1.96 * sigmaTotal),
                 baselinePGmL + e2Base * Math.exp(1.96 * sigmaTotal),
                 EKF_CI_MAX_E2
             );
+            ci95Low[i] = lo95;
+            ci95High[i] = hi95;
             const [lo68, hi68] = clampCI(
                 baselinePGmL + e2Base * Math.exp(-sigmaTotal),
                 baselinePGmL + e2Base * Math.exp(sigmaTotal),
                 EKF_CI_MAX_E2
             );
-            ekfSamples.push({ idx, e2Adj: e2AdjMean, ci95Lo: lo95, ci95Hi: hi95, ci68Lo: lo68, ci68Hi: hi68 });
-        }
-
-        for (let j = 0; j < ekfSamples.length; j++) {
-            const a = ekfSamples[j];
-            const b = ekfSamples[j + 1] ?? a;
-            const span = b.idx - a.idx;
-            for (let i = a.idx; i <= b.idx; i++) {
-                const frac = span > 0 ? (i - a.idx) / span : 0;
-                e2Adjusted[i] = Math.min(Math.max(0, a.e2Adj + (b.e2Adj - a.e2Adj) * frac), EKF_CI_MAX_E2);
-                ci95Low[i] = a.ci95Lo + (b.ci95Lo - a.ci95Lo) * frac;
-                ci95High[i] = a.ci95Hi + (b.ci95Hi - a.ci95Hi) * frac;
-                ci68Low[i] = a.ci68Lo + (b.ci68Lo - a.ci68Lo) * frac;
-                ci68High[i] = a.ci68Hi + (b.ci68Hi - a.ci68Hi) * frac;
-            }
+            ci68Low[i] = lo68;
+            ci68High[i] = hi68;
         }
     }
 
@@ -565,14 +643,20 @@ export function computeSimulationWithCI(
         if (!series) continue;
         const spec = ANTIANDROGENS[ester]!;
         const useAdherence = spec.adherenceFromE2 && applyE2LearningToCPA;
-        const scale = useAdherence ? Math.exp(theta[0]) : 1;
-        const adhVar = useAdherence ? Math.max(0, P[0][0]) : 0;
-        const std = Math.sqrt(Math.max(0, adhVar + spec.popLogVar));
 
         const adjusted = new Array<number>(n).fill(0);
         const ci95Low = new Array<number>(n).fill(0);
         const ci95High = new Array<number>(n).fill(0);
         for (let i = 0; i < n; i++) {
+            // CPA's adherence amplitude is learned from E2. In causal mode it is
+            // taken from this point's snapshot so the CPA curve, like E2, never
+            // has its past rewritten by later labs. Retrospective resolves to the
+            // final state for every point (the legacy constant-scale behaviour).
+            const st = useAdherence ? resolveState(sim.timeH[i]) : state;
+            const scale = useAdherence ? Math.exp(st.thetaMean[0]) : 1;
+            const adhVar = useAdherence ? Math.max(0, st.thetaCov[0][0]) : 0;
+            const std = Math.sqrt(Math.max(0, adhVar + spec.popLogVar));
+
             const pred = Math.max(0, series.values[i] * scale);
             const yhat = Math.log(Math.max(pred, EKF_EPS_CPA));
             const [lo, hi] = clampCI(

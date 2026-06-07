@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useRef, useCallback } from 'react';
 import {
     DoseEvent, LabResult, SimulationResult,
-    PersonalModelState, EKFDiagnostics, CalibrationModel,
+    PersonalModelState, EKFDiagnostics, CalibrationModel, CalibrationMode,
     runSimulation, createCalibrationInterpolator,
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
     ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
@@ -13,6 +13,7 @@ import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEF
 const PERSONAL_MODEL_KEY = 'hrt-personal-model';
 const APPLY_E2_LEARNING_TO_CPA_KEY = 'hrt-apply-e2-learning-to-cpa';
 const CALIBRATION_MODEL_KEY = 'hrt-calibration-model';
+const CALIBRATION_MODE_KEY = 'hrt-calibration-mode';
 const APPLY_CPA_INHIBITION_TO_E2_KEY = 'hrt-apply-cpa-inhibition-to-e2';
 const THEME_COLOR_KEY = 'hrt-theme-color';
 const DARK_MODE_KEY = 'hrt-dark-mode';
@@ -54,6 +55,16 @@ interface AppDataContextType {
     setApplyCPAInhibitionToE2: React.Dispatch<React.SetStateAction<boolean>>;
     calibrationModel: CalibrationModel;
     setCalibrationModel: React.Dispatch<React.SetStateAction<CalibrationModel>>;
+    /**
+     * Temporal semantics of the personalised curve. `retrospective` (default)
+     * re-fits the whole curve from all labs (EKF final state / OU RTS smoother),
+     * so new labs reshape history — the desired behaviour. `causal` estimates
+     * each point from only the labs available up to that time (forward-only).
+     * Dose-causality (a logged dose not shifting earlier estimates) holds in BOTH
+     * modes — it comes from the exact per-point curve, not from this flag.
+     */
+    calibrationMode: CalibrationMode;
+    setCalibrationMode: React.Dispatch<React.SetStateAction<CalibrationMode>>;
     /** User-created custom transdermal-gel products (cloud-synced). Presets live in code. */
     gelProducts: GelProductSpec[];
     setGelProducts: React.Dispatch<React.SetStateAction<GelProductSpec[]>>;
@@ -163,6 +174,15 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const raw = localStorage.getItem(CALIBRATION_MODEL_KEY);
         return (raw === 'ou-kalman') ? 'ou-kalman' : 'ekf';
     });
+    const [calibrationMode, setCalibrationMode] = useState<CalibrationMode>(() => {
+        const raw = localStorage.getItem(CALIBRATION_MODE_KEY);
+        // Default to 'retrospective': new lab results SHOULD recalibrate the whole
+        // history (that is correct and desired). Dose-causality — a newly logged
+        // dose not shifting earlier estimates — is guaranteed separately by the
+        // exact per-point personalised curve, independent of this mode. Only opt
+        // into the forward-only 'causal' view when explicitly selected.
+        return (raw === 'causal') ? 'causal' : 'retrospective';
+    });
     const [applyCPAInhibitionToE2, setApplyCPAInhibitionToE2] = useState<boolean>(() => {
         const raw = localStorage.getItem(APPLY_CPA_INHIBITION_TO_E2_KEY);
         if (raw === null) return false;
@@ -174,6 +194,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         events: false,
         labResults: false,
         calibrationModel: false,
+        calibrationMode: false,
         applyE2LearningToCPA: false,
         applyCPAInhibitionToE2: false,
         gelProducts: false,
@@ -182,6 +203,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         events: true,
         labResults: true,
         calibrationModel: true,
+        calibrationMode: true,
         applyE2LearningToCPA: true,
         applyCPAInhibitionToE2: true,
         gelProducts: true,
@@ -237,6 +259,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         finalizeLocalUpdate('calibrationModel', CALIBRATION_MODEL_KEY);
     }, [calibrationModel]);
     useEffect(() => {
+        localStorage.setItem(CALIBRATION_MODE_KEY, calibrationMode);
+        finalizeLocalUpdate('calibrationMode', CALIBRATION_MODE_KEY);
+    }, [calibrationMode]);
+    useEffect(() => {
         writeCustomGelProducts(gelProducts);
         finalizeLocalUpdate('gelProducts', GEL_PRODUCTS_KEY);
     }, [gelProducts]);
@@ -248,9 +274,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
         const gelProductsRaw = localStorage.getItem(GEL_PRODUCTS_KEY);
         const gelProductsParsed = gelProductsRaw ? JSON.parse(gelProductsRaw) : [];
-        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode, gelProducts: gelProductsParsed });
+        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode, gelProducts: gelProductsParsed });
         localStorage.setItem('hrt-data-hash', hash);
-    }, [events, labResults, calibrationModel, applyE2LearningToCPA, applyCPAInhibitionToE2, gelProducts]);
+    }, [events, labResults, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, gelProducts]);
 
     // Update current time every minute
     useEffect(() => {
@@ -260,7 +286,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY, GEL_PRODUCTS_KEY];
+            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', CALIBRATION_MODE_KEY, APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY, GEL_PRODUCTS_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -307,6 +333,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 }
             }
 
+            if (e.key === CALIBRATION_MODE_KEY && isOtherTabSync) {
+                markExternalUpdate('calibrationMode');
+                const saved = localStorage.getItem(CALIBRATION_MODE_KEY);
+                if (saved === 'causal' || saved === 'retrospective') {
+                    setCalibrationMode(saved);
+                }
+            }
+
             if (e.key === APPLY_E2_LEARNING_TO_CPA_KEY && isOtherTabSync) {
                 markExternalUpdate('applyE2LearningToCPA');
                 const saved = localStorage.getItem(APPLY_E2_LEARNING_TO_CPA_KEY);
@@ -331,6 +365,11 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
                 if (saved === 'ou-kalman' || saved === 'ekf') {
                     setCalibrationModel(saved);
+                }
+                markExternalUpdate('calibrationMode');
+                const savedMode = localStorage.getItem(CALIBRATION_MODE_KEY);
+                if (savedMode === 'causal' || savedMode === 'retrospective') {
+                    setCalibrationMode(savedMode);
                 }
                 markExternalUpdate('applyE2LearningToCPA');
                 const savedE2 = localStorage.getItem(APPLY_E2_LEARNING_TO_CPA_KEY);
@@ -433,16 +472,17 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const hasAntiandrogen = events.some(e => isAntiandrogen(e.ester));
 
         if (hasE2Personal) {
-            const ci = computeSimulationWithCI(simulation, events, personalModel!, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2);
+            const ci = computeSimulationWithCI(simulation, events, personalModel!, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2, calibrationMode);
             setSimCI(ci);
         } else if (hasAntiandrogen) {
-            // Population-only path: no learned theta, no adherence coupling.
-            const ci = computeSimulationWithCI(simulation, events, initPersonalModel(), false, [], 'ekf', false);
+            // Population-only path: no learned theta, no adherence coupling. Mode is
+            // irrelevant with no labs, but pass it through for consistency.
+            const ci = computeSimulationWithCI(simulation, events, initPersonalModel(), false, [], 'ekf', false, calibrationMode);
             setSimCI({ ...ci, e2Adjusted: [], ci95Low: [], ci95High: [], ci68Low: [], ci68High: [] });
         } else {
             setSimCI(null);
         }
-    }, [simulation, personalModel, events, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2]);
+    }, [simulation, personalModel, events, applyE2LearningToCPA, labResults, calibrationModel, applyCPAInhibitionToE2, calibrationMode]);
 
     // Expose baseline from pre-dose labs so UI can offset the raw sim curve
     // even when no post-dose learning has occurred yet.
@@ -482,6 +522,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setApplyCPAInhibitionToE2,
         calibrationModel,
         setCalibrationModel,
+        calibrationMode,
+        setCalibrationMode,
         gelProducts,
         setGelProducts,
         resetPersonalModel,

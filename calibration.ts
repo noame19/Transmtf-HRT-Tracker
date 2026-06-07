@@ -80,6 +80,30 @@ export function createCalibrationInterpolator(sim: SimulationResult | null, resu
 /** Which Bayesian model to use for E2 calibration and CI bands. */
 export type CalibrationModel = 'ekf' | 'ou-kalman';
 
+/**
+ * Temporal semantics of the personalised curve, orthogonal to {@link CalibrationModel}:
+ *
+ * - `causal`        — every historical point is estimated using *only* the
+ *                     calibration information available up to that time
+ *                     (forward filtering / per-lab snapshots). Adding later labs
+ *                     or later doses can never rewrite the past. This is the
+ *                     honest "what we could have predicted back then" curve.
+ * - `retrospective` — the whole curve is re-fit from the final learned
+ *                     parameters (EKF) or a backward RTS smoother (OU), so newer
+ *                     records reshape historical estimates. Best for hindsight
+ *                     review, but the past visibly changes when you add data.
+ */
+export type CalibrationMode = 'causal' | 'retrospective';
+
+/**
+ * Smoothing behaviour of the OU-Kalman calibrator:
+ * - `smooth`  — forward Kalman filter + RTS backward smoother (future observations
+ *               refine past estimates). Drives the `retrospective` display mode.
+ * - `forward` — forward Kalman filter only (causal); each point sees only labs at
+ *               or before its time. Drives the `causal` display mode.
+ */
+export type OUKalmanMode = 'forward' | 'smooth';
+
 export interface OUCalibParams {
     tau: number;
     Theta: number;
@@ -96,13 +120,19 @@ export const OU_DEFAULT_PARAMS: OUCalibParams = {
 };
 
 /**
- * Ornstein-Uhlenbeck Kalman filter plus RTS smoother for dynamic E2
- * calibration. The output is aligned with `sim.timeH`.
+ * Ornstein-Uhlenbeck Kalman filter (optionally plus RTS smoother) for dynamic
+ * E2 calibration. The output is aligned with `sim.timeH`.
+ *
+ * @param mode `'smooth'` (default) runs the forward filter and the RTS backward
+ *   smoother so future labs refine past estimates — use for retrospective
+ *   review. `'forward'` returns the forward filter only, so each point reflects
+ *   just the labs at or before its time — use for the causal display mode.
  */
 export function buildOUKalmanCalibration(
     sim: SimulationResult,
     labResults: LabResult[],
-    params: OUCalibParams = OU_DEFAULT_PARAMS
+    params: OUCalibParams = OU_DEFAULT_PARAMS,
+    mode: OUKalmanMode = 'smooth'
 ): { m: number[]; P: number[] } {
     const n = sim.timeH.length;
     if (n === 0) return { m: [], P: [] };
@@ -169,16 +199,24 @@ export function buildOUKalmanCalibration(
         pFwd[i] = Math.max(p, 1e-12);
     }
 
-    const mSmooth = Float64Array.from(mFwd);
-    const pSmooth = Float64Array.from(pFwd);
+    // Causal mode stops at the forward estimate; retrospective mode runs the RTS
+    // backward pass so later observations refine earlier points.
+    let mOut = mFwd;
+    let pOut = pFwd;
+    if (mode === 'smooth') {
+        const mSmooth = Float64Array.from(mFwd);
+        const pSmooth = Float64Array.from(pFwd);
 
-    for (let i = grid.length - 2; i >= 0; i--) {
-        const dt = grid[i + 1] - grid[i];
-        if (dt <= 0) continue;
-        const phi = Math.exp(-Theta * dt);
-        const gain = pPred[i + 1] > 1e-12 ? pFwd[i] * phi / pPred[i + 1] : 0;
-        mSmooth[i] = mFwd[i] + gain * (mSmooth[i + 1] - mPred[i + 1]);
-        pSmooth[i] = Math.max(pFwd[i] + gain * gain * (pSmooth[i + 1] - pPred[i + 1]), 1e-9);
+        for (let i = grid.length - 2; i >= 0; i--) {
+            const dt = grid[i + 1] - grid[i];
+            if (dt <= 0) continue;
+            const phi = Math.exp(-Theta * dt);
+            const gain = pPred[i + 1] > 1e-12 ? pFwd[i] * phi / pPred[i + 1] : 0;
+            mSmooth[i] = mFwd[i] + gain * (mSmooth[i + 1] - mPred[i + 1]);
+            pSmooth[i] = Math.max(pFwd[i] + gain * gain * (pSmooth[i + 1] - pPred[i + 1]), 1e-9);
+        }
+        mOut = mSmooth;
+        pOut = pSmooth;
     }
 
     const outM = new Array<number>(n);
@@ -186,8 +224,8 @@ export function buildOUKalmanCalibration(
     for (let i = 0; i < n; i++) {
         const idx = gridIndex.get(sim.timeH[i]);
         if (idx !== undefined) {
-            outM[i] = mSmooth[idx];
-            outP[i] = pSmooth[idx];
+            outM[i] = mOut[idx];
+            outP[i] = pOut[idx];
         } else {
             outM[i] = mu;
             outP[i] = pInf;

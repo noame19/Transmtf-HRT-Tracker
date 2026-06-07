@@ -55,7 +55,7 @@ function deepEqual(a: any, b: any): boolean {
 
 const SYNC_FIELDS = [
   'events', 'weight', 'labResults', 'lang',
-  'calibrationModel', 'applyE2LearningToCPA',
+  'calibrationModel', 'calibrationMode', 'applyE2LearningToCPA',
   'applyCPAInhibitionToE2', 'themeColor', 'darkMode',
   'gelProducts',
 ] as const;
@@ -117,6 +117,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const labResults = localStorage.getItem('hrt-lab-results');
     const lang = localStorage.getItem('hrt-lang');
     const calibrationModel = localStorage.getItem('hrt-calibration-model') || 'ekf';
+    const calibrationMode = localStorage.getItem('hrt-calibration-mode') || 'retrospective';
     const applyE2Raw = localStorage.getItem('hrt-apply-e2-learning-to-cpa');
     const applyCPARaw = localStorage.getItem('hrt-apply-cpa-inhibition-to-e2');
     const themeColor = localStorage.getItem('hrt-theme-color') || 'sakura';
@@ -139,6 +140,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       labResults: parsedLabResults,
       lang: resolvedLang,
       calibrationModel,
+      calibrationMode,
       applyE2LearningToCPA,
       applyCPAInhibitionToE2,
       themeColor,
@@ -153,6 +155,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       labResults: parsedLabResults,
       lang: resolvedLang,
       calibrationModel,
+      calibrationMode,
       applyE2LearningToCPA,
       applyCPAInhibitionToE2,
       themeColor,
@@ -171,6 +174,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     labResults: any[];
     lang: string;
     calibrationModel?: string;
+    calibrationMode?: string;
     applyE2LearningToCPA?: boolean;
     applyCPAInhibitionToE2?: boolean;
     themeColor?: string;
@@ -195,6 +199,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         labResults: localData.labResults,
         lang: localData.lang,
         calibrationModel: localData.calibrationModel,
+        calibrationMode: localData.calibrationMode,
         applyE2LearningToCPA: localData.applyE2LearningToCPA,
         applyCPAInhibitionToE2: localData.applyCPAInhibitionToE2,
         themeColor: localData.themeColor,
@@ -242,6 +247,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (data?.labResults) localStorage.setItem('hrt-lab-results', JSON.stringify(data.labResults));
     if (data?.lang) localStorage.setItem('hrt-lang', data.lang);
     if (data?.calibrationModel) localStorage.setItem('hrt-calibration-model', data.calibrationModel);
+    if (data?.calibrationMode) localStorage.setItem('hrt-calibration-mode', data.calibrationMode);
     if (data?.applyE2LearningToCPA !== undefined) localStorage.setItem('hrt-apply-e2-learning-to-cpa', data.applyE2LearningToCPA ? '1' : '0');
     if (data?.applyCPAInhibitionToE2 !== undefined) localStorage.setItem('hrt-apply-cpa-inhibition-to-e2', data.applyCPAInhibitionToE2 ? '1' : '0');
     if (data?.themeColor) localStorage.setItem('hrt-theme-color', data.themeColor);
@@ -255,6 +261,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       labResults: data?.labResults || [],
       lang: resolvedLang,
       calibrationModel: data?.calibrationModel || localData.calibrationModel,
+      calibrationMode: data?.calibrationMode || localData.calibrationMode,
       applyE2LearningToCPA: data?.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
       applyCPAInhibitionToE2: data?.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
       themeColor: data?.themeColor || localData.themeColor,
@@ -317,6 +324,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         labResults: cloudData.labResults || [],
         lang: cloudData.lang || localData.lang,
         calibrationModel: cloudData.calibrationModel || '',
+        calibrationMode: cloudData.calibrationMode || '',
         applyE2LearningToCPA: cloudData.applyE2LearningToCPA ?? localData.applyE2LearningToCPA,
         applyCPAInhibitionToE2: cloudData.applyCPAInhibitionToE2 ?? localData.applyCPAInhibitionToE2,
         themeColor: cloudData.themeColor || localData.themeColor,
@@ -512,7 +520,7 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.storageArea !== localStorage) return;
-      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2', 'hrt-theme-color', 'hrt-dark-mode', 'hrt-gel-products'];
+      const syncKeys = ['hrt-events', 'hrt-weight', 'hrt-lab-results', 'hrt-lang', 'hrt-calibration-model', 'hrt-calibration-mode', 'hrt-apply-e2-learning-to-cpa', 'hrt-apply-cpa-inhibition-to-e2', 'hrt-theme-color', 'hrt-dark-mode', 'hrt-gel-products'];
       if (e.key && syncKeys.includes(e.key)) performSync();
     };
 

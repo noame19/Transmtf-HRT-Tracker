@@ -22,6 +22,8 @@ const LabPage: React.FC = () => {
         setApplyCPAInhibitionToE2,
         calibrationModel,
         setCalibrationModel,
+        calibrationMode,
+        setCalibrationMode,
     } = useAppData();
 
     return (
@@ -35,6 +37,8 @@ const LabPage: React.FC = () => {
             onSetApplyCPAInhibitionToE2={setApplyCPAInhibitionToE2}
             calibrationModel={calibrationModel}
             onSetCalibrationModel={setCalibrationModel}
+            calibrationMode={calibrationMode}
+            onSetCalibrationMode={setCalibrationMode}
             onAddLabResult={onAddLabResult}
             onEditLabResult={onEditLabResult}
             onClearLabResults={onClearLabResults}

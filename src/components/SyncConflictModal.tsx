@@ -29,6 +29,7 @@ const FIELD_KEYS: Record<string, string> = {
   labResults: 'sync.conflict.field.labResults',
   lang: 'sync.conflict.field.lang',
   calibrationModel: 'sync.conflict.field.calibrationModel',
+  calibrationMode: 'sync.conflict.field.calibrationMode',
   themeColor: 'sync.conflict.field.theme',
   darkMode: 'sync.conflict.field.darkMode',
   applyE2LearningToCPA: 'sync.conflict.field.applyE2LearningToCPA',
@@ -46,6 +47,11 @@ const LANG_NAMES: Record<string, string> = {
 const CALIBRATION_NAMES: Record<string, string> = {
   ekf: 'EKF',
   'ou-kalman': 'OU-Kalman',
+};
+
+const CALIBRATION_MODE_NAMES: Record<string, string> = {
+  causal: 'sync.conflict.mode.causal',
+  retrospective: 'sync.conflict.mode.retrospective',
 };
 
 // ─── Array diff helpers ───
@@ -128,6 +134,10 @@ function formatFieldValue(field: string, value: any, t: (k: string) => string): 
       return LANG_NAMES[value] || value;
     case 'calibrationModel':
       return CALIBRATION_NAMES[value] || value;
+    case 'calibrationMode': {
+      const key = CALIBRATION_MODE_NAMES[value];
+      return key ? t(key) : String(value);
+    }
     case 'themeColor':
       return value;
     case 'darkMode':
