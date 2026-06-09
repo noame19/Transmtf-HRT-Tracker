@@ -35,6 +35,7 @@ export const TRANSLATIONS_BASE = {
         "overview.min_ago": "{n} 分钟前",
         "overview.hour_ago": "{n} 小时前",
         "overview.day_ago": "{n} 天前",
+        "overview.day_hour_ago": "{d} 天 {h} 小时前",
         "overview.patch_applied_at": "贴上 {time}",
         "status.level.male": "男性参考范围",
         "status.level.mtf": "非针剂女性向 GAHT 目标",
@@ -754,6 +755,7 @@ export const TRANSLATIONS_BASE = {
         "overview.min_ago": "{n}m ago",
         "overview.hour_ago": "{n}h ago",
         "overview.day_ago": "{n}d ago",
+        "overview.day_hour_ago": "{d}d {h}h ago",
         "overview.patch_applied_at": "applied {time}",
 
         "status.level.male": "Male Reference Range",

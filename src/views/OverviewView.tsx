@@ -359,7 +359,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     const diffH = diffMin / 60;
     if (diffH < 24) return t('overview.hour_ago').replace('{n}', String(Math.floor(diffH)));
     const diffD = diffH / 24;
-    if (diffD < 30) return t('overview.day_ago').replace('{n}', String(Math.floor(diffD)));
+    if (diffD < 30) {
+      // Keep hour precision past the one-day mark so "2d" reads as "2d 5h"
+      // instead of silently dropping the remaining hours. Fall back to the
+      // plain day form on an exact day boundary to avoid a dangling "0h".
+      const days = Math.floor(diffH / 24);
+      const hours = Math.floor(diffH % 24);
+      if (hours === 0) return t('overview.day_ago').replace('{n}', String(days));
+      return t('overview.day_hour_ago').replace('{d}', String(days)).replace('{h}', String(hours));
+    }
     const d = new Date(evMs);
     return d.toLocaleDateString(lang === 'zh' ? 'zh-CN' : lang === 'zh-TW' ? 'zh-TW' : lang === 'ja' ? 'ja-JP' : 'en-US',
       { month: 'short', day: 'numeric' });
@@ -378,6 +386,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     if (currentLevel > 0) return getLevelStatus(currentLevel);
     return null;
   }, [currentLevel, isDark]);
+
+  // Format a stored dose (mg) for display: show the exact value the user
+  // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
+  // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
+  // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
+  const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const formatHeadlineE2 = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
   // Format an anti-androgen value for the headline, auto-scaling ng/mL → µg/mL.
@@ -634,8 +648,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   </p>
                   {lastAntiandrogenDose ? (
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                      <p className="text-sm md:text-base font-bold font-mono truncate" style={{ color: 'var(--text-primary)' }}>
-                        {`${lastAntiandrogenDose.doseMG.toFixed(lastAntiandrogenDose.doseMG >= 10 ? 0 : 1)} mg`}
+                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
                       </p>
                       <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
                         style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
