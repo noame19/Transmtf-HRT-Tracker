@@ -682,6 +682,12 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     />
                                 )}
 
+                                {route === Route.injection && safeEster === Ester.EU && (
+                                    <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
+                                        {t('ester.EU_note')}
+                                    </div>
+                                )}
+
                                 {/* Gel: product + site + area + wash (parity with DoseFormModal;
                                     custom products are created in the single-dose form) */}
                                 {route === Route.gel && (

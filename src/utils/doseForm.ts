@@ -31,8 +31,10 @@ export const ROUTE_DISPLAY_ORDER: Route[] = [
  */
 export const getAvailableEsters = (route: Route): Ester[] => {
     switch (route) {
+        // EU (estradiol undecylate) sits next to EV (valerate) so the two
+        // similarly-named depot esters are easy to tell apart at selection time.
         case Route.injection:
-            return [Ester.EB, Ester.EV, Ester.EC, Ester.EN];
+            return [Ester.EB, Ester.EV, Ester.EU, Ester.EC, Ester.EN];
         case Route.oral:
             return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
         case Route.sublingual:

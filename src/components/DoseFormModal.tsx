@@ -717,6 +717,14 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                 />
                             )}
 
+                            {/* Estradiol undecylate is easily confused with valerate and rests on
+                                sparse public PK; surface that caveat at selection time. */}
+                            {route === Route.injection && ester === Ester.EU && (
+                                <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
+                                    {t('ester.EU_note')}
+                                </div>
+                            )}
+
                             {/* Gel: product + site + area + wash */}
                             {route === Route.gel && (
                                 <div className="mb-4 space-y-3">
