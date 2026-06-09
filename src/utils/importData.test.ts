@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseImportedBackup, importHasContent, importFallbackWeight } from './importData';
+import { Ester, Route } from '../../types';
 
 const ev = { timeH: 100, doseMG: 1.5, route: 'gel', ester: 'E2', weightKG: 70, extras: {} };
 const lab = { timeH: 50, concValue: 120, unit: 'pmol/l' };
@@ -43,6 +44,27 @@ describe('parseImportedBackup — partial sections use null = "keep existing"', 
         const r = parseImportedBackup({ events: [{ timeH: 1, doseMG: 1, route: 'gel', ester: 'E2', extras: {} }] }, 65);
         expect(r.events[0].weightKG).toBe(65);
         expect(r.migratedCount).toBe(1);
+    });
+
+    it('accepts EU injection rows through the enum validator', () => {
+        const r = parseImportedBackup({
+            events: [{ timeH: 1, doseMG: 100, route: Route.injection, ester: Ester.EU, weightKG: 70, extras: {} }],
+        }, 70);
+        expect(r.events).toHaveLength(1);
+        expect(r.events[0].route).toBe(Route.injection);
+        expect(r.events[0].ester).toBe(Ester.EU);
+    });
+
+    it('drops rows with unknown route or ester instead of force-casting them', () => {
+        const r = parseImportedBackup({
+            events: [
+                ev,
+                { timeH: 1, doseMG: 100, route: 'injection', ester: 'EUU', weightKG: 70, extras: {} },
+                { timeH: 2, doseMG: 100, route: 'implant', ester: 'EU', weightKG: 70, extras: {} },
+            ],
+        }, 70);
+        expect(r.events).toHaveLength(1);
+        expect(r.events[0].ester).toBe(Ester.E2);
     });
 
     it('drops corrupt gel products via the shared sanitizer (id<1000, NaN rate)', () => {

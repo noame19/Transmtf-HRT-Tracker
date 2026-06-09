@@ -8,7 +8,7 @@
  * gel-only / events-only backup avoid wiping unrelated sections.
  */
 import { v4 as uuidv4 } from 'uuid';
-import type { DoseEvent, LabResult } from '../../types';
+import { Ester, Route, type DoseEvent, type LabResult } from '../../types';
 import { sanitizeGelProducts, type GelProductSpec } from '../../pk';
 
 export type JsonRecord = Record<string, unknown>;
@@ -21,12 +21,25 @@ export const toNumber = (value: unknown): number | null => {
     return Number.isFinite(next) ? next : null;
 };
 
+export const isRoute = (value: unknown): value is Route =>
+    typeof value === 'string' && (Object.values(Route) as string[]).includes(value);
+
+export const isEster = (value: unknown): value is Ester =>
+    typeof value === 'string' && (Object.values(Ester) as string[]).includes(value);
+
 export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { events: DoseEvent[]; migratedCount: number } => {
     if (!Array.isArray(raw)) throw new Error('Invalid format');
     let migratedCount = 0;
     const events = raw
         .map((entry): DoseEvent | null => {
             if (!isRecord(entry)) return null;
+            // Validate that route/ester are real enum members (replacing a blind
+            // `as` cast) so a corrupt backup can't smuggle in an unknown compound.
+            // We deliberately do NOT enforce a route+ester whitelist here: import
+            // validity should track "is this well-formed data", not the current
+            // dose-entry dropdown — otherwise tightening a UI list later would
+            // silently reject older, legitimately-stored backups.
+            if (!isRoute(entry.route) || !isEster(entry.ester)) return null;
             const timeNum = toNumber(entry.timeH);
             if (timeNum === null) return null;
             const doseNum = toNumber(entry.doseMG) ?? 0;
@@ -41,10 +54,10 @@ export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { 
             }
             return {
                 id: typeof entry.id === 'string' ? entry.id : uuidv4(),
-                route: entry.route as DoseEvent['route'],
+                route: entry.route,
                 timeH: timeNum,
                 doseMG: doseNum,
-                ester: entry.ester as DoseEvent['ester'],
+                ester: entry.ester,
                 weightKG,
                 extras: extras as DoseEvent['extras'],
             };
