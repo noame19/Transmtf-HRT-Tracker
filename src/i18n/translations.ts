@@ -253,6 +253,8 @@ export const TRANSLATIONS_BASE = {
         "ester.EB": "苯甲酸雌二醇 (EB)",
         "ester.EC": "环戊丙酸雌二醇 (EC)",
         "ester.EN": "庚酸雌二醇 (EN)",
+        "ester.EU": "十一酸雌二醇 (EU)",
+        "ester.EU_note": "长效旧制剂，与戊酸雌二醇（EV）不同。公开药代参数稀疏，本曲线为估算值，建议结合化验结果校准。",
         "ester.CPA": "醋酸环丙孕酮 (CPA)",
         "ester.BICA": "比卡鲁胺 (BICA)",
 
@@ -974,6 +976,8 @@ export const TRANSLATIONS_BASE = {
         "ester.EB": "Estradiol Benzoate (EB)",
         "ester.EC": "Estradiol Cypionate (EC)",
         "ester.EN": "Estradiol Enanthate (EN)",
+        "ester.EU": "Estradiol Undecylate (EU)",
+        "ester.EU_note": "A long-acting legacy depot, distinct from estradiol valerate (EV). Public PK data is sparse, so this curve is an estimate — calibrate it against lab results.",
         "ester.CPA": "Cyproterone Acetate (CPA)",
         "ester.BICA": "Bicalutamide (BICA)",
 
@@ -1626,6 +1630,8 @@ export const TRANSLATIONS = {
         "ester.EB": "苯甲酸雌二醇（EB）",
         "ester.EC": "環戊丙酸雌二醇（EC）",
         "ester.EN": "庚酸雌二醇（EN）",
+        "ester.EU": "十一酸雌二醇（EU）",
+        "ester.EU_note": "長效舊製劑，與戊酸雌二醇（EV）不同。公開藥代參數稀疏，本曲線為估算值，建議結合化驗結果校準。",
         "ester.CPA": "醋酸環丙孕酮（CPA）",
 
         "settings.group.general": "一般設定",
@@ -2041,6 +2047,8 @@ export const TRANSLATIONS = {
         "ester.EB": "安息香酸エストラジオール (EB)",
         "ester.EC": "シピオン酸エストラジオール (EC)",
         "ester.EN": "エナン酸エストラジオール (EN)",
+        "ester.EU": "ウンデシル酸エストラジオール (EU)",
+        "ester.EU_note": "長時間作用型の旧製剤で、吉草酸エストラジオール（EV）とは別物です。公開PKデータが乏しいため、この曲線は推定値です。検査結果での較正を推奨します。",
         "ester.CPA": "酢酸シプロテロン (CPA)",
 
         "drawer.lang": "言語設定",
