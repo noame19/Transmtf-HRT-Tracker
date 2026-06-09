@@ -357,6 +357,38 @@ export const BICA_PK = {
 };
 
 /**
+ * Estradiol undecylate (EU / 十一酸雌二醇) intramuscular depot — "im-depot-v1".
+ *
+ * EU is a long-chain (undecanoate) ester. Its hallmark — a duration of action far
+ * longer than estradiol valerate — is an ABSORPTION (flip-flop) phenomenon, NOT
+ * slow clearance: the oil depot releases drug very slowly (rate-limiting `ka`),
+ * while the freed estradiol is cleared at the ordinary free-E2 rate
+ * (`CorePK.kClear`). The depot is therefore modeled as a single slow source
+ * feeding a one-compartment central pool — which the shared {@link _analytic3C}
+ * solver reproduces exactly when ester cleavage (`kCleave`) is fast relative to
+ * release (so the cleavage transit is effectively instantaneous and the curve is
+ * insensitive to its precise value).
+ *
+ * Public human PK for EU is sparse and dated, so these are CONFIGURABLE
+ * ENGINEERING PRIORS, not validated clinical constants. They were calibrated by
+ * least squares to the few reported single-dose and repeat-dose anchors:
+ *   - single 100 mg IM:  E2 ≈ 500 pg/mL on day 1, ≈ 340 pg/mL on day 14
+ *   - 100 mg monthly:    trough ≈ 486–560 pg/mL (month 3), ≈ 540–598 (month 6)
+ * The fitted curve lands inside every one of those ranges (day1 ≈ 470, day14 ≈
+ * 364, m3 trough ≈ 495, m6 trough ≈ 579 pg/mL at 70 kg). `releaseScale` is an
+ * engineering exposure-scaling term that maps ester dose → observable free-E2
+ * exposure; it is deliberately kept SEPARATE from any clinical bioavailability
+ * figure and should be re-fit against real lab data before being treated as
+ * settled. Calibration against a user's own labs flows in automatically via the
+ * shared E2 EKF (EU is an estradiol ester, not an anti-androgen).
+ */
+export const EU_DEPOT_PK = {
+    ka: 0.00082,        // h^-1  slow depot release; rate-limiting (t½ ≈ 35 d)
+    kCleave: 2.0,       // h^-1  ester cleavage transit (fast → ~one-compartment)
+    releaseScale: 0.542 // fraction of ester dose surfacing as free-E2 exposure
+};
+
+/**
  * Specification for a non-E2 anti-androgen compound. The registry below drives
  * the PK engine, the personal-model CI layer, and the UI so that adding another
  * anti-androgen later only requires registering one more entry here.
@@ -457,6 +489,7 @@ const EsterInfo = {
     [Ester.EV]: { name: "Estradiol Valerate", mw: 356.50 },
     [Ester.EC]: { name: "Estradiol Cypionate", mw: 396.58 },
     [Ester.EN]: { name: "Estradiol Enanthate", mw: 384.56 },
+    [Ester.EU]: { name: "Estradiol Undecylate", mw: 440.66 },
     [Ester.CPA]: { name: "Cyproterone Acetate", mw: 416.94 },
     [Ester.BICA]: { name: "Bicalutamide", mw: 430.37 }
 };
@@ -469,18 +502,22 @@ export function getToE2Factor(ester: Ester): number {
     return EsterInfo[Ester.E2].mw / EsterInfo[ester].mw;
 }
 
+// EU is a single slow depot (Frac_fast = 0 → only the `k1_slow` source contributes),
+// so its absorption is the rate-limiting flip-flop release `EU_DEPOT_PK.ka`. The
+// `k1_fast` entry is never exercised (its dose fraction is 0) but is set to `ka`
+// for definiteness rather than left to the generic fallback.
 const TwoPartDepotPK = {
-    Frac_fast: { [Ester.EB]: 0.90, [Ester.EV]: 0.40, [Ester.EC]: 0.229164549, [Ester.EN]: 0.05, [Ester.E2]: 1.0 },
-    k1_fast: { [Ester.EB]: 0.144, [Ester.EV]: 0.0216, [Ester.EC]: 0.005035046, [Ester.EN]: 0.0010, [Ester.E2]: 0.5 },
-    k1_slow: { [Ester.EB]: 0.114, [Ester.EV]: 0.0138, [Ester.EC]: 0.004510574, [Ester.EN]: 0.0050, [Ester.E2]: 0 }
+    Frac_fast: { [Ester.EB]: 0.90, [Ester.EV]: 0.40, [Ester.EC]: 0.229164549, [Ester.EN]: 0.05, [Ester.EU]: 0, [Ester.E2]: 1.0 },
+    k1_fast: { [Ester.EB]: 0.144, [Ester.EV]: 0.0216, [Ester.EC]: 0.005035046, [Ester.EN]: 0.0010, [Ester.EU]: EU_DEPOT_PK.ka, [Ester.E2]: 0.5 },
+    k1_slow: { [Ester.EB]: 0.114, [Ester.EV]: 0.0138, [Ester.EC]: 0.004510574, [Ester.EN]: 0.0050, [Ester.EU]: EU_DEPOT_PK.ka, [Ester.E2]: 0 }
 };
 
 const InjectionPK = {
-    formationFraction: { [Ester.EB]: 0.1092, [Ester.EV]: 0.0623, [Ester.EC]: 0.1173, [Ester.EN]: 0.12, [Ester.E2]: 1.0 }
+    formationFraction: { [Ester.EB]: 0.1092, [Ester.EV]: 0.0623, [Ester.EC]: 0.1173, [Ester.EN]: 0.12, [Ester.EU]: EU_DEPOT_PK.releaseScale, [Ester.E2]: 1.0 }
 };
 
 const EsterPK = {
-    k2: { [Ester.EB]: 0.090, [Ester.EV]: 0.070, [Ester.EC]: 0.045, [Ester.EN]: 0.015, [Ester.E2]: 0 }
+    k2: { [Ester.EB]: 0.090, [Ester.EV]: 0.070, [Ester.EC]: 0.045, [Ester.EN]: 0.015, [Ester.EU]: EU_DEPOT_PK.kCleave, [Ester.E2]: 0 }
 };
 
 const OralPK = {
@@ -573,7 +610,13 @@ interface PKParams {
  * a learned clearance scaling applied on top.
  */
 export function resolveParams(event: DoseEvent): PKParams {
-    const defaultK3 = event.route === Route.injection ? CorePK.kClearInjection : CorePK.kClear;
+    // Injectables use the lumped slow injection clearance, EXCEPT estradiol
+    // undecylate (EU): its long action is an absorption (flip-flop) effect, so the
+    // freed estradiol is cleared at the ordinary free-E2 rate. EU only ever appears
+    // on the injection route, so keying this on the ester is sufficient.
+    const defaultK3 = (event.route === Route.injection && event.ester !== Ester.EU)
+        ? CorePK.kClearInjection
+        : CorePK.kClear;
     const toE2 = getToE2Factor(event.ester);
     const extras = event.extras ?? {};
 

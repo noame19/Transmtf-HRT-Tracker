@@ -36,6 +36,10 @@ export enum Ester {
     EV = "EV",
     EC = "EC",
     EN = "EN",
+    // Estradiol undecylate (十一酸雌二醇). A long-chain (undecanoate) IM depot ester
+    // distinct from estradiol valerate (EV / 戊酸雌二醇); its much longer duration of
+    // action is an absorption (flip-flop) effect, not slow clearance. See EU_DEPOT_PK.
+    EU = "EU",
     CPA = "CPA",
     BICA = "BICA"
 }

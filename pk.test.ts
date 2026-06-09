@@ -6,6 +6,7 @@ import {
     isAntiandrogen,
     pickPrimaryAntiandrogen,
     ANTIANDROGENS,
+    EU_DEPOT_PK,
     GelSite,
     GEL_PRODUCTS,
     GEL_SITE_FACTORS,
@@ -17,8 +18,12 @@ import {
     gelProductExists,
     type GelProductSpec,
     CorePK,
+    _analytic3C,
+    getBioavailabilityMultiplier,
+    getToE2Factor,
+    resolveParams,
 } from './pk';
-import { computeSimulationWithCI, initPersonalModel, replayPersonalModel, replayPersonalModelTimeline } from './personalModel';
+import { computeSimulationWithCI, initPersonalModel, replayPersonalModel, replayPersonalModelTimeline, computeE2AtTimeWithTheta } from './personalModel';
 
 const HOUR = 1;
 const DAY = 24;
@@ -392,6 +397,147 @@ describe('layered transdermal gel model', () => {
         const high = gelEventCentralAmount(event, 8, CorePK.kClear);
         expect(high).toBeGreaterThan(low);
         setCustomGelProducts([]); // reset engine registry for other tests
+    });
+});
+
+describe('estradiol undecylate (EU) IM depot', () => {
+    // A neutral personal model (theta = [0,0]) evaluates the bare POPULATION curve
+    // at any instant, grid-independent — the same role bicalutamideConcNgML plays
+    // for BICA. This lets us pin EU directly to its sparse literature anchors.
+    const euEvent = (timeH: number, doseMG = 100): DoseEvent => ({
+        id: `eu-${timeH}`, route: Route.injection, timeH, doseMG, ester: Ester.EU, weightKG: 70, extras: {},
+    });
+    const popE2 = (events: DoseEvent[], timeH: number) => computeE2AtTimeWithTheta(events, timeH, [0, 0]);
+
+    it('uses free-E2 clearance for EU while other injections keep injection k3', () => {
+        const euParams = resolveParams(euEvent(0, 100));
+        const evParams = resolveParams({ ...euEvent(0, 10), id: 'ev', ester: Ester.EV });
+        expect(euParams.k3).toBeCloseTo(CorePK.kClear, 12);
+        expect(evParams.k3).toBeCloseTo(CorePK.kClearInjection, 12);
+        expect(euParams.k3).not.toBeCloseTo(evParams.k3, 6);
+    });
+
+    it('uses releaseScale times the EU molar conversion as injected exposure F', () => {
+        const expected = EU_DEPOT_PK.releaseScale * getToE2Factor(Ester.EU);
+        expect(getToE2Factor(Ester.EU)).toBeCloseTo(272.38 / 440.66, 6);
+        expect(getBioavailabilityMultiplier(Route.injection, Ester.EU, {})).toBeCloseTo(expected, 12);
+    });
+
+    it('does not hit the singular _analytic3C guard for EU depot rates', () => {
+        const k1 = EU_DEPOT_PK.ka;
+        const k2 = EU_DEPOT_PK.kCleave;
+        const k3 = CorePK.kClear;
+        expect(Math.abs(k1 - k2)).toBeGreaterThan(1e-9);
+        expect(Math.abs(k1 - k3)).toBeGreaterThan(1e-9);
+        expect(Math.abs(k2 - k3)).toBeGreaterThan(1e-9);
+        const amount = _analytic3C(24, 100, getBioavailabilityMultiplier(Route.injection, Ester.EU, {}), k1, k2, k3);
+        expect(amount).toBeGreaterThan(0);
+    });
+
+    describe('single 100 mg dose vs published anchors', () => {
+        const dose = [euEvent(0, 100)];
+        const at = (days: number) => popE2(dose, days * DAY);
+
+        it('day 1 E2 ≈ 500 pg/mL (accept 400–650)', () => {
+            const c = at(1);
+            expect(c).toBeGreaterThanOrEqual(400);
+            expect(c).toBeLessThanOrEqual(650);
+        });
+
+        it('day 14 E2 ≈ 340 pg/mL (accept 250–450)', () => {
+            const c = at(14);
+            expect(c).toBeGreaterThanOrEqual(250);
+            expect(c).toBeLessThanOrEqual(450);
+        });
+
+        it('peaks within the first ~2 days and is already declining by day 14', () => {
+            let tmax = 0, cmax = 0;
+            for (let h = 1; h <= 14 * DAY; h += 1) {
+                const c = popE2(dose, h);
+                if (c > cmax) { cmax = c; tmax = h; }
+            }
+            expect(tmax).toBeLessThanOrEqual(2 * DAY);   // early Tmax (flip-flop, fast clearance)
+            expect(at(14)).toBeLessThan(at(1));
+        });
+
+        it('has a multi-week flip-flop terminal half-life (≈ 20–55 d), NOT the fast injection rate', () => {
+            const c14 = at(14), c42 = at(42);
+            expect(c42).toBeGreaterThan(0);
+            expect(c42).toBeLessThan(c14);
+            const halfLifeD = (Math.log(2) * (42 - 14)) / Math.log(c14 / c42);
+            expect(halfLifeD).toBeGreaterThanOrEqual(20);
+            expect(halfLifeD).toBeLessThanOrEqual(55);
+        });
+
+        it('is dose-proportional (50 mg gives half of 100 mg)', () => {
+            const half = popE2([euEvent(0, 50)], 1 * DAY);
+            expect(half).toBeCloseTo(at(1) / 2, 3);
+        });
+    });
+
+    describe('100 mg every 30 days accumulates toward published troughs', () => {
+        // Doses on days 0,30,…,180. A dose landing exactly on the evaluation instant
+        // contributes 0 (central amount at tau=0 is 0), so trough(dayN) = sum over
+        // the doses strictly before it — i.e. the value just prior to the next shot.
+        const monthly = Array.from({ length: 7 }, (_, i) => euEvent(i * 30 * DAY, 100));
+        const trough = (dayN: number) => popE2(monthly, dayN * DAY);
+
+        it('month-3 trough ≈ 486–560 pg/mL (accept 400–600)', () => {
+            const c = trough(90);
+            expect(c).toBeGreaterThanOrEqual(400);
+            expect(c).toBeLessThanOrEqual(600);
+        });
+
+        it('month-6 trough ≈ 540–598 pg/mL (accept 450–650)', () => {
+            const c = trough(180);
+            expect(c).toBeGreaterThanOrEqual(450);
+            expect(c).toBeLessThanOrEqual(650);
+        });
+
+        it('troughs rise monotonically toward steady state (month 1 < 3 < 6)', () => {
+            expect(trough(30)).toBeLessThan(trough(90));
+            expect(trough(90)).toBeLessThan(trough(180));
+        });
+    });
+
+    it('stays finite and non-negative across a 1-year horizon', () => {
+        const dose = [euEvent(0, 100)];
+        for (let d = 0; d <= 365; d += 2) {
+            const c = popE2(dose, d * DAY);
+            expect(Number.isFinite(c)).toBe(true);
+            expect(c).toBeGreaterThanOrEqual(0);
+        }
+    });
+
+    it('heavier body weight lowers the concentration for the same dose (Vd scaling)', () => {
+        const light = [{ ...euEvent(0, 100), weightKG: 55 }];
+        const heavy = [{ ...euEvent(0, 100), weightKG: 95 }];
+        expect(popE2(heavy, 1 * DAY)).toBeLessThan(popE2(light, 1 * DAY));
+    });
+
+    it('feeds the E2 channel of runSimulation (not the anti-androgen byCompound map)', () => {
+        const sim = runSimulation([euEvent(0, 100), euEvent(30 * DAY, 100)])!;
+        expect(sim).toBeTruthy();
+        expect(isAntiandrogen(Ester.EU)).toBe(false);
+        expect(sim.byCompound[Ester.EU]).toBeUndefined();
+        expect(Math.max(...sim.concPGmL_E2)).toBeGreaterThan(0);
+        expect(sim.auc).toBeGreaterThan(0);
+    });
+
+    it('an E2 lab after an EU dose DOES unlock the E2 EKF (treated as an estradiol ester)', () => {
+        const evs = [euEvent(0, 100)];
+        const labs: LabResult[] = [{ id: 'l1', timeH: 7 * DAY, concValue: 420, unit: 'pg/ml' }];
+        const state = replayPersonalModel(evs, labs);
+        // Mirror of the BICA case above: EU is an estradiol ester, so a post-dose
+        // lab must register as an E2 observation and personalize the curve.
+        expect(state.postDoseObservationCount).toBeGreaterThan(0);
+    });
+
+    it('responds to the shared E2 theta parameters, including kScale on k3', () => {
+        const evs = [euEvent(0, 100)];
+        const base = popE2(evs, 14 * DAY);
+        expect(computeE2AtTimeWithTheta(evs, 14 * DAY, [Math.log(1.5), 0])).toBeCloseTo(base * 1.5, 6);
+        expect(computeE2AtTimeWithTheta(evs, 14 * DAY, [0, Math.log(0.5)])).toBeGreaterThan(base);
     });
 });
 
