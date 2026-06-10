@@ -126,14 +126,29 @@ export const CloudSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const storedLastModified = localStorage.getItem('hrt-last-modified');
     const storedLastDataUpdated = localStorage.getItem(LAST_DATA_UPDATED_KEY);
-    const parsedEvents = events ? JSON.parse(events) : [];
-    const parsedWeight = weight ? parseFloat(weight) : DEFAULT_WEIGHT_KG;
-    const parsedLabResults = labResults ? JSON.parse(labResults) : [];
+    // Parse defensively: a single corrupted localStorage entry (e.g. truncated by
+    // a browser crash or quota eviction) must not throw out of this function — that
+    // would make every subsequent sync silently fail with no user-visible signal.
+    const safeParseArray = (raw: string | null): any[] => {
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+    const parsedEvents = safeParseArray(events);
+    const parsedWeightRaw = weight ? parseFloat(weight) : DEFAULT_WEIGHT_KG;
+    const parsedWeight = Number.isFinite(parsedWeightRaw) && parsedWeightRaw > 0
+      ? parsedWeightRaw
+      : DEFAULT_WEIGHT_KG;
+    const parsedLabResults = safeParseArray(labResults);
     const resolvedLang = lang || 'en';
     const applyE2LearningToCPA = applyE2Raw === '1' || applyE2Raw?.toLowerCase() === 'true';
     const applyCPAInhibitionToE2 = applyCPARaw === '1' || applyCPARaw?.toLowerCase() === 'true';
     const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
-    const gelProducts = gelProductsRaw ? JSON.parse(gelProductsRaw) : [];
+    const gelProducts = safeParseArray(gelProductsRaw);
     const dataHash = computeDataHash({
       events: parsedEvents,
       weight: parsedWeight,
