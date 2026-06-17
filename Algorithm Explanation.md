@@ -13,7 +13,8 @@ This README explains the algorithms used for each drug/route, key parameters and
 - **ParameterResolver**：把事件映射为具体参数 `PKParams`（k₁/k₂/k₃、F、双库或双通路比例、零阶速率等）。
 - **ThreeCompartmentModel**：解析解工具箱：
   - 三室模型（首过吸收 k₁ → 酯水解 k₂ → 游离 E2 清除 k₃）的解析式。
-  - 单室 Bateman 形式（口服/凝胶简化）。
+  - 单室 Bateman 形式（口服简化）。
+  - 经皮凝胶三层级联（表面 → 皮肤贮库 → 系统中心室）的解析式（见 §4）。
   - 双通路舌下模型（快：口腔黏膜；慢：吞咽 = 口服；**E2: dualAbsAmount；EV: dualAbs3CAmount**）。
   - 贴片：零阶输入在佩戴窗口内，移除后按 k₃ 衰减；或旧版一阶“假库”。
 - **SimulationEngine**：把一堆 `DoseEvent` 预编译为时间→量的函数，遍历时间点，线性叠加各事件的中心室药量，再以体分布换算为浓度，AUC 用梯形法则积分。
@@ -125,16 +126,76 @@ This README explains the algorithms used for each drug/route, key parameters and
 
 ## 4) 经皮凝胶（E2）
 
-### 4.1 路由与参数
-- **模型**：单室一阶吸收 + 清除，`F` 为经皮可达的系统暴露分数。
-- **当前实现（为稳定起见的临时版）**：  
-  `TransdermalGelPK.baseK1 = 0.022 h⁻¹`（`t½ ≈ 31.5 h`）。  
-  `Fmax = 0.05`，并暂时忽略涂抹面积与剂量密度，始终返回 `(k₁ = baseK1, F = Fmax)`。  
-- **代码入口**：`ParameterResolver.resolve(... case .gel ...)` → `ThreeCompartmentModel.oneCompAmount(...)`。
+> **2025 重写说明**：本节描述的是**当前**实现。早期文档中“单室一阶 + `baseK1 = 0.022`、`Fmax = 0.05`、忽略面积/剂量密度”的**临时常量版已被废弃**；现行模型是带产品注册表、部位/面积/洗涤效应的**三层经皮级联**。
 
-### 4.2 先前思路与现状
-- 原设计包含剂量/面积的非线性饱和项：`sigmaSat ≈ 0.008 mg·cm⁻²`，用于低剂量上调、避免高剂量过估。调试阶段出现“低剂量偏低、高剂量偏高”的系统性误差，故临时退回常量 `(k₁, F)` 以便先校准其他路由。
-- 待办：恢复面积/剂量依赖，并引入皮肤贮库的短暂零阶泄放以更好描述涂抹后前数小时的平台。
+### 4.1 模型结构（三层级联）
+- **模型**：表面层 → 皮肤贮库 → 系统中心室的线性级联，闭式解。每次给药按一个表面贮库注入，逐层向系统室传递。
+- **微分方程（单位 h⁻¹）**：
+
+  $$
+  \begin{aligned}
+  \dot M_{s}    &= -(k_{\text{Pen}}+k_{\text{Loss}})\,M_{s}\\
+  \dot M_{\text{skin}} &= k_{\text{Pen}}\,M_{s} - k_{\text{Rel}}\,M_{\text{skin}}\\
+  \dot M_{c}    &= k_{\text{Rel}}\,M_{\text{skin}} - k_e\,M_{c}\quad(\text{返回中心室药量})
+  \end{aligned}
+  $$
+
+- **速率常数的物理含义**：
+  - **表面层快速清空**：$k_{\text{Pen}}+k_{\text{Loss}} = \lambda_s \approx 1.4\ \mathrm{h^{-1}}$（$t_{1/2}\approx 0.5\,$h，溶剂干燥、药物或渗入皮肤或经蒸发/转移/洗脱损失）。决定系统吸收分数的是这二者的**分配比**而非时间尺度：$F_{\text{ref}} = k_{\text{Pen}}/(k_{\text{Pen}}+k_{\text{Loss}})$。
+  - **慢相由皮肤贮库释放**主导：$k_{\text{Rel}}\approx 0.022\ \mathrm{h^{-1}}$（$t_{1/2}\approx 31\,$h），对应涂抹后数小时到次日的平台与拖尾。
+  - **系统清除** $k_e = $ `CorePK.kClear` $= 0.41\ \mathrm{h^{-1}}$（与其他游离 E2 路由一致）。
+- **代码入口**：`gelEventCentralAmount(...)` → `resolveGelKinetics(...)` 解析速率常数 → `gel3CompCentralAmount(...)`（`pk.ts`）。速率常数在**模拟时**根据事件存储的 `产品 id + 部位 + 面积 + washAfterH` 解析，事件本身只存这些引用——因此编辑一个自定义产品会即时联动其全部历史记录。
+
+### 4.2 产品注册表（`GEL_PRODUCTS`）
+每个凝胶产品是注册表中的一条记录，同时驱动 PK 引擎与录入 UI；新增凝胶只需注册一条，用户也可保存遵循同一结构的自定义产品（id ≥ `GEL_CUSTOM_ID_BASE = 1000`，经 `sanitizeGelProduct` 校验：仅三个速率常数 `kPenBase/kLoss/kRel` 不可缺省，缺失的元数据给安全默认）。
+
+| 预置产品 | 浓度 mg·mL⁻¹ | 默认面积 cm² | 参考剂量 mg | kPenBase | kLoss | kRel |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Oestrogel / Estrogel | 0.6 | 750 | 1.5 | 0.140 | 1.260 | 0.022 |
+| Estreva | 1.0 | 400 | 1.5 | 0.154 | 1.246 | 0.022 |
+| Divigel | 1.0 | 200 | 1.0 | 0.168 | 1.232 | 0.024 |
+| DIY（自配） | 1.0 | 400 | 2.0 | 0.112 | 1.288 | 0.022 |
+
+字段关系：`kPenBase = F_ref·λ_s`，`kLoss = (1−F_ref)·λ_s`（`λ_s = LAMBDA_SURFACE = 1.4`）。默认面积/参考剂量与官方标签的推荐部位/面积方向一致（Divigel 上大腿约 200 cm²；Oestrogel 类至少约 750 cm²）。
+
+### 4.3 部位因子（`GEL_SITE_FACTORS`）
+作用在 `kPenBase` 上的相对渗透倍率：`arm = 1.0`、`thigh = 1.0`、`abdomen = 1.1`、`scrotal = 8.0`。
+
+> ⚠️ **scrotal = 8× 是低证据等级的研究模式先验**，从阴囊**睾酮**研究外推，并非雌二醇凝胶的验证值；UI 中应作为研究/高级选项呈现并附高不确定性提示，不作为普通推荐入口。
+
+> **阴囊的面积处理(genital skin)**：生殖器皮肤渗透性较高(研究先验),且阴囊涂抹面积无法可靠测量、证据有限。因此对 `scrotal`,§4.4 的角质层剂量密度修正**不适用**,被**置 1(中性化)**,吸收由 8× 部位因子刻画 —— 估测**不随涂抹面积变化**(`resolveGelKinetics` 中 `if (site === scrotal) densityFactor = 1`)。否则一个默认的 750 cm² 会把密度因子推向 2× 上限,与 8× 叠乘出虚假的高估。**注意**:这并不等于"吸收近乎完全"——吸收分数仍为 $k_{\text{Pen}}/(k_{\text{Pen}}+k_{\text{Loss}})$(Oestrogel 约 0.47),且 8× 本身是从睾酮外推的低证据先验。
+
+### 4.4 面积 / 剂量密度 / 浓度耦合（`resolveGelKinetics`）
+- **剂量密度修正**：以单位皮肤面积上的 E2 质量 $\sigma = \text{dose}/\text{area}$（mg·cm⁻²）为主驱动（Maturitas：同一面积上的 E2 量是吸收的主要决定因素）。
+
+  $$
+  \text{densityFactor} = \frac{1 + \sigma_{\text{ref}}/\sigma_{\text{sat}}}{1 + \sigma/\sigma_{\text{sat}}},\qquad
+  k_{\text{Pen}} = k_{\text{PenBase}}\cdot r_{\text{site}}\cdot \text{densityFactor}
+  $$
+
+  其中 $\sigma_{\text{ref}}=\text{refDose}/\text{defaultArea}$，故在产品参考密度处 `densityFactor = 1`、$F_{\text{ref}}$ 被保留；factor 被裁剪在 `[0.5, 2.0]`。摊薄（更大面积 / 更低剂量）→ σ 下降 → factor 上升 → 吸收分数升高；反之降低。
+- **浓度作为显式动力学变量**：半饱和点随凝胶强度缩放 $\sigma_{\text{sat}}(c) = \texttt{GEL\_SIGMA\_SAT}\cdot c/\texttt{GEL\_CONC\_REF}$（`GEL_SIGMA_SAT = 0.008`，`GEL_CONC_REF = 1.0`）。物理直觉：同样的 E2 质量装在更浓的凝胶里，成膜更薄、药物更密，在更高的面载量处才饱和皮肤分配。该项是**结构性群体先验，待 IVPT 标定**，并非拟合值；它**只在偏离参考密度时起作用**（参考剂量处 factor 恒为 1，故默认剂量预测与浓度无关）。`concentrationMGmL` 此前仅作为产品标签、不参与动力学，本次起正式入模。
+- **洗涤 / 摩擦（`washAfterH`）**：在该时刻移除残余表面膜（洗掉 / 蹭掉），仅 $[0,\text{washAfterH}]$ 区间的表面贮存继续向系统贡献，按两段解求。
+
+### 4.5 用户输入：涂抹范围模板与同用外用品
+为方便用户(普通用户并不知道自己涂了多少 cm²),涂抹面积从"必填裸数字"降级为**后台推导变量**:
+
+- **涂抹范围模板(`GEL_COVERAGE_TEMPLATES`)**:用户选择一个可识别的覆盖范围,系统反推面积(cm²)写入 `areaCM2`,PK 引擎不变。
+  - `product`:按说明书标准薄涂 → 产品默认面积(如 Oestrogel 750、Divigel 200)。
+  - `palm1/2/3`:约 1/2/3 个手掌,采用手掌法(`GEL_PALM_AREA_CM2 ≈ 175 cm²/掌`,约 1% 体表面积,随体型自缩放)。
+  - `thigh`(单侧大腿前侧 ≈200 cm²,对标 Divigel)、`arm`(单侧手臂腕到肩 ≈750 cm²,对标 EstroGel/Oestrogel)、`arms2`(双侧手臂 ≈1500 cm²)。
+  - `manual`:手动输入 cm²(高级/兜底;旧记录无模板标记时按此显示其原始 cm²,数值不变)。
+  - 解析函数 `resolveGelCoverageArea(idx, product, manualCM2)`。模板索引另存于 `ExtraKey.gelCoverage`(仅用于表单回显);引擎仍只读 `areaCM2`。这些是**粗粒度群体先验**,受体型影响,故始终保留手动入口。
+- **同用外用品(`GEL_COAPPLICATION_*`)**:在凝胶之上叠涂的外用品会实质改变暴露。EstroGel 标签:给药后 1 h 每日叠涂**防晒**使 AUC0–24 ↓≈16%、**保湿乳**使其 ↑≈38%(Cmax ↑≈73%)。建模为对系统吸收量的**乘性因子**(`none=1.0 / sunscreen=0.84 / moisturizer=1.38`,见 `gelCoApplicationFactor`),在 `gelEventCentralAmount` 中对中心室药量整体缩放(线性级联 ⇒ 等价于缩放有效剂量),因此 AUC 与 Cmax 同比缩放、tmax 不变。我们只刻画**暴露(AUC)**效应,不单独建模保湿乳更大的 Cmax 形变(证据较弱、需重塑 kPen)。存于 `ExtraKey.gelCoApplied`(0/缺省=无)。
+
+### 4.6 校准锚点
+先验常数被调到大致复现：单剂 $t_{\max}\approx 8\,$h（接受 4–16 h 区间）、给药后 1 h 清洗的暴露保留 $\approx 0.75$（标签：EstroGel −22%、Divigel −30%）、以及 $F_{\text{ref}} = k_{\text{Pen}}/(k_{\text{Pen}}+k_{\text{Loss}})$ 的质量守恒。这些都由 `pk.test.ts` 的单元测试守护。
+
+### 4.7 已知局限与后续方向
+- 当前面积—厚度—蒸发—转移耦合仍以单一软饱和函数近似，未做显式质量守恒的有限剂量蒸发建模。
+- 涂抹范围模板与手掌法面积是**粗粒度群体先验**，受体型影响；更精确的体表面积需身高/体重/BSA 或图像估计（图像方案须端侧处理以保隐私，属后续 UX，非本模块计算逻辑）。
+- 同用外用品因子取自 EstroGel 标签，作为跨产品的一般化先验;只刻画 AUC 暴露效应,未分别建模 Cmax 形变。
+- 长期方向：半机制质量守恒模型 + 分层混合效应 / 贝叶斯个体化（需 IVPT 与人群 PK 数据，超出当前实现范围）。
 
 ---
 
@@ -257,6 +318,10 @@ $$
   - UI：移除 `theta_default`，改为**四档可选**（Quick/Casual/Standard/Strict），默认显示建议含服时长与推荐 θ。
   - 舌下 EV：两支路均加入水解 \(k_2\)，实现切换为 `dualAbs3CAmount`；舌下 E2 继续用 `dualAbsAmount`。
   - 一致性单元测试：验证 $\theta=0$ 时舌下与口服整轨迹重合（慢支参数与 Oral 路由完全一致）。
+- **凝胶重写（替代临时常量版）**：
+  - 凝胶从“单室一阶 + `baseK1=0.022`、`Fmax=0.05`、忽略面积/密度”的临时常量版，**重写为三层经皮级联**（表面 → 皮肤贮库 → 系统中心室，`gel3CompCentralAmount`），并引入产品注册表 `GEL_PRODUCTS` + 自定义产品、部位因子、剂量密度软饱和修正与 `washAfterH` 洗涤效应。先验对标 EstroGel/Divigel 的 $t_{\max}\approx 8\,$h 与 1 h 洗后暴露下降（见 §4）。
+  - **浓度入模**：`concentrationMGmL` 此前仅作产品标签、不参与动力学。现令剂量密度半饱和点随凝胶强度缩放 $\sigma_{\text{sat}}(c)=\texttt{GEL\_SIGMA\_SAT}\cdot c/\texttt{GEL\_CONC\_REF}$，使浓度成为显式动力学变量；该项为结构性先验、仅在偏离参考密度时起作用（参考剂量处 factor≡1，默认预测不变），待 IVPT 标定。
+  - **文档同步**：本节（§0/§4/§10/§11/§12）由“临时常量版”更新为现行三层级联实现，消除文档—代码漂移。
 
 ---
 
@@ -294,7 +359,7 @@ $$
 
 ## 10) 局限
 - 个体差异未建模：肝功能、SHBG、年龄、体脂、并用药等可能改变 `F` 与各速率常数。
-- 凝胶的面积/负荷非线性：当前未在模型中体现；存在低剂量低估与高剂量高估的潜在风险。
+- 凝胶的面积/负荷非线性：已通过部位因子 + 浓度感知的剂量密度软饱和项（`resolveGelKinetics`）部分体现，但仍是单层近似——尚未做显式质量守恒的有限剂量蒸发建模。防晒/保湿等外用品**仅以 AUC 标量近似建模**（见 §4.5），未刻画其 Cmax 形变/时程。
 - 注射溶剂/体积影响：对扩散 `k₁` 的影响尚未显式参数化，现仅可用全局系数 `depotK1Corr` 近似。
 - 口服/舌下仅建模游离 E2：雌酮及其硫酸酯的储库效应未纳入。
 - AUC 的跨路由可比性有限：参数含经验缩放，AUC 适合于相同路由内的相对比较与个体内优化。
@@ -308,7 +373,7 @@ $$
 | 注射（油剂 EB/EV/EC/EN） | 解析 | mg | 两库吸收 + k₂ 水解 + k₃ 清除 | `Frac_fast, k1_fast, k1_slow, k2, k3 (= kClearInjection)` | `formationFraction` |
 | 贴片（零阶） | 解析 | µg/day → mg/h | 零阶恒速输入 + k₃ 清除；移除后指数衰减 | `rateMGh, k3` | 固定 1.0 |
 | 贴片（一阶遗留） | 解析 | mg | 一阶“假库” + k₃ 清除；移除时截断 | `k1, k3` | 固定 1.0 |
-| 凝胶 | 解析 | mg（+面积 cm²） | 单室 Bateman（临时常量版） | `k1 = 0.022, F = 0.05, k3` | 常量 0.05 |
+| 凝胶 | 解析 | mg（+产品 id/部位/面积 cm²/washAfterH） | 三层级联：表面 → 皮肤贮库 → 系统中心室 | `kPen, kLoss, kRel(产品), r_site, σ 密度修正, k3` | `kPen/(kPen+kLoss)`（按部位/面积/浓度解析） |
 | 口服 E2 | 解析 | mg | 单室 Bateman | `kAbsE2 = 0.08, F = 0.03, k3` | 常量 0.03 |
 | 口服 EV | 解析 | mg | 单室 Bateman | `kAbsEV = 0.05, F = 0.03, k3` | 常量 0.03 |
 | 舌下 E2/EV | 解析 | mg（等效 E2） | 双通路：快 = 黏膜、慢 = 吞咽→口服；**E2 用一室（dualAbsAmount），EV 用三室（dualAbs3CAmount）** | `θ` 来自 UI 档位（Quick/5/10/15 分钟映射）；`kAbsSL=1.8`，`kAbsE2/EV`，`k2(EV)`，`k3` | 快 1.0；慢 `F_oral=0.03` |
@@ -318,7 +383,8 @@ $$
 ## 12) 实现细节摘抄
 - **PrecomputedEventModel**：
   - 注射：`injAmount(tau, dose, p)`
-  - 凝胶/口服：`oneCompAmount(tau, dose, p)`（把 `k1_fast` 视作该路由的 `ka`）
+  - 口服：`oneCompAmount(tau, dose, p)`（把 `k1_fast` 视作该路由的 `ka`）
+  - 凝胶：`gelEventCentralAmount(event, tau, ke)` → `resolveGelKinetics(...)` → `gel3CompCentralAmount(...)`（表面→贮库→中心室三层级联；`washAfterH` 两段解；产品按 id 在模拟时解析）
   - 舌下：`dualAbsAmount(tau, dose, p)`（`Frac_fast = θ`，`F_fast` 与 `F_slow` 可分配）
 - **贴片**：
   - 找到紧随的 `patchRemove` 决定 `wearH`。
