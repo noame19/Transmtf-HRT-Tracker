@@ -167,11 +167,23 @@ export function getGelProductById(id: number | undefined): GelProductSpec {
         ?? GEL_PRODUCTS[0];
 }
 
-// Soft-saturation half-point for dose density σ = dose/area (mg·cm⁻²). Spreading
-// the same dose over a larger area lowers σ and raises fractional absorption;
-// concentrating it raises σ and lowers absorption. The factor is normalized to
-// 1.0 at each product's reference density so the product's F_ref is preserved.
+// Soft-saturation half-point for areal dose density σ = dose/area (mg·cm⁻²),
+// defined at the reference gel strength GEL_CONC_REF. Spreading the same dose over
+// a larger area lowers σ and raises fractional absorption; concentrating it raises
+// σ and lowers absorption (Maturitas: the E2 MASS per unit skin area is a primary
+// determinant of uptake). The factor is normalized to 1.0 at each product's
+// reference density so the product's F_ref is preserved.
 const GEL_SIGMA_SAT = 0.008;
+// Reference gel strength (mg·mL⁻¹) at which GEL_SIGMA_SAT applies. The same E2 mass
+// carried in a MORE concentrated gel sits in a thinner, more drug-dense film that
+// saturates skin partitioning at a higher areal load, so the half-point scales with
+// strength: σ_sat(c) = GEL_SIGMA_SAT · c / GEL_CONC_REF. This makes
+// `concentrationMGmL` an explicit kinetic variable — it formerly only labelled the
+// product and never entered the dynamics. It is a structural population PRIOR
+// pending IVPT calibration, NOT a fitted value, and only bites OFF the reference
+// density: at the product's reference dose/area the factor is exactly 1.0, so
+// default-dose predictions are unchanged regardless of concentration.
+const GEL_CONC_REF = 1.0;
 
 export interface GelKinetics { kPen: number; kLoss: number; kRel: number; }
 
@@ -190,11 +202,115 @@ export function resolveGelKinetics(
     const area = areaCM2 > 0 ? areaCM2 : product.defaultAreaCM2;
     const sigma = doseMG > 0 ? doseMG / area : 0;
     const sigmaRef = product.defaultAreaCM2 > 0 ? product.refDoseMG / product.defaultAreaCM2 : 0;
+    // Concentration-aware half-saturation: a stronger gel saturates skin uptake at
+    // a higher areal load (thinner, drug-denser film). Falls back to the reference
+    // strength for a missing/non-positive concentration so the factor is well-defined.
+    const concRel = product.concentrationMGmL > 0 ? product.concentrationMGmL / GEL_CONC_REF : 1;
+    const sigmaSat = GEL_SIGMA_SAT * concRel;
     let densityFactor = sigma > 0
-        ? (1 + sigmaRef / GEL_SIGMA_SAT) / (1 + sigma / GEL_SIGMA_SAT)
+        ? (1 + sigmaRef / sigmaSat) / (1 + sigma / sigmaSat)
         : 1;
     densityFactor = Math.min(2.0, Math.max(0.5, densityFactor));
+    // Genital (scrotal) skin: the keratinized-skin dose-density correction is NOT
+    // applied here. The scrotal application area cannot be reliably measured, and the
+    // genital permeability prior (the 8× site factor, itself only a low-evidence
+    // testosterone extrapolation) is not a dose-density relationship. Applying the
+    // correction would only compound a spurious area dependence on top of rSite (e.g.
+    // a default 750 cm² would push the factor toward its 2× clamp). Neutralizing it
+    // makes the scrotal estimate area-invariant — the honest behaviour, since the
+    // area is unknowable. (This does NOT assert near-complete absorption: the absorbed
+    // fraction is still kPen/(kPen+kLoss), e.g. ≈0.47 for Oestrogel.)
+    if (site === GelSite.scrotal) densityFactor = 1.0;
     return { kPen: product.kPenBase * rSite * densityFactor, kLoss: product.kLoss, kRel: product.kRel };
+}
+
+// --- Application-area coverage templates --------------------------------------
+//
+// Raw cm² is hostile to end users — nobody measures their application patch. Labels
+// themselves use recognizable language ("about two palms", "wrist to shoulder"), so
+// the UI lets the user pick an EXTENT and the resolved area (cm²) is what the engine
+// stores in `areaCM2`; the PK layer is unchanged. Values are coarse population
+// PRIORS: `palm*` use the ~1% TBSA palm method (≈175 cm²/palm, which self-scales
+// with body size); limb templates are anchored to the product labels (Divigel thigh
+// ≈200 cm², EstroGel/Oestrogel arm wrist→shoulder ≈750 cm²). Body type shifts these,
+// so a `manual` cm² escape hatch is always offered.
+export type GelCoverageKind = 'product' | 'fixed' | 'manual';
+export interface GelCoverageTemplate {
+    key: string;            // i18n suffix: gel.coverage.<key>
+    kind: GelCoverageKind;  // 'product' = product default area; 'fixed' = areaCM2; 'manual' = user cm²
+    areaCM2?: number;       // only for kind === 'fixed'
+}
+
+/** One "palm" (palm + fingers) ≈ 1% of total body surface area for a ~1.7 m² adult. */
+export const GEL_PALM_AREA_CM2 = 175;
+
+export const GEL_COVERAGE_TEMPLATES: GelCoverageTemplate[] = [
+    { key: 'product', kind: 'product' },
+    { key: 'palm1',   kind: 'fixed', areaCM2: 1 * GEL_PALM_AREA_CM2 },
+    { key: 'palm2',   kind: 'fixed', areaCM2: 2 * GEL_PALM_AREA_CM2 },
+    { key: 'palm3',   kind: 'fixed', areaCM2: 3 * GEL_PALM_AREA_CM2 },
+    { key: 'thigh',   kind: 'fixed', areaCM2: 200 },   // Divigel single upper-thigh anchor
+    { key: 'arm',     kind: 'fixed', areaCM2: 750 },   // EstroGel/Oestrogel single arm wrist→shoulder
+    { key: 'arms2',   kind: 'fixed', areaCM2: 1500 },  // both arms
+    { key: 'manual',  kind: 'manual' },
+];
+
+/** Default coverage for a NEW gel record: follow the product's labelled area. */
+export const GEL_COVERAGE_DEFAULT_IDX = 0;
+/** Index of the "enter cm² manually" template (also the legacy/back-compat fallback). */
+export const GEL_COVERAGE_MANUAL_IDX = GEL_COVERAGE_TEMPLATES.findIndex(t => t.kind === 'manual');
+
+/**
+ * Resolve a coverage-template choice into an application area (cm²). `manualAreaCM2`
+ * is consulted only for the `manual` template (or an out-of-range index); every
+ * other case derives the area from the template / product so the user never has to
+ * type a number. Always returns a positive cm² (falls back to the product default).
+ */
+export function resolveGelCoverageArea(
+    coverageIdx: number | undefined,
+    product: GelProductSpec,
+    manualAreaCM2: number
+): number {
+    const tpl = (typeof coverageIdx === 'number' && coverageIdx >= 0 && coverageIdx < GEL_COVERAGE_TEMPLATES.length)
+        ? GEL_COVERAGE_TEMPLATES[coverageIdx]
+        : undefined;
+    const manualOK = Number.isFinite(manualAreaCM2) && manualAreaCM2 > 0;
+    if (!tpl || tpl.kind === 'manual') return manualOK ? manualAreaCM2 : product.defaultAreaCM2;
+    if (tpl.kind === 'product') return product.defaultAreaCM2;
+    return (typeof tpl.areaCM2 === 'number' && tpl.areaCM2 > 0) ? tpl.areaCM2 : product.defaultAreaCM2;
+}
+
+// --- Co-applied topical products ----------------------------------------------
+//
+// A topical product layered over the gel measurably shifts transdermal exposure.
+// EstroGel label data (applied daily 1 h after the gel): a SUNSCREEN lowers AUC0–24
+// ≈16%; a MOISTURIZER raises it ≈38% (and Cmax ≈73%). Modelled as a multiplicative
+// factor on the systemically absorbed amount — an AUC-anchored EXPOSURE prior. We
+// scale total exposure, not the peak shape, so the extra Cmax skew a moisturizer can
+// add is intentionally NOT separately modelled (it would need a kPen reshape and has
+// weaker evidence). These are product-specific label priors used as a generalization.
+export const GEL_COAPPLICATION_ORDER = ['none', 'sunscreen', 'moisturizer'] as const;
+export type GelCoApplication = typeof GEL_COAPPLICATION_ORDER[number];
+export const GEL_COAPPLICATION_FACTORS: Record<GelCoApplication, number> = {
+    none: 1.0,
+    sunscreen: 0.84,    // −16% AUC0–24
+    moisturizer: 1.38,  // +38% AUC0–24
+};
+
+/**
+ * Multiplicative exposure factor for the co-applied product recorded on an event.
+ * Only EXACT known indices map to a factor; anything else (absent, non-finite,
+ * negative, or an unknown/future index) is NEUTRAL (1.0). This is deliberate: a
+ * corrupt value or a future client's new option must never be silently reinterpreted
+ * as e.g. moisturizer (+38%).
+ */
+export function gelCoApplicationFactor(extras: Partial<Record<ExtraKey, number>> | undefined): number {
+    const raw = extras?.[ExtraKey.gelCoApplied];
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return 1.0;
+    const idx = Math.round(raw);
+    if (idx < 0 || idx >= GEL_COAPPLICATION_ORDER.length) return 1.0;
+    const f = GEL_COAPPLICATION_FACTORS[GEL_COAPPLICATION_ORDER[idx]];
+    return (Number.isFinite(f) && f > 0) ? f : 1.0;
 }
 
 // --- 3-compartment cascade closed form (surface → reservoir → central) -------
@@ -292,7 +408,10 @@ export function gelEventCentralAmount(event: DoseEvent, tau: number, ke: number)
     const areaRaw = ex[ExtraKey.areaCM2];
     const area = (typeof areaRaw === 'number' && areaRaw > 0) ? areaRaw : product.defaultAreaCM2;
     const k = resolveGelKinetics(product, site, event.doseMG, area);
-    return gel3CompCentralAmount(event.doseMG, tau, k.kPen, k.kLoss, k.kRel, ke, ex[ExtraKey.gelWashAfterH]);
+    const amount = gel3CompCentralAmount(event.doseMG, tau, k.kPen, k.kLoss, k.kRel, ke, ex[ExtraKey.gelWashAfterH]);
+    // A co-applied sunscreen/moisturizer scales total absorbed exposure (linear
+    // cascade ⇒ multiplying the central amount == scaling the effective dose).
+    return amount * gelCoApplicationFactor(ex);
 }
 
 /**
@@ -581,7 +700,10 @@ export function getBioavailabilityMultiplier(
             const areaRaw = extras[ExtraKey.areaCM2];
             const area = (typeof areaRaw === 'number' && areaRaw > 0) ? areaRaw : product.defaultAreaCM2;
             const k = resolveGelKinetics(product, site, product.refDoseMG, area);
-            return (k.kPen / (k.kPen + k.kLoss)) * mwFactor;
+            // Match the curve (gelEventCentralAmount): reflect any co-applied product
+            // in the reported absorbed fraction. NOTE: the gel curve is built solely
+            // by gelEventCentralAmount, so this factor is applied exactly once there.
+            return (k.kPen / (k.kPen + k.kLoss)) * gelCoApplicationFactor(extras) * mwFactor;
         }
         case Route.patchApply:
             return 1.0 * mwFactor;

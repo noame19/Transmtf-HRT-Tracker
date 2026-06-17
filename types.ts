@@ -79,7 +79,15 @@ export enum ExtraKey {
     // kinetics live in the GEL_PRODUCTS registry (pk.ts) and are resolved at
     // simulation time, so editing a custom product updates all of its records.
     gelProductId = "gelProductId",      // stable id of the selected gel product
-    gelWashAfterH = "gelWashAfterH"     // wash-off time after application (h); 0/absent = no wash
+    gelWashAfterH = "gelWashAfterH",    // wash-off time after application (h); 0/absent = no wash
+    // Body-surface coverage template index (into GEL_COVERAGE_TEMPLATES, pk.ts).
+    // UI convenience so users pick a recognizable extent ("~2 palms", "one arm")
+    // instead of guessing a raw cm²; the RESOLVED area is what the engine reads
+    // from `areaCM2`. Absent = legacy record entered as a raw cm² (shown as "manual").
+    gelCoverage = "gelCoverage",
+    // Co-applied topical product index (into GEL_COAPPLICATION_ORDER, pk.ts):
+    // 0 none / 1 sunscreen (−16% AUC) / 2 moisturizer (+38% AUC). Absent/0 = none.
+    gelCoApplied = "gelCoApplied"
 }
 
 /**

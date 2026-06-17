@@ -3,7 +3,7 @@
  * extras. Extracted from the React components so they can be unit-tested in node.
  */
 import { ExtraKey, type DoseEvent } from '../../types';
-import { GEL_SITE_ORDER, type GelProductSpec } from '../../pk';
+import { GEL_SITE_ORDER, GEL_COVERAGE_TEMPLATES, type GelProductSpec } from '../../pk';
 
 // Fast surface-depletion rate shared with the PK priors (pk.ts). The user-facing
 // "reference bioavailability" only sets the penetration/loss SPLIT, not the
@@ -86,19 +86,55 @@ export const gelFormsEqual = (a: GelForm, b: GelForm): boolean =>
  * product was deleted preserves its reference instead of silently rebinding to
  * the default gel. Kinetics are resolved from the registry at simulation time.
  */
+/**
+ * Decide what application area (cm²) to PERSIST for a gel event from the chosen
+ * coverage. The "product" template (and scrotal, where area is irrelevant) persist
+ * NOTHING (`undefined`) so the engine follows the product's CURRENT default at
+ * simulation time — this is what prevents an old event's area from silently being
+ * rewritten when a custom product's default later changes. Fixed templates persist
+ * their constant area; manual persists the typed value (blank → undefined → engine
+ * falls back to the product default).
+ */
+export const resolveGelAreaToStore = (
+    coverageIdx: number,
+    isScrotal: boolean,
+    manualAreaCM2: number,
+): number | undefined => {
+    if (isScrotal) return undefined;
+    const tpl = GEL_COVERAGE_TEMPLATES[coverageIdx];
+    if (!tpl || tpl.kind === 'product') return undefined; // follow product default dynamically
+    if (tpl.kind === 'fixed') return tpl.areaCM2;
+    return (Number.isFinite(manualAreaCM2) && manualAreaCM2 > 0) ? manualAreaCM2 : undefined;
+};
+
 export const buildGelExtras = (opts: {
     productId: number;
     gelSite: number;
-    areaCM2: number;
+    areaCM2?: number;           // resolved area to persist; omit to follow the product default
     washAfterH?: number;
+    coverage?: number;          // body-surface coverage template index (UI redisplay only)
+    coApplied?: number;         // co-applied product index (0 none / 1 sunscreen / 2 moisturizer)
 }): Partial<Record<ExtraKey, number>> => {
     const rawSite = Number.isFinite(opts.gelSite) ? Math.round(opts.gelSite) : 0;
     const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, rawSite));
     const extras: Partial<Record<ExtraKey, number>> = {
         [ExtraKey.gelSite]: siteIdx,
         [ExtraKey.gelProductId]: opts.productId,
-        [ExtraKey.areaCM2]: opts.areaCM2,
     };
+    // Stored only when a positive area is supplied; omission means "follow the
+    // product's current default area" (see resolveGelAreaToStore).
+    if (typeof opts.areaCM2 === 'number' && Number.isFinite(opts.areaCM2) && opts.areaCM2 > 0) {
+        extras[ExtraKey.areaCM2] = opts.areaCM2;
+    }
+    // Stored whenever provided (incl. 0) so the form can restore the friendly choice;
+    // its absence marks a legacy record that only ever carried a raw cm².
+    if (typeof opts.coverage === 'number' && Number.isFinite(opts.coverage) && opts.coverage >= 0) {
+        extras[ExtraKey.gelCoverage] = Math.round(opts.coverage);
+    }
+    // Only stored when non-"none" so a plain application stays free of noise.
+    if (typeof opts.coApplied === 'number' && Number.isFinite(opts.coApplied) && opts.coApplied > 0) {
+        extras[ExtraKey.gelCoApplied] = Math.round(opts.coApplied);
+    }
     if (typeof opts.washAfterH === 'number' && Number.isFinite(opts.washAfterH) && opts.washAfterH > 0) {
         extras[ExtraKey.gelWashAfterH] = opts.washAfterH;
     }

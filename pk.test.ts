@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Route, Ester, type DoseEvent, type LabResult } from './types';
+import { Route, Ester, ExtraKey, type DoseEvent, type LabResult } from './types';
 import {
     bicalutamideConcNgML,
     runSimulation,
@@ -13,6 +13,12 @@ import {
     gel3CompCentralAmount,
     gelEventCentralAmount,
     resolveGelKinetics,
+    resolveGelCoverageArea,
+    GEL_COVERAGE_TEMPLATES,
+    GEL_COVERAGE_MANUAL_IDX,
+    GEL_PALM_AREA_CM2,
+    gelCoApplicationFactor,
+    GEL_COAPPLICATION_FACTORS,
     setCustomGelProducts,
     sanitizeGelProduct,
     gelProductExists,
@@ -310,6 +316,60 @@ describe('layered transdermal gel model', () => {
         expect(fLarge).toBeGreaterThan(fSmall);
     });
 
+    it('thin coat (larger area) absorbs MORE than a thick coat of the same dose', () => {
+        // Pharmacology / FDA labels: spreading the SAME dose over a larger area
+        // (thinner film, lower dose density) RAISES fractional absorption. The model
+        // must implement thin > thick, never the reverse.
+        const thick = resolveGelKinetics(oestrogel, GelSite.arm, 1.5, 200);   // dense, small area
+        const thin = resolveGelKinetics(oestrogel, GelSite.arm, 1.5, 1500);   // spread, large area
+        const fThick = thick.kPen / (thick.kPen + thick.kLoss);
+        const fThin = thin.kPen / (thin.kPen + thin.kLoss);
+        expect(fThin).toBeGreaterThan(fThick);
+    });
+
+    it('scrotal estimate is AREA-INVARIANT (genital skin is not dose-density limited)', () => {
+        // The scrotal application area is unknowable, so its kinetics must not depend
+        // on it — the 8× site factor alone carries genital permeability.
+        const a = resolveGelKinetics(oestrogel, GelSite.scrotal, 1.5, 50);
+        const b = resolveGelKinetics(oestrogel, GelSite.scrotal, 1.5, 750);
+        const c = resolveGelKinetics(oestrogel, GelSite.scrotal, 1.5, 1500);
+        expect(a.kPen).toBeCloseTo(b.kPen, 12);
+        expect(b.kPen).toBeCloseTo(c.kPen, 12);
+        // ...whereas a keratinized site (arm) DOES vary with area.
+        const armSmall = resolveGelKinetics(oestrogel, GelSite.arm, 1.5, 50);
+        const armLarge = resolveGelKinetics(oestrogel, GelSite.arm, 1.5, 1500);
+        expect(armSmall.kPen).not.toBeCloseTo(armLarge.kPen, 6);
+    });
+
+    // `concentrationMGmL` is now an explicit kinetic variable (it formerly only
+    // labelled the product). Two gels identical except for strength must diverge
+    // OFF the reference density, where the strength-scaled dose-density half-point
+    // bites — but stay identical AT each product's reference dose/area.
+    const mkGel = (conc: number): GelProductSpec => ({
+        id: 1000, nameKey: '', name: `c${conc}`, concentrationMGmL: conc,
+        defaultAreaCM2: 400, refDoseMG: 1.5, kPenBase: 0.140, kLoss: 1.260, kRel: 0.022,
+    });
+    const fOf = (k: ReturnType<typeof resolveGelKinetics>) => k.kPen / (k.kPen + k.kLoss);
+
+    it('concentration changes absorbed fraction off the reference density', () => {
+        // Spread 1.5 mg over 1000 cm² (σ below the 400 cm² reference density).
+        const dilute = fOf(resolveGelKinetics(mkGel(0.5), GelSite.arm, 1.5, 1000));
+        const strong = fOf(resolveGelKinetics(mkGel(2.0), GelSite.arm, 1.5, 1000));
+        expect(Math.abs(dilute - strong)).toBeGreaterThan(1e-3);
+        // At a sub-reference areal load the dilute gel (lower σ_sat) is pushed
+        // further up the absorption curve than the concentrated one.
+        expect(dilute).toBeGreaterThan(strong);
+    });
+
+    it('concentration does NOT change absorbed fraction at the reference dose/area', () => {
+        // factor == 1 at the product's own reference, independent of strength, so a
+        // default-dose prediction is unchanged whatever the concentration field says.
+        const dilute = fOf(resolveGelKinetics(mkGel(0.5), GelSite.arm, 1.5, 400));
+        const strong = fOf(resolveGelKinetics(mkGel(2.0), GelSite.arm, 1.5, 400));
+        expect(dilute).toBeCloseTo(strong, 9);
+        expect(dilute).toBeCloseTo(0.140 / (0.140 + 1.260), 9);
+    });
+
     it('returns 0 for non-physical / non-finite rates (kLoss<0, ke<=0, NaN)', () => {
         expect(gel3CompCentralAmount(1, 10, 0.14, -0.5, 0.022, 0.41)).toBe(0);
         expect(gel3CompCentralAmount(1, 10, 0.14, 1.26, 0.022, 0)).toBe(0);
@@ -397,6 +457,103 @@ describe('layered transdermal gel model', () => {
         const high = gelEventCentralAmount(event, 8, CorePK.kClear);
         expect(high).toBeGreaterThan(low);
         setCustomGelProducts([]); // reset engine registry for other tests
+    });
+});
+
+describe('gel application-coverage templates', () => {
+    const oestrogel = GEL_PRODUCTS[0]; // defaultAreaCM2 = 750
+
+    const idxOfKind = (kind: string) => GEL_COVERAGE_TEMPLATES.findIndex(t => t.kind === kind);
+
+    it('the "product" template resolves to the product default area', () => {
+        const idx = idxOfKind('product');
+        expect(resolveGelCoverageArea(idx, oestrogel, 0)).toBe(oestrogel.defaultAreaCM2);
+        // Manual cm² is ignored for a non-manual template.
+        expect(resolveGelCoverageArea(idx, oestrogel, 999)).toBe(oestrogel.defaultAreaCM2);
+    });
+
+    it('a "fixed" palm template resolves to its labelled cm² (palm method)', () => {
+        const palm2 = GEL_COVERAGE_TEMPLATES.findIndex(t => t.key === 'palm2');
+        expect(resolveGelCoverageArea(palm2, oestrogel, 0)).toBe(2 * GEL_PALM_AREA_CM2);
+    });
+
+    it('the "manual" template uses the typed cm², falling back to product default', () => {
+        expect(resolveGelCoverageArea(GEL_COVERAGE_MANUAL_IDX, oestrogel, 333)).toBe(333);
+        // Blank / non-positive manual entry falls back to the product default.
+        expect(resolveGelCoverageArea(GEL_COVERAGE_MANUAL_IDX, oestrogel, NaN)).toBe(oestrogel.defaultAreaCM2);
+        expect(resolveGelCoverageArea(GEL_COVERAGE_MANUAL_IDX, oestrogel, 0)).toBe(oestrogel.defaultAreaCM2);
+    });
+
+    it('an out-of-range / undefined index falls back to manual semantics', () => {
+        expect(resolveGelCoverageArea(999, oestrogel, 250)).toBe(250);
+        expect(resolveGelCoverageArea(undefined, oestrogel, 0)).toBe(oestrogel.defaultAreaCM2);
+    });
+
+    it('templates form an ascending coverage ladder under one product', () => {
+        const areas = GEL_COVERAGE_TEMPLATES
+            .filter(t => t.kind === 'fixed')
+            .map((_, i) => i);
+        // palm1 < palm2 < palm3 (the graduated palm options).
+        const a1 = resolveGelCoverageArea(GEL_COVERAGE_TEMPLATES.findIndex(t => t.key === 'palm1'), oestrogel, 0);
+        const a2 = resolveGelCoverageArea(GEL_COVERAGE_TEMPLATES.findIndex(t => t.key === 'palm2'), oestrogel, 0);
+        const a3 = resolveGelCoverageArea(GEL_COVERAGE_TEMPLATES.findIndex(t => t.key === 'palm3'), oestrogel, 0);
+        expect(a1).toBeLessThan(a2);
+        expect(a2).toBeLessThan(a3);
+        expect(areas.length).toBeGreaterThan(0);
+    });
+});
+
+describe('gel co-applied product modifiers', () => {
+    const oestrogel = GEL_PRODUCTS[0];
+    const ke = CorePK.kClear;
+
+    const gelEvent = (coApplied?: number): DoseEvent => ({
+        id: `g-${coApplied ?? 'x'}`, route: Route.gel, timeH: 0, doseMG: 1.5, ester: Ester.E2, weightKG: 70,
+        extras: {
+            gelProductId: oestrogel.id,
+            gelSite: 0,
+            areaCM2: oestrogel.defaultAreaCM2,
+            ...(coApplied !== undefined ? { gelCoApplied: coApplied } : {}),
+        } as DoseEvent['extras'],
+    });
+
+    it('factor: none=1, sunscreen<1, moisturizer>1; out-of-range/absent → 1', () => {
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: 0 })).toBe(1.0);
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: 1 })).toBe(GEL_COAPPLICATION_FACTORS.sunscreen);
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: 2 })).toBe(GEL_COAPPLICATION_FACTORS.moisturizer);
+        expect(GEL_COAPPLICATION_FACTORS.sunscreen).toBeLessThan(1);
+        expect(GEL_COAPPLICATION_FACTORS.moisturizer).toBeGreaterThan(1);
+        // Absent, non-finite, negative, and unknown/future indices all collapse to the
+        // neutral 1.0 — an unknown value must NEVER be reinterpreted as moisturizer.
+        expect(gelCoApplicationFactor({})).toBe(1.0);
+        expect(gelCoApplicationFactor(undefined)).toBe(1.0);
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: 99 })).toBe(1.0);
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: -1 })).toBe(1.0);
+        expect(gelCoApplicationFactor({ [ExtraKey.gelCoApplied]: NaN })).toBe(1.0);
+    });
+
+    it('scales the curve by exactly the co-application factor (linear cascade)', () => {
+        const tau = 8;
+        const base = gelEventCentralAmount(gelEvent(0), tau, ke);
+        const sun = gelEventCentralAmount(gelEvent(1), tau, ke);
+        const moist = gelEventCentralAmount(gelEvent(2), tau, ke);
+        expect(base).toBeGreaterThan(0);
+        expect(sun / base).toBeCloseTo(GEL_COAPPLICATION_FACTORS.sunscreen, 9);
+        expect(moist / base).toBeCloseTo(GEL_COAPPLICATION_FACTORS.moisturizer, 9);
+        // An event with no co-applied tag matches the explicit "none".
+        expect(gelEventCentralAmount(gelEvent(undefined), tau, ke)).toBeCloseTo(base, 9);
+    });
+
+    it('preserves tmax (a pure exposure scaling, not a shape change)', () => {
+        const peakOf = (coApplied: number) => {
+            let tmax = 0, peak = 0;
+            for (let t = 0.1; t <= 96; t += 0.1) {
+                const m = gelEventCentralAmount(gelEvent(coApplied), t, ke);
+                if (m > peak) { peak = m; tmax = t; }
+            }
+            return tmax;
+        };
+        expect(peakOf(2)).toBeCloseTo(peakOf(0), 5);
     });
 });
 

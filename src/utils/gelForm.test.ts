@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { ExtraKey } from '../../types';
 import type { GelProductSpec } from '../../pk';
+import { GEL_COVERAGE_TEMPLATES } from '../../pk';
 import {
-    productToForm, validateGelForm, gelFormsEqual, buildGelExtras, parseField, LAMBDA_SURFACE,
+    productToForm, validateGelForm, gelFormsEqual, buildGelExtras, resolveGelAreaToStore, parseField, LAMBDA_SURFACE,
 } from './gelForm';
 
 const product = (over: Partial<GelProductSpec> = {}): GelProductSpec => ({
@@ -88,5 +89,48 @@ describe('buildGelExtras', () => {
         expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400, washAfterH: 1 })[ExtraKey.gelWashAfterH]).toBe(1);
         expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400, washAfterH: 0 })[ExtraKey.gelWashAfterH]).toBeUndefined();
         expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400, washAfterH: NaN })[ExtraKey.gelWashAfterH]).toBeUndefined();
+    });
+
+    it('persists area only when a positive value is supplied (omit = follow product default)', () => {
+        expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 350 })[ExtraKey.areaCM2]).toBe(350);
+        expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: undefined })[ExtraKey.areaCM2]).toBeUndefined();
+        expect(buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 0 })[ExtraKey.areaCM2]).toBeUndefined();
+    });
+
+    it('persists coverage when >= 0 (incl. 0) and co-applied only when > 0', () => {
+        const ex = buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400, coverage: 0, coApplied: 0 });
+        expect(ex[ExtraKey.gelCoverage]).toBe(0);          // product-default coverage is recorded
+        expect(ex[ExtraKey.gelCoApplied]).toBeUndefined(); // "none" stays absent
+        const ex2 = buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400, coverage: 5, coApplied: 2 });
+        expect(ex2[ExtraKey.gelCoverage]).toBe(5);
+        expect(ex2[ExtraKey.gelCoApplied]).toBe(2);
+        // A legacy-style omission keeps both absent.
+        const ex3 = buildGelExtras({ productId: 1000, gelSite: 0, areaCM2: 400 });
+        expect(ex3[ExtraKey.gelCoverage]).toBeUndefined();
+        expect(ex3[ExtraKey.gelCoApplied]).toBeUndefined();
+    });
+});
+
+describe('resolveGelAreaToStore (anti-drift area persistence)', () => {
+    const idxOf = (kind: string) => GEL_COVERAGE_TEMPLATES.findIndex(t => t.kind === kind);
+
+    it('omits area for the "product" template (follow product default → no silent rewrite)', () => {
+        expect(resolveGelAreaToStore(idxOf('product'), false, 123)).toBeUndefined();
+    });
+
+    it('stores the constant for a fixed template regardless of manual/product', () => {
+        const fixedIdx = GEL_COVERAGE_TEMPLATES.findIndex(t => t.kind === 'fixed');
+        expect(resolveGelAreaToStore(fixedIdx, false, 999)).toBe(GEL_COVERAGE_TEMPLATES[fixedIdx].areaCM2);
+    });
+
+    it('stores the manual value, or omits it when blank/non-positive', () => {
+        expect(resolveGelAreaToStore(idxOf('manual'), false, 333)).toBe(333);
+        expect(resolveGelAreaToStore(idxOf('manual'), false, NaN)).toBeUndefined();
+        expect(resolveGelAreaToStore(idxOf('manual'), false, 0)).toBeUndefined();
+    });
+
+    it('omits area for scrotal regardless of coverage (area-invariant)', () => {
+        expect(resolveGelAreaToStore(idxOf('manual'), true, 333)).toBeUndefined();
+        expect(resolveGelAreaToStore(idxOf('product'), true, 333)).toBeUndefined();
     });
 });

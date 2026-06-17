@@ -217,6 +217,8 @@ export interface LastGelPrefill {
     areaCM2: number;
     doseMG: number;
     washAfterH: number;
+    coverage: number;   // coverage-template index; -1 if the record predates the feature
+    coApplied: number;  // co-applied product index; 0 = none
 }
 
 /**
@@ -237,5 +239,7 @@ export const readLastGelEvent = (events: DoseEvent[]): LastGelPrefill | null => 
         areaCM2: asNum(ex[ExtraKey.areaCM2], 0),
         doseMG: latest.doseMG,
         washAfterH: asNum(ex[ExtraKey.gelWashAfterH], 0),
+        coverage: ex[ExtraKey.gelCoverage] != null ? asNum(ex[ExtraKey.gelCoverage], -1) : -1,
+        coApplied: asNum(ex[ExtraKey.gelCoApplied], 0),
     };
 };
