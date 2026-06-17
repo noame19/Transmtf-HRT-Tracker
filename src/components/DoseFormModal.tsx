@@ -13,11 +13,13 @@ import {
     drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
     getAllGelProducts, readLastGelEvent,
 } from '../utils/doseForm';
-import { buildGelExtras } from '../utils/gelForm';
+import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
 import {
     Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams,
     getToE2Factor, isAntiandrogen,
     GelSite, GEL_SITE_ORDER, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID,
+    GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
+    resolveGelCoverageArea, GEL_COAPPLICATION_ORDER,
     type GelProductSpec,
 } from '../../logic';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
@@ -110,7 +112,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
     const [gelSite, setGelSite] = useState(0); // Index in GEL_SITE_ORDER
     const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
-    const [gelArea, setGelArea] = useState("");     // application area, cm²
+    const [gelArea, setGelArea] = useState("");     // manual application area, cm² (only when coverage = manual)
+    const [gelCoverage, setGelCoverage] = useState<number>(GEL_COVERAGE_DEFAULT_IDX); // body-surface coverage template
+    const [gelCoApplied, setGelCoApplied] = useState<number>(0); // 0 none / 1 sunscreen / 2 moisturizer
     const [gelWash, setGelWash] = useState("");     // wash-off after N hours; "" = no wash
 
     const [slTier, setSlTier] = useState(2);
@@ -195,10 +199,18 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     setGelProductId(ex[ExtraKey.gelProductId] ?? GEL_DEFAULT_PRODUCT_ID);
                     const areaRaw = ex[ExtraKey.areaCM2];
                     setGelArea(typeof areaRaw === 'number' && areaRaw > 0 ? String(areaRaw) : "");
+                    // A record without a coverage tag predates the templates → show it
+                    // as "manual" so its stored cm² stays visible and unchanged.
+                    const covRaw = ex[ExtraKey.gelCoverage];
+                    setGelCoverage(typeof covRaw === 'number' && Number.isFinite(covRaw) ? Math.round(covRaw) : GEL_COVERAGE_MANUAL_IDX);
+                    const coAppRaw = ex[ExtraKey.gelCoApplied];
+                    setGelCoApplied(typeof coAppRaw === 'number' && Number.isFinite(coAppRaw) ? Math.round(coAppRaw) : 0);
                     const washRaw = ex[ExtraKey.gelWashAfterH];
                     setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : "");
                 } else {
                     setGelSite(0);
+                    setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+                    setGelCoApplied(0);
                 }
 
                 setWeightStr((eventToEdit.weightKG ?? prefillWeightKG(allEvents)).toString());
@@ -218,6 +230,8 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 setRoute(initRoute);
                 setEster(initEster);
                 setGelSite(0);
+                setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+                setGelCoApplied(0);
                 setWeightStr(prefillWeightKG(allEvents).toString());
                 // patchMode/patchRate + dose fields are restored per-drug by the
                 // dedicated effect below (keyed on route/ester).
@@ -356,20 +370,47 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             setGelSite(last.gelSite);
             const prod = findGelProduct(last.productId);
             setGelArea(last.areaCM2 > 0 ? String(last.areaCM2) : String(prod.defaultAreaCM2));
+            // A legacy last-gel (coverage -1) reuses its raw area as "manual".
+            setGelCoverage(last.coverage >= 0 ? last.coverage : GEL_COVERAGE_MANUAL_IDX);
+            setGelCoApplied(last.coApplied > 0 ? last.coApplied : 0);
             setGelWash(last.washAfterH > 0 ? String(last.washAfterH) : "");
         } else {
             setGelProductId(GEL_DEFAULT_PRODUCT_ID);
             setGelSite(0);
             setGelArea(String(GEL_PRODUCTS[0].defaultAreaCM2));
+            setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+            setGelCoApplied(0);
             setGelWash("");
         }
     }, [isOpen, eventToEdit, route, allEvents]);
 
+    // Keep the manual-area field meaningful when the product changes: re-derive it
+    // from the current coverage template (product default for the "label" coverage).
     const handleGelProductSelect = (val: string) => {
         const id = parseInt(val, 10);
         if (!Number.isFinite(id)) return;
         setGelProductId(id);
-        setGelArea(String(findGelProduct(id).defaultAreaCM2));
+        const manual = parseFloat(gelArea);
+        setGelArea(String(resolveGelCoverageArea(gelCoverage, findGelProduct(id), manual)));
+    };
+
+    // Switching coverage template back-derives the application area (except for the
+    // manual template, where the user keeps typing a raw cm²).
+    const handleGelCoverageSelect = (val: string) => {
+        const idx = parseInt(val, 10) || 0;
+        setGelCoverage(idx);
+        const tpl = GEL_COVERAGE_TEMPLATES[idx];
+        if (tpl && tpl.kind !== 'manual') {
+            setGelArea(String(resolveGelCoverageArea(idx, findGelProduct(gelProductId), parseFloat(gelArea))));
+        }
+    };
+
+    // Human label for a coverage option, with the resolved cm² for non-manual ones.
+    const gelCoverageLabel = (tpl: typeof GEL_COVERAGE_TEMPLATES[number], idx: number): string => {
+        const base = t(`gel.coverage.${tpl.key}`);
+        if (tpl.kind === 'manual') return base;
+        const area = Math.round(resolveGelCoverageArea(idx, findGelProduct(gelProductId), 0));
+        return `${base} (~${area} cm²)`;
     };
 
     const [isSaving, setIsSaving] = useState(false);
@@ -500,15 +541,22 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         if (route === Route.gel) {
             // Store only the product reference + per-application site/area/wash;
             // kinetics resolve from the registry at simulation time. buildGelExtras
-            // persists the SELECTED product id verbatim (never a fallback).
-            const product = findGelProduct(gelProductId);
-            const areaVal = parseFloat(gelArea);
-            const area = (Number.isFinite(areaVal) && areaVal > 0) ? areaVal : product.defaultAreaCM2;
+            // persists the SELECTED product id verbatim (never a fallback). The area
+            // is derived from the coverage template (manual cm² only for the manual
+            // template), so the engine still consumes a plain `areaCM2`.
+            // Persist a STABLE area: fixed templates store their constant; manual
+            // stores the typed value; the "product" template and scrotal store NO area
+            // so the engine follows the product's current default (no silent rewrite
+            // of an old event when a custom product's default later changes).
+            const isScrotal = GEL_SITE_ORDER[gelSite] === GelSite.scrotal;
+            const area = resolveGelAreaToStore(gelCoverage, isScrotal, parseFloat(gelArea));
             const washVal = parseFloat(gelWash);
             Object.assign(extras, buildGelExtras({
                 productId: gelProductId,
                 gelSite,
                 areaCM2: area,
+                coverage: isScrotal ? undefined : gelCoverage,
+                coApplied: gelCoApplied,
                 washAfterH: (Number.isFinite(washVal) && washVal > 0) ? washVal : undefined,
             }));
         }
@@ -764,11 +812,47 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         </div>
                                     )}
 
-                                    {/* Application area */}
-                                    <div className="space-y-1">
-                                        <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_area')}</label>
-                                        <input value={gelArea} onChange={e => setGelArea(e.target.value)} inputMode="decimal" placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)} className="w-full p-3 rounded-xl glass-input outline-none" />
-                                    </div>
+                                    {/* Application coverage (area is derived from a body-surface
+                                        template so users don't guess a raw cm²). Hidden for
+                                        scrotal: genital uptake is area-invariant, so there is
+                                        nothing meaningful to enter — the scrotal note explains it. */}
+                                    {GEL_SITE_ORDER[gelSite] !== GelSite.scrotal && (<>
+                                        <CustomSelect
+                                            label={t('field.gel_coverage')}
+                                            value={String(gelCoverage)}
+                                            onChange={handleGelCoverageSelect}
+                                            options={GEL_COVERAGE_TEMPLATES.map((tpl, idx) => ({
+                                                value: String(idx),
+                                                label: gelCoverageLabel(tpl, idx),
+                                            }))}
+                                        />
+                                        {GEL_COVERAGE_TEMPLATES[gelCoverage]?.kind === 'manual' ? (
+                                            <div className="space-y-1">
+                                                <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>{t('field.gel_area')}</label>
+                                                <input value={gelArea} onChange={e => setGelArea(e.target.value)} inputMode="decimal" placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)} className="w-full p-3 rounded-xl glass-input outline-none" />
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                {t('gel.coverage.derived')}: ~{Math.round(resolveGelCoverageArea(gelCoverage, findGelProduct(gelProductId), 0))} cm²
+                                            </div>
+                                        )}
+                                    </>)}
+
+                                    {/* Co-applied topical product (sunscreen / moisturizer) */}
+                                    <CustomSelect
+                                        label={t('field.gel_coapplied')}
+                                        value={String(gelCoApplied)}
+                                        onChange={(val) => setGelCoApplied(parseInt(val, 10) || 0)}
+                                        options={GEL_COAPPLICATION_ORDER.map((k, idx) => ({
+                                            value: String(idx),
+                                            label: t(`gel.coapplied.${k}`),
+                                        }))}
+                                    />
+                                    {gelCoApplied > 0 && (
+                                        <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                            {t(`gel.coapplied.note.${GEL_COAPPLICATION_ORDER[gelCoApplied] ?? 'none'}`)}
+                                        </div>
+                                    )}
 
                                     {/* Optional wash-off */}
                                     <div className="space-y-1">

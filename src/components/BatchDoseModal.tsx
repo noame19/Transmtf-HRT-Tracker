@@ -14,12 +14,14 @@ import {
     drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
     getAllGelProducts, readLastGelEvent,
 } from '../utils/doseForm';
-import { buildGelExtras } from '../utils/gelForm';
+import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
 import {
     Route, Ester, ExtraKey, DoseEvent,
     getToE2Factor, isAntiandrogen,
     SL_TIER_ORDER, SublingualTierParams,
     GelSite, GEL_SITE_ORDER, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID,
+    GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
+    resolveGelCoverageArea, GEL_COAPPLICATION_ORDER,
     type GelProductSpec,
 } from '../../logic';
 import {
@@ -114,6 +116,8 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const [gelSite, setGelSite] = useState(0);
     const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
     const [gelArea, setGelArea] = useState("");
+    const [gelCoverage, setGelCoverage] = useState<number>(GEL_COVERAGE_DEFAULT_IDX);
+    const [gelCoApplied, setGelCoApplied] = useState<number>(0);
     const [gelWash, setGelWash] = useState("");
     const [slTier, setSlTier] = useState(2);
     const [useCustomTheta, setUseCustomTheta] = useState(false);
@@ -178,11 +182,15 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                 setGelSite(lastGel.gelSite);
                 const prod = findGelProduct(lastGel.productId);
                 setGelArea(lastGel.areaCM2 > 0 ? String(lastGel.areaCM2) : String(prod.defaultAreaCM2));
+                setGelCoverage(lastGel.coverage >= 0 ? lastGel.coverage : GEL_COVERAGE_MANUAL_IDX);
+                setGelCoApplied(lastGel.coApplied > 0 ? lastGel.coApplied : 0);
                 setGelWash(lastGel.washAfterH > 0 ? String(lastGel.washAfterH) : "");
             } else {
                 setGelProductId(GEL_DEFAULT_PRODUCT_ID);
                 setGelSite(0);
                 setGelArea(String(GEL_PRODUCTS[0].defaultAreaCM2));
+                setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+                setGelCoApplied(0);
                 setGelWash("");
             }
             setPreviewEvents([]);
@@ -331,14 +339,17 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                 return extras;
             }
             case Route.gel: {
-                const product = findGelProduct(gelProductId);
-                const areaVal = parseFloat(gelArea);
-                const area = (Number.isFinite(areaVal) && areaVal > 0) ? areaVal : product.defaultAreaCM2;
+                // Stable area: fixed templates store a constant, manual stores the typed
+                // value, "product" template + scrotal store nothing (follow product default).
+                const isScrotal = GEL_SITE_ORDER[gelSite] === GelSite.scrotal;
+                const area = resolveGelAreaToStore(gelCoverage, isScrotal, parseFloat(gelArea));
                 const washVal = parseFloat(gelWash);
                 Object.assign(extras, buildGelExtras({
                     productId: gelProductId,
                     gelSite,
                     areaCM2: area,
+                    coverage: isScrotal ? undefined : gelCoverage,
+                    coApplied: gelCoApplied,
                     washAfterH: (Number.isFinite(washVal) && washVal > 0) ? washVal : undefined,
                 }));
                 return extras;
@@ -699,7 +710,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                 const id = parseInt(val, 10);
                                                 if (!Number.isFinite(id)) return;
                                                 setGelProductId(id);
-                                                setGelArea(String(findGelProduct(id).defaultAreaCM2));
+                                                setGelArea(String(resolveGelCoverageArea(gelCoverage, findGelProduct(id), parseFloat(gelArea))));
                                             }}
                                             options={[
                                                 ...(!allGelProducts.some(p => p.id === gelProductId)
@@ -727,10 +738,54 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                 {t('gel.site.scrotal_note')}
                                             </div>
                                         )}
-                                        <div className="space-y-1">
-                                            <label className="block text-sm font-bold" style={labelStyle}>{t('field.gel_area')}</label>
-                                            <input value={gelArea} onChange={e => setGelArea(e.target.value)} inputMode="decimal" placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)} className="w-full p-3 rounded-xl glass-input outline-none" />
-                                        </div>
+                                        {/* Coverage template → derived application area.
+                                            Hidden for scrotal (area-invariant; see note above). */}
+                                        {GEL_SITE_ORDER[gelSite] !== GelSite.scrotal && (<>
+                                            <CustomSelect
+                                                label={t('field.gel_coverage')}
+                                                value={String(gelCoverage)}
+                                                onChange={(val) => {
+                                                    const idx = parseInt(val, 10) || 0;
+                                                    setGelCoverage(idx);
+                                                    const tpl = GEL_COVERAGE_TEMPLATES[idx];
+                                                    if (tpl && tpl.kind !== 'manual') {
+                                                        setGelArea(String(resolveGelCoverageArea(idx, findGelProduct(gelProductId), parseFloat(gelArea))));
+                                                    }
+                                                }}
+                                                options={GEL_COVERAGE_TEMPLATES.map((tpl, idx) => {
+                                                    const base = t(`gel.coverage.${tpl.key}`);
+                                                    const label = tpl.kind === 'manual'
+                                                        ? base
+                                                        : `${base} (~${Math.round(resolveGelCoverageArea(idx, findGelProduct(gelProductId), 0))} cm²)`;
+                                                    return { value: String(idx), label };
+                                                })}
+                                            />
+                                            {GEL_COVERAGE_TEMPLATES[gelCoverage]?.kind === 'manual' ? (
+                                                <div className="space-y-1">
+                                                    <label className="block text-sm font-bold" style={labelStyle}>{t('field.gel_area')}</label>
+                                                    <input value={gelArea} onChange={e => setGelArea(e.target.value)} inputMode="decimal" placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)} className="w-full p-3 rounded-xl glass-input outline-none" />
+                                                </div>
+                                            ) : (
+                                                <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                    {t('gel.coverage.derived')}: ~{Math.round(resolveGelCoverageArea(gelCoverage, findGelProduct(gelProductId), 0))} cm²
+                                                </div>
+                                            )}
+                                        </>)}
+                                        {/* Co-applied topical product */}
+                                        <CustomSelect
+                                            label={t('field.gel_coapplied')}
+                                            value={String(gelCoApplied)}
+                                            onChange={(val) => setGelCoApplied(parseInt(val, 10) || 0)}
+                                            options={GEL_COAPPLICATION_ORDER.map((k, idx) => ({
+                                                value: String(idx),
+                                                label: t(`gel.coapplied.${k}`),
+                                            }))}
+                                        />
+                                        {gelCoApplied > 0 && (
+                                            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                {t(`gel.coapplied.note.${GEL_COAPPLICATION_ORDER[gelCoApplied] ?? 'none'}`)}
+                                            </div>
+                                        )}
                                         <div className="space-y-1">
                                             <label className="block text-sm font-bold" style={labelStyle}>{t('field.gel_wash')}</label>
                                             <input value={gelWash} onChange={e => setGelWash(e.target.value)} inputMode="decimal" placeholder={t('gel.wash_none')} className="w-full p-3 rounded-xl glass-input outline-none" />
@@ -1085,6 +1140,29 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
                                                                     {ev.weightKG} {t('field.weight_unit')}
                                                                 </span>
+                                                                {ev.route === Route.gel && (() => {
+                                                                    // Surface the gel specifics so a batch can be verified
+                                                                    // before commit (these now materially change the PK).
+                                                                    const gx = ev.extras ?? {};
+                                                                    const prod = allGelProducts.find(p => p.id === gx[ExtraKey.gelProductId]);
+                                                                    const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(gx[ExtraKey.gelSite] ?? 0)));
+                                                                    const parts: string[] = [];
+                                                                    if (prod) parts.push(prod.name || t(prod.nameKey));
+                                                                    parts.push(t(`gel.site.${GEL_SITE_ORDER[siteIdx]}`));
+                                                                    if (GEL_SITE_ORDER[siteIdx] !== GelSite.scrotal) {
+                                                                        const ar = gx[ExtraKey.areaCM2];
+                                                                        if (typeof ar === 'number' && ar > 0) parts.push(`~${Math.round(ar)} cm²`);
+                                                                    }
+                                                                    const co = gx[ExtraKey.gelCoApplied];
+                                                                    if (typeof co === 'number' && co > 0 && co < GEL_COAPPLICATION_ORDER.length) parts.push(t(`gel.coapplied.${GEL_COAPPLICATION_ORDER[co]}`));
+                                                                    const wsh = gx[ExtraKey.gelWashAfterH];
+                                                                    if (typeof wsh === 'number' && wsh > 0) parts.push(`${t('gel.wash_short')} ${wsh}h`);
+                                                                    return (
+                                                                        <span className="basis-full text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                                                                            {parts.join(' · ')}
+                                                                        </span>
+                                                                    );
+                                                                })()}
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); removePreviewEvent(ev.id); }}
                                                                     aria-label={t('btn.delete') || 'Delete'}
