@@ -77,8 +77,18 @@ export function createCalibrationInterpolator(sim: SimulationResult | null, resu
     };
 }
 
-/** Which Bayesian model to use for E2 calibration and CI bands. */
-export type CalibrationModel = 'ekf' | 'ou-kalman';
+/**
+ * Which Bayesian model to use for E2 calibration and CI bands.
+ *
+ * - `ekf`         — online Extended Kalman Filter learning two scaling params.
+ * - `ou-kalman`   — Ornstein–Uhlenbeck dynamic log-ratio calibration (+RTS).
+ * - `hybrid-mipd` — robust Maximum A Posteriori Bayesian individualisation:
+ *                   the population PK model is the prior and the user's OWN labs
+ *                   form the likelihood. Learns amplitude/clearance/absorption
+ *                   with a Student-t robust likelihood, plus an optional bounded
+ *                   Gaussian-process residual correction. See `mipd.ts`.
+ */
+export type CalibrationModel = 'ekf' | 'ou-kalman' | 'hybrid-mipd';
 
 /**
  * Temporal semantics of the personalised curve, orthogonal to {@link CalibrationModel}:

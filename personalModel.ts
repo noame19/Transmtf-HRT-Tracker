@@ -19,6 +19,14 @@ import {
     type CalibrationModel,
     type CalibrationMode,
 } from './calibration';
+import {
+    fitMipd,
+    fitMipdTimeline,
+    makeMipdResolver,
+    mipdPredict,
+    MIPD_DEFAULT_PRIOR,
+    GP_RESIDUAL_DEFAULT,
+} from './mipd';
 
 export interface ResidualAnchor {
     timeH: number;
@@ -588,6 +596,47 @@ export function computeSimulationWithCI(
             const [lo68, hi68] = clampCI(
                 baselinePGmL + c0 * Math.exp(mean - std),
                 baselinePGmL + c0 * Math.exp(mean + std),
+                EKF_CI_MAX_E2
+            );
+            ci68Low[i] = lo68;
+            ci68High[i] = hi68;
+        }
+    } else if (calibrationModel === 'hybrid-mipd') {
+        // Robust MAP-Bayesian individualisation (Hybrid-MIPD): the population PK
+        // model is the prior and the user's OWN labs are the likelihood. Causal
+        // mode resolves a per-lab-prefix timeline of fits (future labs never
+        // rewrite the past); retrospective mode fits once on all labs and applies
+        // it to the whole curve. Each fit carries its own endogenous baseline.
+        const sortedEvents = [...events].sort((a, b) => a.timeH - b.timeH);
+        const mipdTimeline = calibrationMode === 'causal'
+            ? fitMipdTimeline(events, labResults, MIPD_DEFAULT_PRIOR)
+            : null;
+        const finalFit = fitMipd(events, labResults, MIPD_DEFAULT_PRIOR);
+        const resolveMipd = makeMipdResolver(mipdTimeline, finalFit);
+
+        for (let i = 0; i < n; i++) {
+            const timeH = sim.timeH[i];
+            const fit = resolveMipd(timeH);
+            const pred = mipdPredict(sortedEvents, timeH, fit, GP_RESIDUAL_DEFAULT);
+            const baselinePGmL = Math.max(0, fit.baselinePGmL || 0);
+            // Central line = GP-corrected MAP point prediction (the posterior
+            // mode/median), the standard MIPD choice — uncertainty lives in the
+            // bands, not in an upward Jensen shift of the line. This makes the
+            // zero-data curve fall back exactly onto the population curve.
+            const effectiveBase = Math.max(0, pred.e2Drug) * Math.exp(pred.gpMean);
+            const sigmaTotal = Math.sqrt(Math.max(0, pred.varLogParam + pred.varLogResid + pred.varLogGp));
+
+            e2Adjusted[i] = Math.min(baselinePGmL + effectiveBase, EKF_CI_MAX_E2);
+            const [lo95, hi95] = clampCI(
+                baselinePGmL + effectiveBase * Math.exp(-1.96 * sigmaTotal),
+                baselinePGmL + effectiveBase * Math.exp(1.96 * sigmaTotal),
+                EKF_CI_MAX_E2
+            );
+            ci95Low[i] = lo95;
+            ci95High[i] = hi95;
+            const [lo68, hi68] = clampCI(
+                baselinePGmL + effectiveBase * Math.exp(-sigmaTotal),
+                baselinePGmL + effectiveBase * Math.exp(sigmaTotal),
                 EKF_CI_MAX_E2
             );
             ci68Low[i] = lo68;

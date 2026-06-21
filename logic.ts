@@ -73,4 +73,22 @@ export {
     type PersonalSnapshot,
     type EKFDiagnostics,
 } from './personalModel';
+export {
+    fitMipd,
+    fitMipdTimeline,
+    makeMipdResolver,
+    mipdPredict,
+    mipdDrugE2AtTimeSorted,
+    gpResidualPredict,
+    MIPD_DEFAULT_PRIOR,
+    MIPD_PARAM_COUNT,
+    GP_RESIDUAL_DEFAULT,
+    MIPD_CONSTANTS,
+    type MipdPrior,
+    type MipdFit,
+    type MipdSnapshot,
+    type MipdAnchor,
+    type MipdPrediction,
+    type GpResidualConfig,
+} from './mipd';
 export { encryptData, decryptData } from './src/utils/dataEncryption';

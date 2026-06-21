@@ -172,7 +172,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
     const [calibrationModel, setCalibrationModel] = useState<CalibrationModel>(() => {
         const raw = localStorage.getItem(CALIBRATION_MODEL_KEY);
-        return (raw === 'ou-kalman') ? 'ou-kalman' : 'ekf';
+        return (raw === 'ou-kalman' || raw === 'hybrid-mipd') ? raw : 'ekf';
     });
     const [calibrationMode, setCalibrationMode] = useState<CalibrationMode>(() => {
         const raw = localStorage.getItem(CALIBRATION_MODE_KEY);
@@ -328,7 +328,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             if (e.key === 'hrt-calibration-model' && isOtherTabSync) {
                 markExternalUpdate('calibrationModel');
                 const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
-                if (saved === 'ou-kalman' || saved === 'ekf') {
+                if (saved === 'ou-kalman' || saved === 'ekf' || saved === 'hybrid-mipd') {
                     setCalibrationModel(saved);
                 }
             }
@@ -363,7 +363,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 setGelProducts(readCustomGelProducts());
                 markExternalUpdate('calibrationModel');
                 const saved = localStorage.getItem(CALIBRATION_MODEL_KEY);
-                if (saved === 'ou-kalman' || saved === 'ekf') {
+                if (saved === 'ou-kalman' || saved === 'ekf' || saved === 'hybrid-mipd') {
                     setCalibrationModel(saved);
                 }
                 markExternalUpdate('calibrationMode');

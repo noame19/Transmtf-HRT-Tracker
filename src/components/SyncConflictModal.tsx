@@ -47,6 +47,7 @@ const LANG_NAMES: Record<string, string> = {
 const CALIBRATION_NAMES: Record<string, string> = {
   ekf: 'EKF',
   'ou-kalman': 'OU-Kalman',
+  'hybrid-mipd': 'Hybrid-MIPD',
 };
 
 const CALIBRATION_MODE_NAMES: Record<string, string> = {

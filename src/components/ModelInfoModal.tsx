@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { FlaskConical, Pill, BrainCircuit, TrendingUp, X } from 'lucide-react';
+import { FlaskConical, Pill, BrainCircuit, TrendingUp, Sparkles, X } from 'lucide-react';
 
 const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
     const { t } = useTranslation();
@@ -71,6 +71,16 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.ou.title')}</p>
                         </div>
                         <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.ou.body')}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center">
+                                <Sparkles size={14} className="text-teal-500" />
+                            </div>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.mipd.title')}</p>
+                        </div>
+                        <p className="text-xs leading-relaxed pl-9" style={{ color: 'var(--text-secondary)' }}>{t('model.mipd.body')}</p>
                     </div>
                 </div>
 

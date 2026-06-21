@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves, Clock, History } from 'lucide-react';
+import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves, Clock, History, Sparkles } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel, CalibrationMode } from '../../logic';
@@ -330,6 +330,15 @@ const LabView: React.FC<LabViewProps> = ({
             con={t('lab.model_ou_con')}
             selected={calibrationModel === 'ou-kalman'}
             onSelect={() => onSetCalibrationModel('ou-kalman')}
+          />
+          <ModelOption
+            icon={<Sparkles size={14} className={calibrationModel === 'hybrid-mipd' ? 'text-[var(--accent-500)]' : ''} style={calibrationModel !== 'hybrid-mipd' ? { color: 'var(--text-tertiary)' } : undefined} />}
+            label={t('lab.model_mipd_label')}
+            desc={t('lab.model_mipd_desc')}
+            pros={[t('lab.model_mipd_pro1'), t('lab.model_mipd_pro2')]}
+            con={t('lab.model_mipd_con')}
+            selected={calibrationModel === 'hybrid-mipd'}
+            onSelect={() => onSetCalibrationModel('hybrid-mipd')}
           />
         </div>
       </div>

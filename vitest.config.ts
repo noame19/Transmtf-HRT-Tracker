@@ -8,5 +8,11 @@ export default defineConfig({
         environment: 'node',
         include: ['**/*.test.ts'],
         exclude: ['node_modules/**', 'src-tauri/**', 'dist/**'],
+        // The synthetic MIPD benchmark is CPU-heavy; running test files in
+        // parallel let it starve the short-timeout numerical tests in pk.test.ts.
+        // Run files sequentially (deterministic) and give numerical tests a
+        // comfortable timeout cushion for slower CI machines.
+        fileParallelism: false,
+        testTimeout: 15000,
     },
 });
