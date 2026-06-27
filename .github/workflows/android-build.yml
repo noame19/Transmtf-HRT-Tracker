@@ -87,24 +87,15 @@ jobs:
           for GRADLE in $GRADLE_FILES; do
             echo "--- before: $GRADLE ---"
             grep -nE 'compileSdk|targetSdk|minSdk' "$GRADLE" || true
-            sed -i -E 's/(compileSdk[[:space:]]+)[0-9]+/\131/' "$GRADLE"
-            sed -i -E 's/(targetSdk[[:space:]]+)[0-9]+/\131/' "$GRADLE"
-            sed -i -E 's/(minSdk[[:space:]]+)[0-9]+/\124/' "$GRADLE"
+            sed -i -E 's/(compileSdk *= *)[0-9]+/\131/' "$GRADLE"
+            sed -i -E 's/(targetSdk *= *)[0-9]+/\131/' "$GRADLE"
+            sed -i -E 's/(minSdk *= *)[0-9]+/\124/' "$GRADLE"
             echo "--- after: $GRADLE ---"
             grep -nE 'compileSdk|targetSdk|minSdk' "$GRADLE" || true
           done
 
       - name: Build Debug APK
-        run: |
-          set -e
-          GRADLEW=$(find src-tauri/gen/android -maxdepth 3 -type f -name "gradlew" | head -n 1)
-          if [ -z "$GRADLEW" ]; then
-            echo "::error::No gradlew found"
-            exit 1
-          fi
-          DIR=$(dirname "$GRADLEW")
-          echo "Gradle project dir: $DIR"
-          cd "$DIR" && ./gradlew assembleDebug --no-daemon
+        run: cd src-tauri && npx @tauri-apps/cli@2 android build --apk --debug
 
       - name: Locate APK
         id: locate
