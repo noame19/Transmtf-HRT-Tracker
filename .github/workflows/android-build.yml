@@ -74,11 +74,9 @@ jobs:
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
-      - name: Locate and pin compileSdk to 31 in generated project
+      - name: Pin targetSdk to 31 (compileSdk left at init default to satisfy AndroidX)
         run: |
           set -e
-          echo "--- gen/android tree ---"
-          find src-tauri/gen/android -maxdepth 3 -type f -name "build.gradle*" | sort
           GRADLE_FILES=$(find src-tauri/gen/android -maxdepth 3 -type f \( -name "build.gradle" -o -name "build.gradle.kts" \))
           if [ -z "$GRADLE_FILES" ]; then
             echo "::error::No build.gradle found under src-tauri/gen/android"
@@ -87,7 +85,6 @@ jobs:
           for GRADLE in $GRADLE_FILES; do
             echo "--- before: $GRADLE ---"
             grep -nE 'compileSdk|targetSdk|minSdk' "$GRADLE" || true
-            sed -i -E 's/(compileSdk *= *)[0-9]+/\131/' "$GRADLE"
             sed -i -E 's/(targetSdk *= *)[0-9]+/\131/' "$GRADLE"
             sed -i -E 's/(minSdk *= *)[0-9]+/\124/' "$GRADLE"
             echo "--- after: $GRADLE ---"
