@@ -72,7 +72,7 @@ jobs:
         run: npm ci
 
       - name: Generate Android project (idempotent)
-        run: npx @tauri-apps/cli@2 android init --ci src-tauri
+        run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
       - name: Pin compileSdk to 31 in generated project
         run: |
