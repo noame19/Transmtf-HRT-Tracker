@@ -26,7 +26,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "msi", "apk"],
+    "targets": {
+      "app": ["dmg", "app", "msi"],
+      "android": ["apk"]
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
