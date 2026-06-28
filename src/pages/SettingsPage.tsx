@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -258,17 +259,24 @@ const SettingsPage: React.FC = () => {
         });
     };
 
-    const downloadFile = (data: string, filename: string) => {
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
+    const downloadFile = async (data: string, filename: string) => {
+        try {
+            // text 走 base64 编码（btoa + unescape(encodeURIComponent) 是 UTF-8 → base64 的老 trick，
+            // 跨 Android WebView 兼容性最好）
+            const b64 = btoa(unescape(encodeURIComponent(data)));
+            const path = await invoke<string>('save_data_to_download', {
+                subdir: 'HRT Tracker',
+                filename,
+                content_b64: b64,
+            });
+            showDialog('alert', t('drawer.export_saved').replace('{path}', path) || `已保存到 ${path}`);
+        } catch (err) {
+            console.error('Failed to save file:', err);
+            showDialog('alert', t('drawer.export_failed') || '保存失败，请重试');
+        }
     };
 
-    const handleExport = () => {
+    const handleExport = async () => {
         if (events.length === 0 && labResults.length === 0 && gelProducts.length === 0) {
             showDialog('alert', t('drawer.empty_export'));
             return;
@@ -280,7 +288,7 @@ const SettingsPage: React.FC = () => {
             labResults,
             gelProducts,
         };
-        downloadFile(JSON.stringify(exportData, null, 2), `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
+        await downloadFile(JSON.stringify(exportData, null, 2), `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
     };
 
     const handleClearAllEvents = () => {
