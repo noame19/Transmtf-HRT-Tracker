@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
+use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::sync::Mutex as StdMutex;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
@@ -57,6 +59,64 @@ impl LogState {
 
 static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
 
+static LOGCAT_CHILD: Lazy<StdMutex<Option<Child>>> = Lazy::new(|| StdMutex::new(None));
+
+fn stop_logcat() {
+    if let Ok(mut guard) = LOGCAT_CHILD.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn start_logcat(app_tag: &str) {
+    stop_logcat();
+    let child = Command::new("logcat")
+        .args(["-v", "time", "-T", "1", "-s", app_tag])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = child {
+        if let Some(stdout) = child.stdout.take() {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stdout);
+            std::thread::spawn(move || {
+                for line in reader.lines().flatten() {
+                    LOG_STATE.append("logcat", "INFO", &line);
+                }
+                let _ = child.wait();
+            });
+        } else {
+            // 没拿到 stdout，放回 child
+            if let Ok(mut guard) = LOGCAT_CHILD.lock() {
+                *guard = Some(child);
+            }
+        }
+    } else if let Ok(child) = child {
+        if let Ok(mut guard) = LOGCAT_CHILD.lock() {
+            *guard = Some(child);
+        }
+    }
+}
+
+#[tauri::command]
+fn set_debug_mode(app: tauri::AppHandle, enabled: bool) {
+    {
+        let mut flag = LOG_STATE.enabled.lock().unwrap();
+        *flag = enabled;
+    }
+    if enabled {
+        // tauri.conf.json 的 productName 作为 logcat tag 过滤
+        let tag = env!("CARGO_PKG_NAME");
+        start_logcat(tag);
+    } else {
+        stop_logcat();
+        LOG_STATE.clear();
+    }
+    let _ = app; // 保留参数，未来扩展
+}
+
 #[tauri::command]
 fn get_log_count() -> usize {
     LOG_STATE.len()
@@ -70,7 +130,7 @@ fn append_log(level: String, msg: String) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_log_count, append_log])
+        .invoke_handler(tauri::generate_handler![get_log_count, append_log, set_debug_mode])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
