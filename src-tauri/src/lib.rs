@@ -93,11 +93,10 @@ fn start_logcat(app_tag: &str) {
                 *guard = Some(child);
             }
         }
-    } else if let Ok(child) = child {
-        if let Ok(mut guard) = LOGCAT_CHILD.lock() {
-            *guard = Some(child);
-        }
     }
+    // Note: if spawn returned Err (e.g. logcat binary missing on the device),
+    // we silently ignore. The frontend will see get_log_count stay at 0 from
+    // the logcat source and may surface that as an empty log stream.
 }
 
 #[tauri::command]
