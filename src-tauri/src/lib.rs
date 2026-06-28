@@ -4,6 +4,8 @@ use std::sync::Mutex;
 use std::sync::Mutex as StdMutex;
 use once_cell::sync::Lazy;
 use serde::Serialize;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 
 const LOG_BUFFER_CAPACITY: usize = 2000;
 
@@ -192,10 +194,89 @@ fn export_logs_to_download() -> Result<String, String> {
     save_to_downloads_via_jni(text, filename)
 }
 
+#[tauri::command]
+fn save_data_to_download(
+    subdir: String,
+    filename: String,
+    content_b64: String,
+) -> Result<String, String> {
+    let bytes = BASE64
+        .decode(content_b64.as_bytes())
+        .map_err(|e| format!("base64 decode failed: {}", e))?;
+    let content = String::from_utf8(bytes)
+        .map_err(|e| format!("utf8 decode failed: {}", e))?;
+    save_to_downloads_via_jni_generic(subdir, filename, content)
+}
+
+#[cfg(target_os = "android")]
+fn save_to_downloads_via_jni_generic(
+    subdir: String,
+    filename: String,
+    content: String,
+) -> Result<String, String> {
+    use jni::objects::{JObject, JValue};
+    use jni::JavaVM;
+    use ndk_context::android_context;
+
+    let android_ctx = android_context();
+    let vm = unsafe { JavaVM::from_raw(android_ctx.vm().cast()) }
+        .map_err(|e| format!("JavaVM::from_raw failed: {}", e))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|e| format!("attach_current_thread failed: {}", e))?;
+    let jsubdir = env
+        .new_string(&subdir)
+        .map_err(|e| format!("new_string(subdir): {}", e))?;
+    let jfilename = env
+        .new_string(&filename)
+        .map_err(|e| format!("new_string(filename): {}", e))?;
+    let jcontent = env
+        .new_string(&content)
+        .map_err(|e| format!("new_string(content): {}", e))?;
+    let activity = unsafe { JObject::from_raw(android_ctx.context().cast()) };
+    let writer_class = env
+        .find_class("com/smirnovayama/hrttracker/DownloadWriter")
+        .map_err(|e| format!("find_class(DownloadWriter): {}", e))?;
+    let result = env
+        .call_static_method(
+            writer_class,
+            "saveToDownloads",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+            &[
+                JValue::Object(&activity),
+                JValue::Object(&jsubdir),
+                JValue::Object(&jfilename),
+                JValue::Object(&jcontent),
+            ],
+        )
+        .map_err(|e| format!("call_static_method: {}", e))?
+        .l()
+        .map_err(|e| format!("call_static_method.l(): {}", e))?;
+    let jstr = env
+        .get_string((&result).into())
+        .map_err(|e| format!("get_string: {}", e))?;
+    Ok(jstr.into())
+}
+
+#[cfg(not(target_os = "android"))]
+fn save_to_downloads_via_jni_generic(
+    _subdir: String,
+    _filename: String,
+    _content: String,
+) -> Result<String, String> {
+    Err("save_to_downloads_via_jni_generic only available on Android".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_log_count, append_log, set_debug_mode, export_logs_to_download])
+        .invoke_handler(tauri::generate_handler![
+            get_log_count,
+            append_log,
+            set_debug_mode,
+            export_logs_to_download,
+            save_data_to_download
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
