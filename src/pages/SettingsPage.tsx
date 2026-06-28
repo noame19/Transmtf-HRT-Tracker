@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,6 +19,8 @@ import {
     Palette,
     Moon,
     Sun,
+    Bug,
+    FileDown,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -59,6 +61,51 @@ const readExtraSyncFields = () => {
 };
 
 const SettingsPage: React.FC = () => {
+    const [debugMode, setDebugMode] = useState<boolean>(
+        () => localStorage.getItem('hrt-debug-mode') === '1'
+    );
+    const [logCount, setLogCount] = useState<number>(0);
+    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+
+    useEffect(() => {
+        if (!isTauri || !debugMode) return;
+        const id = setInterval(async () => {
+            try {
+                const invoke = window.__TAURI_INTERNALS__?.invoke;
+                if (!invoke) return;
+                const n = await invoke('get_log_count');
+                setLogCount(typeof n === 'number' ? n : 0);
+            } catch { /* ignore */ }
+        }, 2000);
+        return () => clearInterval(id);
+    }, [debugMode, isTauri]);
+
+    const handleToggleDebug = async (enabled: boolean) => {
+        setDebugMode(enabled);
+        localStorage.setItem('hrt-debug-mode', enabled ? '1' : '0');
+        if (isTauri) {
+            const invoke = window.__TAURI_INTERNALS__?.invoke;
+            if (invoke) {
+                try { await invoke('set_debug_mode', { enabled }); } catch { /* ignore */ }
+            }
+        }
+    };
+
+    const handleExportLogs = async () => {
+        if (!isTauri) {
+            showDialog('alert', t('settings.debug.web_unsupported') || 'Log export is only available in the Android APK.');
+            return;
+        }
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (!invoke) return;
+        try {
+            const path = await invoke('export_logs_to_download');
+            showDialog('alert', `${t('settings.debug.exported_prefix') || 'Exported to'}: ${path}`);
+        } catch (err) {
+            showDialog('alert', `${err}`);
+        }
+    };
+
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
     const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -396,6 +443,43 @@ const SettingsPage: React.FC = () => {
                             <div>
                                 <p className="text-sm font-bold">{t('drawer.clear')}</p>
                                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.clear_confirm')}</p>
+                            </div>
+                        </button>
+                    </div>
+                </section>
+
+                {/* Debug Section */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.debug') || 'Debug'}
+                    </h2>
+                    <div className="overflow-hidden rounded-2xl glass-card divide-y divide-[var(--border-secondary)]">
+                        <div className="flex w-full items-center gap-3 px-4 py-4">
+                            <Bug className="text-amber-500" size={20} />
+                            <div className="flex-1">
+                                <p className="text-sm font-bold">{t('settings.debug.title') || 'Debug mode'}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('settings.debug.desc') || 'Capture Rust + JS console + logcat; export to Download.'}
+                                </p>
+                            </div>
+                            <Toggle checked={debugMode} onChange={handleToggleDebug} />
+                        </div>
+                        <button
+                            onClick={handleExportLogs}
+                            disabled={!debugMode || logCount === 0}
+                            className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
+                                debugMode && logCount > 0 ? 'btn-press-glass' : 'cursor-not-allowed opacity-60'
+                            }`}
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => { if (debugMode && logCount > 0) e.currentTarget.style.background = 'var(--bg-card-hover)'; }}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <FileDown className="text-emerald-500" size={20} />
+                            <div className="flex-1">
+                                <p className="text-sm font-bold">{t('settings.debug.export') || 'Export logs to Download'}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {(t('settings.debug.count_label') || '已捕获')} {logCount} {(t('settings.debug.count_unit') || '行')}
+                                </p>
                             </div>
                         </button>
                     </div>
