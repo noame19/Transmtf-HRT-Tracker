@@ -62,10 +62,15 @@ fn get_log_count() -> usize {
     LOG_STATE.len()
 }
 
+#[tauri::command]
+fn append_log(level: String, msg: String) {
+    LOG_STATE.append("js", &level, &msg);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_log_count])
+        .invoke_handler(tauri::generate_handler![get_log_count, append_log])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
