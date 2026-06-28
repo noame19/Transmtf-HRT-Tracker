@@ -74,6 +74,8 @@ export const TRANSLATIONS_BASE = {
         "drawer.empty_export": "当前没有可导出的剂量记录。",
         "drawer.import_error": "导入失败，请确认文件内容有效。",
         "drawer.import_success": "导入成功，已更新剂量记录。",
+        "drawer.export_saved": "已保存到 {path}",
+        "drawer.export_failed": "保存失败，请重试",
         "drawer.close": "关闭侧边栏",
         "drawer.qr": "二维码导入 / 导出",
         "drawer.qr_hint": "通过二维码分享或恢复数据。",
@@ -544,6 +546,7 @@ export const TRANSLATIONS_BASE = {
         "share.download": "下载图片",
         "share.noData": "暂无数据可导出",
         "share.error": "生成图片失败，请重试。",
+        "share.savedTo": "已保存到 {path}",
 
         // Common
         "common.loading": "加载中...",
@@ -829,6 +832,8 @@ export const TRANSLATIONS_BASE = {
         "drawer.empty_export": "There are no doses to export yet.",
         "drawer.import_error": "Import failed. Please check that the file is valid.",
         "drawer.import_success": "Imported doses successfully.",
+        "drawer.export_saved": "Saved to {path}",
+        "drawer.export_failed": "Save failed. Please retry.",
         "drawer.close": "Close Panel",
         "drawer.qr": "QR Import / Export",
         "drawer.qr_hint": "Share or restore data via QR code.",
@@ -1299,6 +1304,7 @@ export const TRANSLATIONS_BASE = {
         "share.download": "Download Image",
         "share.noData": "No data to export",
         "share.error": "Failed to generate image. Please try again.",
+        "share.savedTo": "Saved to {path}",
 
         // Common
         "common.loading": "Loading...",
@@ -1564,6 +1570,8 @@ export const TRANSLATIONS = {
         "drawer.empty_export": "目前沒有可匯出的劑量紀錄。",
         "drawer.import_error": "匯入失敗，請確認檔案內容是否正確。",
         "drawer.import_success": "匯入成功，已更新劑量紀錄。",
+        "drawer.export_saved": "已儲存到 {path}",
+        "drawer.export_failed": "儲存失敗，請重試",
         "drawer.close": "關閉選單",
         "drawer.qr": "QR Code 匯入／匯出",
         "drawer.qr_hint": "使用 QR Code 分享或還原資料。",
@@ -1940,6 +1948,7 @@ export const TRANSLATIONS = {
         "share.download": "下載圖片",
         "share.noData": "暫無資料可匯出",
         "share.error": "生成圖片失敗，請重試。",
+        "share.savedTo": "已儲存到 {path}",
     },
 
     en: {
@@ -1996,6 +2005,8 @@ export const TRANSLATIONS = {
         "drawer.empty_export": "現在、エクスポートできる用量記録はありません。",
         "drawer.import_error": "インポートに失敗しました。ファイル内容が有効か確認してください。",
         "drawer.import_success": "インポートに成功しました。用量記録を更新しました。",
+        "drawer.export_saved": "{path} に保存しました",
+        "drawer.export_failed": "保存に失敗しました。再試行してください",
         "drawer.close": "サイドバーを閉じる",
         "drawer.qr": "QRコード入出力",
         "drawer.qr_hint": "QRコードで共有や復元ができます。",
@@ -2289,5 +2300,6 @@ export const TRANSLATIONS = {
         "share.download": "画像をダウンロード",
         "share.noData": "エクスポートするデータがありません",
         "share.error": "画像の生成に失敗しました。もう一度お試しください。",
+        "share.savedTo": "{path} に保存しました",
     },
 } as const;
