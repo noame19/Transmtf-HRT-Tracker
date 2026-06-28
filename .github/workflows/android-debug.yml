@@ -80,6 +80,17 @@ jobs:
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
+      - name: Copy frontend dist into Android assets/public
+        run: |
+          set -e
+          ASSETS_DIR="src-tauri/gen/android/app/src/main/assets"
+          mkdir -p "$ASSETS_DIR/public"
+          cp -r dist/. "$ASSETS_DIR/public/"
+          echo "--- assets/public contents ---"
+          ls -la "$ASSETS_DIR/public"
+          echo "--- assets/public/assets (subdir) ---"
+          ls -la "$ASSETS_DIR/public/assets" 2>/dev/null || true
+
       - name: Pin targetSdk to 31 (compileSdk left at init default to satisfy AndroidX)
         run: |
           set -e
