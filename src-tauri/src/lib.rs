@@ -80,24 +80,9 @@ fn save_to_downloads_via_jni(content: String, filename: String) -> Result<String
         .new_string(&filename)
         .map_err(|e| format!("new_string(filename): {}", e))?;
     let activity = unsafe { JObject::from_raw(android_ctx.context().cast()) };
-    let classloader = env
-        .call_method(&activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
-        .map_err(|e| format!("getClassLoader: {}", e))?
-        .l()
-        .map_err(|e| format!("getClassLoader.l(): {}", e))?;
-    let class_name = env
-        .new_string("com/smirnovayama/hrttracker/DownloadWriter")
-        .map_err(|e| format!("new_string(class): {}", e))?;
     let writer_class = env
-        .call_method(
-            classloader,
-            "loadClass",
-            "(Ljava/lang/String;)Ljava/lang/Class;",
-            &[JValue::Object(&class_name)],
-        )
-        .map_err(|e| format!("loadClass: {}", e))?
-        .l()
-        .map_err(|e| format!("loadClass.l(): {}", e))?;
+        .find_class("com/smirnovayama/hrttracker/DownloadWriter")
+        .map_err(|e| format!("find_class(DownloadWriter): {}", e))?;
     let result = env
         .call_static_method(
             writer_class,
