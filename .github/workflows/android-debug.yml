@@ -71,11 +71,11 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build frontend (Vite → dist/)
+      - name: Build frontend (Vite to dist)
         run: npm run build
 
       - name: Verify dist/index.html exists
-        run: ls -la dist/index.html && echo "OK: dist/index.html present"
+        run: ls -la dist/index.html && echo 'OK dist/index.html present'
 
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
