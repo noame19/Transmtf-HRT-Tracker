@@ -80,6 +80,32 @@ jobs:
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
+      - name: Inject DownloadWriter.kt into generated Android project
+        run: |
+          set -e
+          KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
+          mkdir -p "$KOTLIN_DIR"
+          cp src-tauri/scripts/DownloadWriter.kt "$KOTLIN_DIR/"
+          echo "--- DownloadWriter.kt injected ---"
+          ls -la "$KOTLIN_DIR/DownloadWriter.kt"
+
+      - name: Patch AndroidManifest.xml with WRITE_EXTERNAL_STORAGE (maxSdkVersion=28)
+        run: |
+          set -e
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "::error::AndroidManifest.xml not found"
+            exit 1
+          fi
+          if grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
+            echo "--- already patched ---"
+            cat "$MANIFEST"
+          else
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n</manifest>|' "$MANIFEST"
+            echo "--- patched manifest ---"
+            cat "$MANIFEST"
+          fi
+
       - name: Copy frontend dist into Android assets/public
         run: |
           set -e
