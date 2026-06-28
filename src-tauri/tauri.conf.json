@@ -5,7 +5,9 @@
   "identifier": "com.smirnovayama.hrttracker",
   "build": {
     "beforeDevCommand": "npm run dev -- --host",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
