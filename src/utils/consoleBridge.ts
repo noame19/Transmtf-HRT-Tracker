@@ -2,6 +2,13 @@
 //
 // Module side-effect: wraps console.log/info/warn/error/debug on first import.
 // OFF state (localStorage 'hrt-debug-mode' != '1') is a complete no-op.
+//
+// Implementation notes:
+// - Installed flag is stored on globalThis (key '__hrt_console_bridge_installed__')
+//   to survive multiple module instances (HMR, dual imports from different paths).
+// - The original console.* methods are captured at install time. If a third-party
+//   library later overwrites console.log, the bridge's captured `orig.log` will
+//   still call the original — this is intentional for debug capture fidelity.
 
 type InvokeFn = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -32,11 +39,17 @@ function sendToBackend(level: string, args: unknown[]): void {
     Promise.resolve(invoke('append_log', { level, msg })).catch(() => { /* swallow */ });
 }
 
-let installed = false;
+const INSTALLED_KEY = '__hrt_console_bridge_installed__';
+function isInstalled(): boolean {
+    return (globalThis as Record<string, unknown>)[INSTALLED_KEY] === true;
+}
+function markInstalled(): void {
+    (globalThis as Record<string, unknown>)[INSTALLED_KEY] = true;
+}
 
 export function installConsoleBridge(): void {
-    if (installed) return;
-    installed = true;
+    if (isInstalled()) return;
+    markInstalled();
     const orig = {
         log: console.log.bind(console),
         info: console.info.bind(console),
