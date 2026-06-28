@@ -8,6 +8,11 @@ export default defineConfig({
         environment: 'node',
         include: ['**/*.test.ts'],
         exclude: ['node_modules/**', 'src-tauri/**', 'dist/**'],
+        // Tests that need browser globals (window, localStorage) run under
+        // happy-dom; everything else stays in node for speed.
+        environmentMatchGlobs: [
+            ['src/utils/consoleBridge.test.ts', 'happy-dom'],
+        ],
         // The synthetic MIPD benchmark is CPU-heavy; running test files in
         // parallel let it starve the short-timeout numerical tests in pk.test.ts.
         // Run files sequentially (deterministic) and give numerical tests a

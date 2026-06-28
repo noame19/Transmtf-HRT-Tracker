@@ -6,6 +6,7 @@ import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { SecurityPasswordProvider } from './src/contexts/SecurityPasswordContext';
 import { CloudSyncProvider } from './src/contexts/CloudSyncContext';
+import './src/utils/consoleBridge';
 
 const container = document.getElementById('root');
 if (container) {
