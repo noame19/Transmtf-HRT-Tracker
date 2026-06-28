@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251205.0",
+    "@tauri-apps/api": "^2",
     "@tauri-apps/cli": "^2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
