@@ -1,5 +1,6 @@
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { toPng } from 'html-to-image';
+import { invoke } from '@tauri-apps/api/core';
 import { X, Download, Loader2, Camera, Activity, Info, Calendar } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -81,6 +82,7 @@ const ShareImageModal: React.FC<Props> = ({
     const { isDark, colors } = useTheme();
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState('');
+    const [savedPath, setSavedPath] = useState('');
     const printRef = useRef<HTMLDivElement>(null);
     const dialogRef = useFocusTrap(isOpen, onClose);
 
@@ -291,6 +293,7 @@ const ShareImageModal: React.FC<Props> = ({
         if (!printRef.current) return;
         setGenerating(true);
         setError('');
+        setSavedPath('');
         try {
             const dataUrl = await toPng(printRef.current, {
                 cacheBust: true,
@@ -303,10 +306,16 @@ const ShareImageModal: React.FC<Props> = ({
                 imagePlaceholder:
                     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
             });
-            const link = document.createElement('a');
-            link.download = `hrt-share-${now.toISOString().slice(0, 10)}.png`;
-            link.href = dataUrl;
-            link.click();
+            // dataUrl 形如 "data:image/png;base64,XXXX" → 去掉前缀取 base64 部分
+            const commaIdx = dataUrl.indexOf(',');
+            const b64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+            const filename = `hrt-share-${now.toISOString().slice(0, 10)}.png`;
+            const path = await invoke<string>('save_data_to_download', {
+                subdir: 'HRT Tracker',
+                filename,
+                content_b64: b64,
+            });
+            setSavedPath(path);
         } catch (err) {
             console.error('Failed to generate image:', err);
             setError(t('share.error') || 'Failed to generate image. Please try again.');
@@ -427,6 +436,12 @@ const ShareImageModal: React.FC<Props> = ({
 
                 {error && (
                     <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+                )}
+
+                {savedPath && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {t('share.savedTo', { path: savedPath })}
+                    </div>
                 )}
 
                 <button
