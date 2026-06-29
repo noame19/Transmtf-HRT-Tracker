@@ -82,9 +82,32 @@ fn save_to_downloads_via_jni(content: String, filename: String) -> Result<String
         .new_string(&filename)
         .map_err(|e| format!("new_string(filename): {}", e))?;
     let activity = unsafe { JObject::from_raw(android_ctx.context().cast()) };
+    // ClassLoader dance: env.find_class only sees the system classloader on Android;
+    // app classes (com.smirnovayama.hrttracker.DownloadWriter) must be loaded via the
+    // activity's own classloader.
+    let class_loader = env
+        .call_method(
+            &activity,
+            "getClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )
+        .map_err(|e| format!("call_method(getClassLoader): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(getClassLoader).l(): {}", e))?;
+    let jname = env
+        .new_string("com/smirnovayama/hrttracker/DownloadWriter")
+        .map_err(|e| format!("new_string(class name): {}", e))?;
     let writer_class = env
-        .find_class("com/smirnovayama/hrttracker/DownloadWriter")
-        .map_err(|e| format!("find_class(DownloadWriter): {}", e))?;
+        .call_method(
+            class_loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&jname)],
+        )
+        .map_err(|e| format!("call_method(loadClass): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
     let result = env
         .call_static_method(
             writer_class,
@@ -234,9 +257,30 @@ fn save_to_downloads_via_jni_generic(
         .new_string(&content)
         .map_err(|e| format!("new_string(content): {}", e))?;
     let activity = unsafe { JObject::from_raw(android_ctx.context().cast()) };
+    // ClassLoader dance: see save_to_downloads_via_jni for rationale
+    let class_loader = env
+        .call_method(
+            &activity,
+            "getClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )
+        .map_err(|e| format!("call_method(getClassLoader): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(getClassLoader).l(): {}", e))?;
+    let jname = env
+        .new_string("com/smirnovayama/hrttracker/DownloadWriter")
+        .map_err(|e| format!("new_string(class name): {}", e))?;
     let writer_class = env
-        .find_class("com/smirnovayama/hrttracker/DownloadWriter")
-        .map_err(|e| format!("find_class(DownloadWriter): {}", e))?;
+        .call_method(
+            class_loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&jname)],
+        )
+        .map_err(|e| format!("call_method(loadClass): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
     let result = env
         .call_static_method(
             writer_class,

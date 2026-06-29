@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { Settings, Plus, Activity, Calendar, FlaskConical, User } from 'lucide-react';
+import { Settings, Plus, Activity, Calendar, FlaskConical } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
-import { useAuth } from '../contexts/AuthContext';
-import { API_ORIGIN } from '../api/config';
 import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { DoseEvent, LabResult } from '../../logic';
@@ -13,14 +11,13 @@ import DoseFormModal from './DoseFormModal';
 import BatchDoseModal from './BatchDoseModal';
 import LabResultModal from './LabResultModal';
 
-type ViewKey = 'home' | 'history' | 'lab' | 'settings' | 'profile';
+type ViewKey = 'home' | 'history' | 'lab' | 'settings';
 
 const MainLayout: React.FC = () => {
     const { t, lang } = useTranslation();
     const { showDialog } = useDialog();
     const navigate = useNavigate();
     const location = useLocation();
-    const { isAuthenticated, user } = useAuth();
     const { events, setEvents, labResults, setLabResults, currentTime } = useAppData();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -29,8 +26,6 @@ const MainLayout: React.FC = () => {
     const [editingLab, setEditingLab] = useState<LabResult | null>(null);
     const [isBatchOpen, setIsBatchOpen] = useState(false);
 
-    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-    const [avatarError, setAvatarError] = useState(false);
     const mainScrollRef = useRef<HTMLDivElement>(null);
 
     const currentView = useMemo<ViewKey | null>(() => {
@@ -39,7 +34,6 @@ const MainLayout: React.FC = () => {
         if (pathname.startsWith('/history')) return 'history';
         if (pathname.startsWith('/lab')) return 'lab';
         if (pathname.startsWith('/settings')) return 'settings';
-        if (pathname === '/profile' || pathname === '/account' || pathname.startsWith('/account/')) return 'profile';
         return null;
     }, [location.pathname]);
 
@@ -49,7 +43,6 @@ const MainLayout: React.FC = () => {
             history: '/history',
             lab: '/lab',
             settings: '/settings',
-            profile: '/profile',
         };
         navigate(routes[view]);
     };
@@ -85,27 +78,11 @@ const MainLayout: React.FC = () => {
         };
     }, [location.pathname]);
 
-    useEffect(() => {
-        if (isAuthenticated && user) {
-            // Prefer OIDC avatar URL, fallback to uploaded avatar
-            if (user.avatarUrl) {
-                setAvatarUrl(user.avatarUrl);
-            } else if (user.username) {
-                setAvatarUrl(`${API_ORIGIN}/api/avatars/${user.username}`);
-            }
-            setAvatarError(false);
-        } else {
-            setAvatarUrl(null);
-            setAvatarError(false);
-        }
-    }, [isAuthenticated, user]);
-
     const navItems = useMemo(() => [
         { id: 'home' as ViewKey, label: t('nav.home'), icon: Activity },
         { id: 'history' as ViewKey, label: t('nav.history'), icon: Calendar },
         { id: 'lab' as ViewKey, label: t('nav.lab'), icon: FlaskConical },
         { id: 'settings' as ViewKey, label: t('nav.settings'), icon: Settings },
-        { id: 'profile' as ViewKey, label: t('nav.account') || 'Profile', icon: User },
     ], [t]);
 
     const handleAddEvent = () => { setEditingEvent(null); setIsFormOpen(true); };
@@ -146,7 +123,7 @@ const MainLayout: React.FC = () => {
                         style={{ borderColor: 'var(--border-primary)' }}>
                         <img src="/favicon.ico" alt="logo" className="h-full w-full object-cover" />
                     </div>
-                    <p className="text-sm font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Transmtf HRT Tracker</p>
+                    <p className="text-sm font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>HRT Tracker</p>
                 </div>
 
                 <nav aria-label={t('nav.aria_primary')} className="flex items-center gap-1">
@@ -189,23 +166,6 @@ const MainLayout: React.FC = () => {
                         <Plus size={15} />
                         <span>{t('btn.add')}</span>
                     </button>
-                    <button
-                        onClick={() => navigate('/profile')}
-                        aria-label={t('nav.account') || 'Profile'}
-                        className="h-9 w-9 rounded-full border-2 overflow-hidden transition"
-                        style={{ borderColor: 'var(--border-primary)' }}
-                        onMouseEnter={(e) => e.currentTarget.style.borderColor = `var(--accent-400)`}
-                        onMouseLeave={(e) => e.currentTarget.style.borderColor = `var(--border-primary)`}
-                    >
-                        {isAuthenticated && avatarUrl && !avatarError ? (
-                            <img src={avatarUrl} alt="" aria-hidden="true" className="h-full w-full object-cover" onError={() => setAvatarError(true)} />
-                        ) : (
-                            <div className="flex h-full w-full items-center justify-center"
-                                style={{ background: 'var(--bg-card-hover)' }}>
-                                <User size={17} style={{ color: 'var(--text-tertiary)' }} aria-hidden="true" />
-                            </div>
-                        )}
-                    </button>
                 </div>
             </header>
 
@@ -242,7 +202,7 @@ const MainLayout: React.FC = () => {
                         boxShadow: 'var(--shadow-md)',
                     }}
                 >
-                    <div className="grid grid-cols-5">
+                    <div className="grid grid-cols-4">
                         {navItems.map(({ id, label, icon: Icon }) => {
                             const active = currentView === id;
                             return (

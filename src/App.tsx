@@ -8,7 +8,6 @@ import { useCloudSync } from './contexts/CloudSyncContext';
 import MainLayout from './components/MainLayout';
 import SecurityPasswordGate from './components/SecurityPasswordGate';
 import OIDCBindingGate from './components/OIDCBindingGate';
-import AnnouncementModal from './components/AnnouncementModal';
 import SyncConflictModal from './components/SyncConflictModal';
 import OverviewPage from './pages/OverviewPage';
 import HistoryPage from './pages/HistoryPage';
@@ -56,7 +55,6 @@ const App = () => (
             <AppDataProvider>
                 <SecurityPasswordGate />
                 <OIDCBindingGate />
-                <AnnouncementModal />
                 <SyncConflictOverlay />
                 <Routes>
                     {/* All routes use MainLayout for unified layout */}

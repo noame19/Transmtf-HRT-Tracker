@@ -316,9 +316,11 @@ const ShareImageModal: React.FC<Props> = ({
                 content_b64: b64,
             });
             setSavedPath(path);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to generate image:', err);
-            setError(t('share.error') || 'Failed to generate image. Please try again.');
+            // 透出真实错误（来自 Rust → JNI → Kotlin 链路），下次失败能直接定位根因
+            const msg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err)) || 'unknown';
+            setError(`${t('share.error') || 'Failed to generate image'}: ${msg}`);
         } finally {
             setGenerating(false);
         }

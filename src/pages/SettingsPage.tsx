@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppData } from '../contexts/AppDataContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { API_ORIGIN } from '../api/config';
 import {
     Languages,
     Upload,
@@ -22,6 +24,9 @@ import {
     Sun,
     Bug,
     FileDown,
+    User,
+    ChevronRight,
+    Send,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -37,6 +42,7 @@ import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
 import StatisticsModal from '../components/StatisticsModal';
+import AnnouncementModal from '../components/AnnouncementModal';
 import ThemePicker from '../components/ui/ThemePicker';
 import Toggle from '../components/ui/Toggle';
 import type { Lang } from '../i18n/translations';
@@ -109,15 +115,17 @@ const SettingsPage: React.FC = () => {
 
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
-    const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+    const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
     const { isDark, setIsDark } = useTheme();
+    const navigate = useNavigate();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isPasswordInputOpen, setIsPasswordInputOpen] = useState(false);
     const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
     const [isModelInfoOpen, setIsModelInfoOpen] = useState(false);
+    const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
     const [pendingImportText, setPendingImportText] = useState<string | null>(null);
 
     const languageOptions = useMemo(() => ([
@@ -270,9 +278,11 @@ const SettingsPage: React.FC = () => {
                 content_b64: b64,
             });
             showDialog('alert', t('drawer.export_saved').replace('{path}', path) || `已保存到 ${path}`);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to save file:', err);
-            showDialog('alert', t('drawer.export_failed') || '保存失败，请重试');
+            // 透出真实错误（来自 Rust → JNI → Kotlin 链路），下次失败能直接定位根因
+            const msg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err)) || 'unknown';
+            showDialog('alert', `${t('drawer.export_failed')}: ${msg}`);
         }
     };
 
@@ -456,6 +466,49 @@ const SettingsPage: React.FC = () => {
                     </div>
                 </section>
 
+                {/* Account Section */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.account') || 'Account'}
+                    </h2>
+                    <div className="overflow-hidden rounded-2xl glass-card">
+                        <button
+                            onClick={() => navigate('/profile')}
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <div className="h-12 w-12 rounded-full border-2 overflow-hidden flex-shrink-0"
+                                style={{ borderColor: 'var(--border-primary)' }}>
+                                {isAuthenticated && user?.avatarUrl ? (
+                                    <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                                ) : isAuthenticated && user?.username ? (
+                                    <img src={`${API_ORIGIN}/api/avatars/${user.username}`} alt="" className="h-full w-full object-cover" />
+                                ) : (
+                                    <div className="flex h-full w-full items-center justify-center"
+                                        style={{ background: 'var(--bg-card-hover)' }}>
+                                        <User size={22} style={{ color: 'var(--text-tertiary)' }} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold truncate">
+                                    {isAuthenticated
+                                        ? (user?.username || t('account.title') || 'Profile')
+                                        : (t('account.notLoggedIn') || 'Not logged in')}
+                                </p>
+                                <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
+                                    {isAuthenticated
+                                        ? (t('settings.account.manage') || 'Manage account, devices & sync')
+                                        : (t('auth.loginPrompt') || 'Login to use cloud sync')}
+                                </p>
+                            </div>
+                            <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
+                        </button>
+                    </div>
+                </section>
+
                 {/* Debug Section */}
                 <section className="space-y-2">
                     <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
@@ -576,6 +629,22 @@ const SettingsPage: React.FC = () => {
                                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.disclaimer_desc')}</p>
                             </div>
                         </button>
+
+                        <button
+                            onClick={() => setIsAnnouncementOpen(true)}
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <Send className="text-sky-500" size={20} />
+                            <div>
+                                <p className="text-sm font-bold">{t('drawer.community') || 'Telegram Community'}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('drawer.community_desc') || 'Join notification channel & discussion group'}
+                                </p>
+                            </div>
+                        </button>
                     </div>
                 </section>
 
@@ -609,6 +678,11 @@ const SettingsPage: React.FC = () => {
             <StatisticsModal
                 isOpen={isStatisticsOpen}
                 onClose={() => setIsStatisticsOpen(false)}
+            />
+
+            <AnnouncementModal
+                isOpen={isAnnouncementOpen}
+                onClose={() => setIsAnnouncementOpen(false)}
             />
         </div>
     );
