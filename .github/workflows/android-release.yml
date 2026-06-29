@@ -164,9 +164,58 @@ jobs:
           echo "APK at: $APK"
           ls -la "$APK"
 
-      - name: Upload APK artifact
+      - name: Generate release keystore (project-local, not committed)
+        run: |
+          set -e
+          KEYSTORE_DIR="$HOME/.android"
+          mkdir -p "$KEYSTORE_DIR"
+          KEYSTORE="$KEYSTORE_DIR/release.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -keypass android \
+              -alias hrt-tracker \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=HRT Tracker, O=Transmtf, C=CN"
+            echo "--- keystore generated ---"
+          else
+            echo "--- keystore already exists, reusing ---"
+          fi
+          ls -la "$KEYSTORE"
+
+      - name: Sign and align release APK
+        run: |
+          set -e
+          UNSIGNED_APK="${{ steps.locate.outputs.apk_path }}"
+          KEYSTORE="$HOME/.android/release.keystore"
+          KEY_ALIAS="hrt-tracker"
+          STORE_PASS="android"
+          KEY_PASS="android"
+          BUILD_TOOLS_DIR=$(ls -d /usr/local/lib/android/sdk/build-tools/* | sort -V | tail -n 1)
+          ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          echo "--- using build-tools: $BUILD_TOOLS_DIR ---"
+          ALIGNED_APK="${UNSIGNED_APK%.apk}-aligned.apk"
+          SIGNED_APK="${UNSIGNED_APK%.apk}-signed.apk"
+          "$ZIPALIGN" -v -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$STORE_PASS" \
+            --key-pass "pass:$KEY_PASS" \
+            --out "$SIGNED_APK" \
+            "$ALIGNED_APK"
+          "$APKSIGNER" verify --verbose "$SIGNED_APK"
+          echo "signed_apk_path=$SIGNED_APK" >> $GITHUB_OUTPUT
+          ls -la "$SIGNED_APK"
+        id: sign
+
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-release-apk
-          path: ${{ steps.locate.outputs.apk_path }}
+          path: ${{ steps.sign.outputs.signed_apk_path }}
           if-no-files-found: error
