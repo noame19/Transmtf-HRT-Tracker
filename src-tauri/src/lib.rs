@@ -98,7 +98,7 @@ fn save_to_downloads_via_jni(content: String, filename: String) -> Result<String
     let jname = env
         .new_string("com/smirnovayama/hrttracker/DownloadWriter")
         .map_err(|e| format!("new_string(class name): {}", e))?;
-    let writer_class = env
+    let writer_class: jni::objects::JClass<'_> = env
         .call_method(
             class_loader,
             "loadClass",
@@ -107,7 +107,8 @@ fn save_to_downloads_via_jni(content: String, filename: String) -> Result<String
         )
         .map_err(|e| format!("call_method(loadClass): {}", e))?
         .l()
-        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?
+        .into();
     let result = env
         .call_static_method(
             writer_class,
@@ -271,7 +272,7 @@ fn save_to_downloads_via_jni_generic(
     let jname = env
         .new_string("com/smirnovayama/hrttracker/DownloadWriter")
         .map_err(|e| format!("new_string(class name): {}", e))?;
-    let writer_class = env
+    let writer_class: jni::objects::JClass<'_> = env
         .call_method(
             class_loader,
             "loadClass",
@@ -280,7 +281,8 @@ fn save_to_downloads_via_jni_generic(
         )
         .map_err(|e| format!("call_method(loadClass): {}", e))?
         .l()
-        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?
+        .into();
     let result = env
         .call_static_method(
             writer_class,
