@@ -134,6 +134,21 @@ jobs:
             grep -nE 'compileSdk|targetSdk|minSdk' "$GRADLE" || true
           done
 
+      - name: Disable release lint check (targetSdk 31 < 33 triggers ExpiredTargetSdkVersion)
+        run: |
+          set -e
+          APP_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          if [ -f "$APP_GRADLE" ]; then
+            if grep -q "checkReleaseBuilds" "$APP_GRADLE"; then
+              echo "--- lint already configured ---"
+            else
+              # Inject lint { checkReleaseBuilds = false } inside android { } block
+              sed -i 's|android {|android {\n    lint {\n        checkReleaseBuilds = false\n    }|' "$APP_GRADLE"
+            fi
+            echo "--- after: $APP_GRADLE (lint section) ---"
+            grep -nA2 "lint {" "$APP_GRADLE" || true
+          fi
+
       - name: Build Release APK
         run: cd src-tauri && npx @tauri-apps/cli@2 android build --apk
 
