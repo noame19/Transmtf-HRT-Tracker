@@ -313,7 +313,7 @@ const ShareImageModal: React.FC<Props> = ({
             const path = await invoke<string>('save_data_to_download', {
                 subdir: 'HRT Tracker',
                 filename,
-                content_b64: b64,
+                contentB64: b64,
             });
             setSavedPath(path);
         } catch (err: any) {

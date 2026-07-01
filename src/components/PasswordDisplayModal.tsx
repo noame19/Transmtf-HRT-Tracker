@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
+import { invoke } from '@tauri-apps/api/core';
 import { Copy } from 'lucide-react';
 
 const PasswordDisplayModal = ({ isOpen, onClose, password }: { isOpen: boolean, onClose: () => void, password: string }) => {
     const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(password);
+    const handleCopy = async () => {
+        try {
+            await invoke('clipboard_write_text', { text: password });
+        } catch (err) {
+            console.error('clipboard write failed:', err);
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };

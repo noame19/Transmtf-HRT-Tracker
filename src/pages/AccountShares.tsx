@@ -8,6 +8,7 @@ import apiClient from '../api/client';
 import type { Share, ShareType } from '../api/types';
 import { Share2, ArrowLeft, Plus, Copy, Trash2, Lock, Unlock, Eye, Clock, Zap } from 'lucide-react';
 import { getSecurityPassword } from '../utils/crypto';
+import { invoke } from '@tauri-apps/api/core';
 import PINInput from '../components/PINInput';
 
 const MAX_ATTEMPT_OPTIONS = [0, 5, 10, 20, 50];
@@ -107,7 +108,9 @@ const AccountShares: React.FC = () => {
         ? `${shareTypeText}\n${t('shares.shareCreatedWithPassword') || 'Share created! URL copied to clipboard. Password:'} ${sharePassword}\n\n${shareUrl}`
         : `${shareTypeText}\n${t('shares.shareCreated') || 'Share created! URL copied to clipboard:'}\n\n${shareUrl}`;
 
-      navigator.clipboard.writeText(shareUrl);
+      invoke('clipboard_write_text', { text: shareUrl }).catch((err: any) => {
+          console.error('clipboard write failed:', err);
+      });
       showDialog('alert', message);
       loadShares();
     } else {
@@ -117,7 +120,9 @@ const AccountShares: React.FC = () => {
 
   const handleCopyShareUrl = (shareId: string) => {
     const url = `${window.location.origin}/share/${shareId}`;
-    navigator.clipboard.writeText(url);
+    invoke('clipboard_write_text', { text: url }).catch((err: any) => {
+        console.error('clipboard write failed:', err);
+    });
     showDialog('alert', t('shares.urlCopied') || 'Share URL copied to clipboard');
   };
 

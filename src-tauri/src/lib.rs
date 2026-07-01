@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
-use std::process::{Child, Command};
 use std::sync::Mutex;
-use std::sync::Mutex as StdMutex;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -60,8 +58,6 @@ impl LogState {
 }
 
 static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
-
-static LOGCAT_CHILD: Lazy<StdMutex<Option<Child>>> = Lazy::new(|| StdMutex::new(None));
 
 #[cfg(target_os = "android")]
 fn save_to_downloads_via_jni(content: String, filename: String) -> Result<String, String> {
@@ -134,56 +130,17 @@ fn save_to_downloads_via_jni(_content: String, _filename: String) -> Result<Stri
     Err("save_to_downloads_via_jni only available on Android".to_string())
 }
 
-fn stop_logcat() {
-    if let Ok(mut guard) = LOGCAT_CHILD.lock() {
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
-fn start_logcat(app_tag: &str) {
-    stop_logcat();
-    let child = Command::new("logcat")
-        .args(["-v", "time", "-T", "1", "-s", app_tag])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    if let Ok(mut child) = child {
-        if let Some(stdout) = child.stdout.take() {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(stdout);
-            std::thread::spawn(move || {
-                for line in reader.lines().flatten() {
-                    LOG_STATE.append("logcat", "INFO", &line);
-                }
-                let _ = child.wait();
-            });
-        } else {
-            // 没拿到 stdout，放回 child
-            if let Ok(mut guard) = LOGCAT_CHILD.lock() {
-                *guard = Some(child);
-            }
-        }
-    }
-    // Note: if spawn returned Err (e.g. logcat binary missing on the device),
-    // we silently ignore. The frontend will see get_log_count stay at 0 from
-    // the logcat source and may surface that as an empty log stream.
-}
-
 #[tauri::command]
 fn set_debug_mode(app: tauri::AppHandle, enabled: bool) {
+    // Toggle the in-memory gate; webview console + Rust panic both reach
+    // this buffer via consoleBridge.ts / append_log. The old "spawn logcat
+    // subprocess" path was retired: it filtered by `hrt-tracker` tag and
+    // never caught webview logs (which land in the Tauri/Console tag).
     {
         let mut flag = LOG_STATE.enabled.lock().unwrap();
         *flag = enabled;
     }
-    if enabled {
-        // tauri.conf.json 的 productName 作为 logcat tag 过滤
-        let tag = env!("CARGO_PKG_NAME");
-        start_logcat(tag);
-    } else {
-        stop_logcat();
+    if !enabled {
         LOG_STATE.clear();
     }
     let _ = app; // 保留参数，未来扩展
@@ -216,6 +173,11 @@ fn export_logs_to_download() -> Result<String, String> {
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let filename = format!("hrt-tracker-logs-{}.txt", ts);
     save_to_downloads_via_jni(text, filename)
+}
+
+#[tauri::command]
+fn clipboard_write_text(text: String) -> Result<String, String> {
+    clipboard_write_via_jni(text)
 }
 
 #[tauri::command]
@@ -313,6 +275,71 @@ fn save_to_downloads_via_jni_generic(
     Err("save_to_downloads_via_jni_generic only available on Android".to_string())
 }
 
+#[cfg(target_os = "android")]
+fn clipboard_write_via_jni(text: String) -> Result<String, String> {
+    use jni::objects::{JObject, JValue};
+    use jni::JavaVM;
+    use ndk_context::android_context;
+
+    let android_ctx = android_context();
+    let vm = unsafe { JavaVM::from_raw(android_ctx.vm().cast()) }
+        .map_err(|e| format!("JavaVM::from_raw failed: {}", e))?;
+    let mut env = vm
+        .attach_current_thread()
+        .map_err(|e| format!("attach_current_thread failed: {}", e))?;
+    let jtext = env
+        .new_string(&text)
+        .map_err(|e| format!("new_string(text): {}", e))?;
+    let activity = unsafe { JObject::from_raw(android_ctx.context().cast()) };
+    // ClassLoader dance: see save_to_downloads_via_jni for rationale
+    let class_loader = env
+        .call_method(
+            &activity,
+            "getClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )
+        .map_err(|e| format!("call_method(getClassLoader): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(getClassLoader).l(): {}", e))?;
+    let jname = env
+        .new_string("com/smirnovayama/hrttracker/DownloadWriter")
+        .map_err(|e| format!("new_string(class name): {}", e))?;
+    let writer_class: jni::objects::JClass<'_> = env
+        .call_method(
+            class_loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&jname)],
+        )
+        .map_err(|e| format!("call_method(loadClass): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?
+        .into();
+    let result = env
+        .call_static_method(
+            writer_class,
+            "copyToClipboard",
+            "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;",
+            &[
+                JValue::Object(&activity),
+                JValue::Object(&jtext),
+            ],
+        )
+        .map_err(|e| format!("call_static_method: {}", e))?
+        .l()
+        .map_err(|e| format!("call_static_method.l(): {}", e))?;
+    let jstr = env
+        .get_string((&result).into())
+        .map_err(|e| format!("get_string: {}", e))?;
+    Ok(jstr.into())
+}
+
+#[cfg(not(target_os = "android"))]
+fn clipboard_write_via_jni(_text: String) -> Result<String, String> {
+    Err("clipboard_write_via_jni only available on Android".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -321,7 +348,8 @@ pub fn run() {
             append_log,
             set_debug_mode,
             export_logs_to_download,
-            save_data_to_download
+            save_data_to_download,
+            clipboard_write_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { DoseEvent, LabResult, type GelProductSpec } from '../../logic';
 import { X, Download, Copy } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { invoke } from '@tauri-apps/api/core';
 
 const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight, gelProducts = [] }: { isOpen: boolean, onClose: () => void, onExport: (encrypt: boolean) => void, events: DoseEvent[], labResults: LabResult[], weight: number, gelProducts?: GelProductSpec[] }) => {
     const { t } = useTranslation();
@@ -14,7 +15,7 @@ const ExportModal = ({ isOpen, onClose, onExport, events, labResults, weight, ge
     const handleCopy = async () => {
         if (!rawDataString) return;
         try {
-            await navigator.clipboard.writeText(rawDataString);
+            await invoke('clipboard_write_text', { text: rawDataString });
             setCopyState('copied');
             setTimeout(() => setCopyState('idle'), 2000);
         } catch (err) {

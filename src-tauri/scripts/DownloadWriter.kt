@@ -30,6 +30,22 @@ object DownloadWriter {
         }
     }
 
+    /**
+     * 把 text 写到系统剪贴板，给前端 navigator.clipboard.writeText 的兜底。
+     *
+     * 原因：Tauri Android 的 WebView 默认没有 clipboard-write 权限，浏览器
+     * navigator.clipboard.writeText 在桌面调用就抛 NotAllowedError。所以
+     * 前端走 invoke('clipboard_write_text', { text })，Rust JNI 进来调这里。
+     * ClipData.newPlainText / setPrimaryClip 是 API 1 兼容。
+     *
+     * 返回 "OK"。
+     */
+    fun copyToClipboard(context: Context, text: String): String {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("text", text))
+        return "OK"
+    }
+
     private fun sanitizeSubdir(s: String): String {
         val trimmed = s.trim().trim('/').trim()
         require(trimmed.isNotEmpty()) { "subdir cannot be empty" }

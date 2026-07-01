@@ -260,10 +260,11 @@ const SettingsPage: React.FC = () => {
             gelProducts,
         };
 
-        navigator.clipboard.writeText(JSON.stringify(exportData, null, 2)).then(() => {
+        invoke('clipboard_write_text', { text: JSON.stringify(exportData, null, 2) }).then(() => {
             showDialog('alert', t('drawer.export_copied'));
-        }).catch((error) => {
-            console.error('Failed to copy:', error);
+        }).catch((error: any) => {
+            const msg = error?.message || String(error);
+            showDialog('alert', `${t('drawer.export_failed') || 'Copy failed'}: ${msg}`);
         });
     };
 
@@ -275,7 +276,7 @@ const SettingsPage: React.FC = () => {
             const path = await invoke<string>('save_data_to_download', {
                 subdir: 'HRT Tracker',
                 filename,
-                content_b64: b64,
+                contentB64: b64,
             });
             showDialog('alert', t('drawer.export_saved').replace('{path}', path) || `已保存到 ${path}`);
         } catch (err: any) {
