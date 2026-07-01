@@ -21,12 +21,15 @@ import java.io.File
  * Returns the content:// uri string (API 29+) or absolute file path (API ≤28).
  */
 object DownloadWriter {
-    fun saveToDownloads(context: Context, subdir: String, filename: String, content: String): String {
+    fun saveToDownloads(context: Context, subdir: String, filename: String, contentB64: String): String {
         val safeSubdir = sanitizeSubdir(subdir)
+        // Decode on Kotlin side so binary payloads (PNG, JPEG) survive — Rust
+        // hands us a base64 String because JNI byte[] bridging is awkward.
+        val bytes = android.util.Base64.decode(contentB64, android.util.Base64.DEFAULT)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveViaMediaStore(context, safeSubdir, filename, content)
+            saveViaMediaStore(context, safeSubdir, filename, bytes)
         } else {
-            saveViaLegacyFile(safeSubdir, filename, content)
+            saveViaLegacyFile(safeSubdir, filename, bytes)
         }
     }
 
@@ -54,7 +57,7 @@ object DownloadWriter {
         return trimmed
     }
 
-    private fun saveViaMediaStore(context: Context, subdir: String, filename: String, content: String): String {
+    private fun saveViaMediaStore(context: Context, subdir: String, filename: String, bytes: ByteArray): String {
         val resolver = context.contentResolver
         val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
         val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/$subdir"
@@ -67,7 +70,7 @@ object DownloadWriter {
         val uri = resolver.insert(collection, values)
             ?: throw RuntimeException("MediaStore.insert returned null")
         resolver.openOutputStream(uri)?.use { out ->
-            out.write(content.toByteArray(Charsets.UTF_8))
+            out.write(bytes)
             out.flush()
         } ?: throw RuntimeException("openOutputStream returned null")
         values.clear()
@@ -76,7 +79,7 @@ object DownloadWriter {
         return uri.toString()
     }
 
-    private fun saveViaLegacyFile(subdir: String, filename: String, content: String): String {
+    private fun saveViaLegacyFile(subdir: String, filename: String, bytes: ByteArray): String {
         @Suppress("DEPRECATION")
         val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val dir = File(root, subdir)
@@ -84,7 +87,7 @@ object DownloadWriter {
             throw RuntimeException("mkdirs failed for $dir")
         }
         val file = File(dir, filename)
-        file.writeText(content, Charsets.UTF_8)
+        file.writeBytes(bytes)
         return file.absolutePath
     }
 
