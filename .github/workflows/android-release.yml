@@ -209,13 +209,46 @@ jobs:
           "$ANDROID_HOME/build-tools/31.0.0/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           ls -la "$ALIGNED"
 
+      - name: Inspect keystore (diagnostic: list aliases + key fingerprints)
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          ls -la "$KEYSTORE_FILE"
+          # List every alias + key fingerprint + the encryption algorithm
+          # the key entry uses. Surfaces 3 things we otherwise have to
+          # guess:
+          #   1. Whether `hrttracker` is actually an alias in this keystore
+          #      (a wrong alias = "Get Key failed: null" instead of
+          #      BadPaddingException, so the symptom tells us which way
+          #      to look).
+          #   2. The key algorithm (RSA vs EC) — apksigner wants RSA/EC
+          #      keys, DSA gives "unsupported algorithm".
+          #   3. Whether the key entry is password-protected separately
+          #      from the keystore. If the SHA-1 fingerprint prints,
+          #      the store password is correct.
+          keytool -list -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" || {
+                echo "::error::keytool -list failed — store password likely wrong"
+                exit 1
+              }
+
       - name: Sign APK with apksigner
         id: sign-apk
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           KEY_ALIAS: hrttracker
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # PKCS12 keystores produced by `keytool -genkey` use the same
+          # password for the key entry as for the store, UNLESS the user
+          # explicitly typed a different one at the
+          # "Enter key password for <alias> (RETURN if same as keystore
+          # password):" prompt. We try the dedicated secret first so
+          # users with a distinct key password keep their setup, and
+          # fall back to the store password otherwise.
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -e
           UNSIGNED="${{ steps.locate-unsigned.outputs.unsigned_apk }}"
