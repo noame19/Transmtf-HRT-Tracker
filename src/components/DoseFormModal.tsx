@@ -22,6 +22,7 @@ import {
     resolveGelCoverageArea, GEL_COAPPLICATION_ORDER,
     type GelProductSpec,
 } from '../../logic';
+import { Plan } from '../../types';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
@@ -83,11 +84,26 @@ export interface DoseFormModalProps {
     isOpen: boolean;
     onClose: () => void;
     eventToEdit?: DoseEvent | null;
+    /**
+     * Optional smart-prefill source. When opening for a new record and a plan
+     * is matched against the current time (or a notification deep-link), we
+     * pre-populate route / ester / dose / time from the plan. The plan's
+     * `extras` are also mirrored into the event's per-route settings (gel site,
+     * sublingual tier, etc.) so the user only has to confirm.
+     */
+    prefillFromPlan?: Plan | null;
+    /**
+     * Optional explicit time to use for the new record. When omitted (the
+     * common case), the form falls back to `new Date()`. The Android
+     * notification deep-link sets this to the scheduled-time of the reminder
+     * so the saved record lines up exactly with what was scheduled.
+     */
+    prefillTimeOverride?: Date | null;
     onSave: (event: DoseEvent) => void;
     onDelete?: (id: string) => void;
 }
 
-const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, onSave, onDelete }) => {
+const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, prefillFromPlan, prefillTimeOverride, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
     const { events: allEvents, gelProducts } = useAppData();
@@ -216,28 +232,97 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 setWeightStr((eventToEdit.weightKG ?? prefillWeightKG(allEvents)).toString());
 
             } else {
-                const now = new Date();
+                const now = prefillTimeOverride ?? new Date();
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                 setDateStr(iso);
 
-                // Land on the last drug used (sublingual + estradiol valerate as
-                // the cold-start default). The per-drug dose memory restore is
-                // handled by the dedicated effect below, keyed on route/ester.
-                const last = readLastDrug();
-                const initRoute: Route = last?.route ?? Route.sublingual;
-                const initEster: Ester = last?.ester ?? Ester.EV;
+                if (prefillFromPlan) {
+                    // Plan-driven prefill: route + ester + dose come from the
+                    // matched plan, and any route-specific extras (gel site,
+                    // sublingual tier, patch rate, etc.) flow into the same
+                    // per-route fields the manual-entry path uses.
+                    const p = prefillFromPlan;
+                    setRoute(p.route);
+                    setEster(p.ester);
+                    const factor = getToE2Factor(p.ester) || 1;
+                    if (p.ester === Ester.E2) {
+                        setE2Dose((p.doseMG).toFixed(3));
+                        setRawDose((p.doseMG).toFixed(3));
+                        setLastEditedField('bio');
+                    } else {
+                        setRawDose(p.doseMG.toFixed(3));
+                        setE2Dose((p.doseMG * factor).toFixed(3));
+                        setLastEditedField('raw');
+                    }
+                    // Quick-dose panel: open manual entry when the dose isn't
+                    // a preset, mirroring the edit-record branch above.
+                    setUseCustomDose(
+                        hasQuickDosePanel(p.route, p.ester) &&
+                        !isPresetDose(p.ester, p.doseMG)
+                    );
+                    if (p.route === Route.sublingual) {
+                        const tier = p.extras[ExtraKey.sublingualTier];
+                        const theta = p.extras[ExtraKey.sublingualTheta];
+                        if (typeof tier === 'number') {
+                            setSlTier(tier);
+                            setUseCustomTheta(false);
+                            setCustomTheta('');
+                        } else if (typeof theta === 'number') {
+                            setUseCustomTheta(true);
+                            setCustomTheta(theta.toString());
+                        } else {
+                            setSlTier(2);
+                            setUseCustomTheta(false);
+                            setCustomTheta('');
+                        }
+                    } else {
+                        setUseCustomTheta(false);
+                        setCustomTheta('');
+                    }
+                    if (p.route === Route.gel) {
+                        setGelSite(p.extras[ExtraKey.gelSite] ?? 0);
+                        setGelProductId(p.extras[ExtraKey.gelProductId] ?? GEL_DEFAULT_PRODUCT_ID);
+                        const area = p.extras[ExtraKey.areaCM2];
+                        setGelArea(typeof area === 'number' && area > 0 ? String(area) : '');
+                        const cov = p.extras[ExtraKey.gelCoverage];
+                        setGelCoverage(typeof cov === 'number' && Number.isFinite(cov) ? Math.round(cov) : GEL_COVERAGE_DEFAULT_IDX);
+                        const coApp = p.extras[ExtraKey.gelCoApplied];
+                        setGelCoApplied(typeof coApp === 'number' && Number.isFinite(coApp) ? Math.round(coApp) : 0);
+                        const wash = p.extras[ExtraKey.gelWashAfterH];
+                        setGelWash(typeof wash === 'number' && wash > 0 ? String(wash) : '');
+                    }
+                    if (p.route === Route.patchApply && p.extras[ExtraKey.releaseRateUGPerDay]) {
+                        setPatchMode('rate');
+                        setPatchRate(p.extras[ExtraKey.releaseRateUGPerDay].toString());
+                        setE2Dose('');
+                        setRawDose('');
+                        setLastEditedField('bio');
+                    } else {
+                        setPatchMode('dose');
+                        setPatchRate('');
+                    }
+                } else {
+                    // Land on the last drug used (sublingual + estradiol valerate as
+                    // the cold-start default). The per-drug dose memory restore is
+                    // handled by the dedicated effect below, keyed on route/ester.
+                    const last = readLastDrug();
+                    const initRoute: Route = last?.route ?? Route.sublingual;
+                    const initEster: Ester = last?.ester ?? Ester.EV;
 
-                setRoute(initRoute);
-                setEster(initEster);
-                setGelSite(0);
-                setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
-                setGelCoApplied(0);
+                    setRoute(initRoute);
+                    setEster(initEster);
+                    setPatchMode('dose');
+                    setPatchRate('');
+                    setGelSite(0);
+                    setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+                    setGelCoApplied(0);
+                    // patchMode/patchRate + dose fields are restored per-drug by the
+                    // dedicated effect below (keyed on route/ester).
+                }
                 setWeightStr(prefillWeightKG(allEvents).toString());
-                // patchMode/patchRate + dose fields are restored per-drug by the
-                // dedicated effect below (keyed on route/ester).
             }
         }
-    }, [isOpen, eventToEdit]);
+    }, [isOpen, eventToEdit, prefillFromPlan, prefillTimeOverride]);
 
     // `activeEster` lets callers in the quick-dose path pass `safeEster`, so the
     // mg<->E2 conversion uses the same compound the panel is displaying even in

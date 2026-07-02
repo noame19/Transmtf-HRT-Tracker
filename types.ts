@@ -146,3 +146,51 @@ export interface LabResult {
     concValue: number; // Value in the user's unit
     unit: 'pg/ml' | 'pmol/l';
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Medication plans (recurring schedules) + reminders
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Numeric route-specific metadata, mirrored from DoseEvent.extras for future
+ *  "auto-create record from plan" reuse (gel site, sublingual tier, etc.). */
+export type PlanExtras = Partial<Record<ExtraKey, number>>;
+
+/**
+ * Schedule for a recurring medication plan. Discriminated union so adding
+ * new kinds later (e.g. 'monthly') is non-breaking for persisted JSON.
+ *
+ * `times` are wall-clock `HH:MM` strings in the user's local timezone. A plan
+ * can have up to 4 daily times (mirroring `BatchDoseModal.timesPerDay`).
+ */
+export type PlanSchedule =
+    | { kind: 'daily'; times: string[] }
+    | { kind: 'every_n_days'; intervalDays: number; times: string[] }
+    | { kind: 'weekly'; weekdays: number[]; times: string[] }; // 0=Sun..6=Sat (matches Date.getDay())
+
+/** Drug-class grouping — derived from ester, used for UI grouping/colors. */
+export type DrugCategory = 'estrogen' | 'anti_androgen' | 'progestin' | 'other';
+
+/**
+ * A recurring medication plan. The smart "新增" flow uses these to pre-fill
+ * DoseFormModal / batch-confirm; the Android-side NotificationScheduler uses
+ * `dueMomentsInRange(plan, ...)` to register AlarmManager alarms.
+ */
+export interface Plan {
+    id: string;
+    ester: Ester;
+    route: Route;
+    doseMG: number;
+    schedule: PlanSchedule;
+    /** Wall-clock hours since 1970 — same convention as DoseEvent.timeH. */
+    startDateH: number;
+    /** Optional end. Absent = open-ended. */
+    endDateH?: number;
+    enabled: boolean;        // soft-disable toggle (hard-delete is a separate op)
+    /** "Remind N minutes BEFORE scheduled time" — 0 = at-time. */
+    leadMinutes: number;
+    /** Per-plan label shown in the notification body (e.g. "EV 5mg/5d IM"). */
+    label?: string;
+    extras: PlanExtras;
+    createdAtH: number;
+    updatedAtH: number;
+}

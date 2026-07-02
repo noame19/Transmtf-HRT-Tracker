@@ -27,6 +27,8 @@ import {
     User,
     ChevronRight,
     Send,
+    Bell,
+    BellOff,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -113,8 +115,39 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    /**
+     * Toggle the Android notification channel. When the user enables
+     * reminders we:
+     *   1. Make sure the notification channel exists.
+     *   2. Ask for POST_NOTIFICATIONS permission (Android 13+) — this is
+     *      a runtime permission and only triggers a dialog the first time.
+     *   3. Surface a banner-like alert if the user denies the permission
+     *      so they know reminders won't fire even though the toggle is on.
+     */
+    const handleToggleReminders = async (enabled: boolean) => {
+        setRemindersEnabled(enabled);
+        if (!enabled) return;
+        if (!isTauri) return; // web preview: just store the preference
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (!invoke) return;
+        try {
+            await invoke('ensure_notification_channel');
+            const granted = await invoke<boolean>('request_notification_permission');
+            if (!granted) {
+                showDialog(
+                    'alert',
+                    t('settings.reminders.permission_denied') ||
+                    '通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。',
+                );
+            }
+        } catch {
+            /* command may not exist yet on web/dev — fail silently */
+        }
+    };
+
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
+    const { remindersEnabled, setRemindersEnabled } = useAppData();
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
     const { isDark, setIsDark } = useTheme();
@@ -400,6 +433,31 @@ const SettingsPage: React.FC = () => {
                         {t('settings.group.gels') || 'Custom gels'}
                     </h2>
                     <CustomGelManager />
+                </section>
+
+                {/* Reminders Section */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.reminders') || 'Reminders'}
+                    </h2>
+                    <div className="rounded-2xl glass-card p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                                {remindersEnabled
+                                    ? <Bell className="text-amber-500 shrink-0" size={20} />
+                                    : <BellOff className="text-slate-400 shrink-0" size={20} />}
+                                <div className="min-w-0">
+                                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                        {t('settings.reminders.title') || '用药提醒'}
+                                    </p>
+                                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                        {t('settings.reminders.desc') || '到点时在 Android 通知栏弹出提示，点击可一键确认。'}
+                                    </p>
+                                </div>
+                            </div>
+                            <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
+                        </div>
+                    </div>
                 </section>
 
                 {/* Data Section */}

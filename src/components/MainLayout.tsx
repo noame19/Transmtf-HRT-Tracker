@@ -6,10 +6,15 @@ import { useDialog } from '../contexts/DialogContext';
 import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
 import { DoseEvent, LabResult } from '../../logic';
+import { Plan } from '../../types';
+import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
+import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
 import DoseFormModal from './DoseFormModal';
 import BatchDoseModal from './BatchDoseModal';
 import LabResultModal from './LabResultModal';
+import PlanEditModal from './PlanEditModal';
+import BatchPlanConfirmModal from './BatchPlanConfirmModal';
 
 type ViewKey = 'home' | 'history' | 'lab' | 'settings';
 
@@ -18,13 +23,33 @@ const MainLayout: React.FC = () => {
     const { showDialog } = useDialog();
     const navigate = useNavigate();
     const location = useLocation();
-    const { events, setEvents, labResults, setLabResults, currentTime } = useAppData();
+    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans } = useAppData();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
     const [isLabModalOpen, setIsLabModalOpen] = useState(false);
     const [editingLab, setEditingLab] = useState<LabResult | null>(null);
     const [isBatchOpen, setIsBatchOpen] = useState(false);
+
+    // Plan CRUD state — managed at layout level so the PlanEditModal can be
+    // opened from either the "plans" tab on /history or future surfaces.
+    const [isPlanEditOpen, setIsPlanEditOpen] = useState(false);
+    const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+
+    // Smart-add flow: a new dose record can come from manual add, a single
+    // matched plan (prefill + confirm), or multiple matched plans (batch).
+    const [prefillFromPlan, setPrefillFromPlan] = useState<Plan | null>(null);
+    const [prefillTimeOverride, setPrefillTimeOverride] = useState<Date | null>(null);
+    const [batchMatches, setBatchMatches] = useState<Array<{ plan: Plan; scheduledAt: Date }> | null>(null);
+    // Tolerance window for "smart match" — the plan module's matchPlansForNow
+    // already uses this for its ±window, but we make it explicit here too.
+    const SMART_MATCH_TOLERANCE_MIN = 15;
+
+    // Reminder deep-link state. The Android AlarmManager writes the fired
+    // notification's planId + scheduledAtMs into SharedPreferences; we poll
+    // it here on a timer (so we don't need a WebSocket / push channel).
+    const [pendingReminder, setPendingReminder] = useState<PendingReminder | null>(null);
+    const [permissionDenied, setPermissionDenied] = useState(false);
 
     const mainScrollRef = useRef<HTMLDivElement>(null);
 
@@ -55,8 +80,100 @@ const MainLayout: React.FC = () => {
         return () => window.removeEventListener(PER_DOSE_WEIGHT_MIGRATION_EVENT, handler);
     }, [showDialog, t]);
 
+    /**
+     * Poll the Kotlin `get_pending_reminders` bridge every 1.5s so a
+     * notification that fires while the app is foregrounded surfaces as a
+     * green "one-tap confirm" banner almost immediately. Web preview (no
+     * `__TAURI_INTERNALS__`) is a no-op.
+     */
     useEffect(() => {
-        const shouldLock = isFormOpen || isLabModalOpen || isBatchOpen;
+        const invoke = (typeof window !== 'undefined'
+            ? (window as any).__TAURI_INTERNALS__?.invoke
+            : null);
+        if (typeof invoke !== 'function') return;
+        let cancelled = false;
+        const tick = async () => {
+            if (cancelled) return;
+            try {
+                const json = await invoke('get_pending_reminders');
+                if (cancelled) return;
+                if (typeof json === 'string' && json.length > 0) {
+                    try {
+                        const obj = JSON.parse(json);
+                        if (obj && typeof obj.planId === 'string' && typeof obj.scheduledAtMs === 'number') {
+                            setPendingReminder({
+                                planId: obj.planId,
+                                scheduledAtMs: obj.scheduledAtMs,
+                                firedAtMs: obj.firedAtMs ?? Date.now(),
+                            });
+                        }
+                    } catch { /* malformed JSON, ignore */ }
+                }
+            } catch { /* command not wired yet on web preview */ }
+        };
+        tick();
+        const id = setInterval(tick, 1500);
+        return () => { cancelled = true; clearInterval(id); };
+    }, []);
+
+    /**
+     * Whenever the reminder permission becomes denied, flip the banner
+     * flag so the amber "permission denied" hint is shown on /history. We
+     * only re-check when `remindersEnabled` flips, since the user has to
+     * explicitly re-toggle to retrigger the runtime permission flow.
+     */
+    useEffect(() => {
+        const invoke = (typeof window !== 'undefined'
+            ? (window as any).__TAURI_INTERNALS__?.invoke
+            : null);
+        if (typeof invoke !== 'function' || !remindersEnabled) {
+            setPermissionDenied(false);
+            return;
+        }
+        let cancelled = false;
+        const check = async () => {
+            try {
+                const granted = await invoke('request_notification_permission');
+                if (!cancelled) setPermissionDenied(granted === false);
+            } catch {
+                if (!cancelled) setPermissionDenied(false);
+            }
+        };
+        check();
+        return () => { cancelled = true; };
+    }, [remindersEnabled]);
+
+    const matchedPendingPlan = useMemo(() => {
+        if (!pendingReminder) return null;
+        return plans.find(p => p.id === pendingReminder.planId) ?? null;
+    }, [pendingReminder, plans]);
+
+    /**
+     * Confirm the pending reminder. We bypass `matchPlansForNow` (which uses
+     * the current clock) and instead target the scheduledAt from the
+     * deep-link, so the saved record lines up exactly with what was
+     * scheduled — even if the user tapped "confirm" an hour late.
+     */
+    const handleConfirmPendingReminder = (scheduledAt: Date) => {
+        const plan = matchedPendingPlan;
+        setPendingReminder(null);
+        if (!plan) {
+            // Plan was deleted since the notification fired — fall back to
+            // plain smart-add so the user can still log something.
+            handleSmartAddEvent(scheduledAt);
+            return;
+        }
+        // Open the dose form directly, pre-targeting the scheduled time and
+        // the matched plan. Skipping the batch confirm modal because we
+        // already know exactly which plan this reminder is for.
+        setEditingEvent(null);
+        setPrefillFromPlan(plan);
+        setPrefillTimeOverride(scheduledAt);
+        setIsFormOpen(true);
+    };
+
+    useEffect(() => {
+        const shouldLock = isFormOpen || isLabModalOpen || isBatchOpen || isPlanEditOpen || batchMatches !== null;
         document.body.style.overflow = shouldLock ? 'hidden' : '';
         return () => { document.body.style.overflow = ''; };
     }, [isFormOpen, isLabModalOpen, isBatchOpen]);
@@ -87,6 +204,31 @@ const MainLayout: React.FC = () => {
 
     const handleAddEvent = () => { setEditingEvent(null); setIsFormOpen(true); };
     const handleEditEvent = (e: DoseEvent) => { setEditingEvent(e); setIsFormOpen(true); };
+
+    /**
+     * "Smart" version of the add-event flow. Detects plans that are due
+     * right now (±15 min) and either pre-fills the modal with a single match
+     * or opens a batch-confirm modal when multiple plans collide.
+     * `timeOverride` lets the notification deep-link pass the scheduled time
+     * so the saved event lines up with what was actually scheduled.
+     */
+    const handleSmartAddEvent = (timeOverride?: Date | null) => {
+        const refTime = timeOverride ?? currentTime;
+        const matches = matchPlansForNow(plans, refTime, SMART_MATCH_TOLERANCE_MIN);
+        if (matches.length === 0) {
+            setEditingEvent(null);
+            setPrefillFromPlan(null);
+            setPrefillTimeOverride(timeOverride ?? null);
+            setIsFormOpen(true);
+        } else if (matches.length === 1) {
+            setEditingEvent(null);
+            setPrefillFromPlan(matches[0].plan);
+            setPrefillTimeOverride(matches[0].scheduledAt);
+            setIsFormOpen(true);
+        } else {
+            setBatchMatches(matches);
+        }
+    };
     const handleAddLabResult = () => { setEditingLab(null); setIsLabModalOpen(true); };
     const handleEditLabResult = (r: LabResult) => { setEditingLab(r); setIsLabModalOpen(true); };
     const handleClearLabResults = () => {
@@ -106,6 +248,41 @@ const MainLayout: React.FC = () => {
     };
     const handleSaveBatch = (newEvents: DoseEvent[]) => {
         setEvents(prev => [...prev, ...newEvents]);
+    };
+
+    // Plan CRUD — wired through the same outlet context the records tab uses,
+    // so HistoryView doesn't need to know about modals/storage directly.
+    const handleAddPlan = () => { setEditingPlan(null); setIsPlanEditOpen(true); };
+    const handleEditPlan = (p: Plan) => { setEditingPlan(p); setIsPlanEditOpen(true); };
+    const handleSavePlan = (plan: Plan) => {
+        // Conflict-rule auto-disable: if the saved plan is enabled and shares a
+        // key with another enabled plan, flip the older one off so the save
+        // succeeds. PlanEditModal already prompted the user about this.
+        setPlans(prev => {
+            const others = prev.filter(p2 => p2.id !== plan.id);
+            let nextOthers = others;
+            if (plan.enabled) {
+                const conflicts = findConflicts(others, plan);
+                if (conflicts.length > 0) {
+                    const conflictIds = new Set(conflicts.map(c => c.id));
+                    nextOthers = others.map(p2 => conflictIds.has(p2.id) ? { ...p2, enabled: false, updatedAtH: plan.updatedAtH } : p2);
+                }
+            }
+            const exists = prev.some(p2 => p2.id === plan.id);
+            return exists
+                ? prev.map(p2 => p2.id === plan.id ? plan : (nextOthers.find(p3 => p3.id === p2.id) ?? p2))
+                : [...prev, plan];
+        });
+        setIsPlanEditOpen(false);
+        setEditingPlan(null);
+    };
+    const handleDeletePlan = (id: string) => {
+        setPlans(prev => prev.filter(p => p.id !== id));
+        setIsPlanEditOpen(false);
+        setEditingPlan(null);
+    };
+    const handleTogglePlan = (id: string, enabled: boolean) => {
+        setPlans(prev => prev.map(p => p.id === id ? { ...p, enabled, updatedAtH: Date.now() / 3600000 } : p));
     };
 
     return (
@@ -182,11 +359,25 @@ const MainLayout: React.FC = () => {
                 >
                     <Outlet context={{
                         onEditEvent: handleEditEvent,
-                        onAddEvent: handleAddEvent,
+                        onAddEvent: handleSmartAddEvent,
                         onBatchAdd: () => setIsBatchOpen(true),
                         onAddLabResult: handleAddLabResult,
                         onEditLabResult: handleEditLabResult,
                         onClearLabResults: handleClearLabResults,
+                        onAddPlan: handleAddPlan,
+                        onEditPlan: handleEditPlan,
+                        onDeletePlan: handleDeletePlan,
+                        onTogglePlan: handleTogglePlan,
+                        pendingReminder,
+                        matchedPendingPlan,
+                        onConfirmPendingReminder: handleConfirmPendingReminder,
+                        onDismissPendingReminder: () => setPendingReminder(null),
+                        permissionDenied,
+                        onOpenNotificationSettings: async () => {
+                            const invoke = (window as any).__TAURI_INTERNALS__?.invoke;
+                            if (!invoke) return;
+                            try { await invoke('request_notification_permission'); } catch { /* ignore */ }
+                        },
                     }} />
                     {/* bottom padding so content isn't hidden behind the mobile nav */}
                     <div className="h-24 md:h-4" />
@@ -247,8 +438,14 @@ const MainLayout: React.FC = () => {
             {/* ── Modals ── */}
             <DoseFormModal
                 isOpen={isFormOpen}
-                onClose={() => setIsFormOpen(false)}
+                onClose={() => {
+                    setIsFormOpen(false);
+                    setPrefillFromPlan(null);
+                    setPrefillTimeOverride(null);
+                }}
                 eventToEdit={editingEvent}
+                prefillFromPlan={prefillFromPlan}
+                prefillTimeOverride={prefillTimeOverride}
                 onSave={handleSaveEvent}
                 onDelete={handleDeleteEvent}
             />
@@ -272,6 +469,23 @@ const MainLayout: React.FC = () => {
                 isOpen={isBatchOpen}
                 onClose={() => setIsBatchOpen(false)}
                 onSaveBatch={handleSaveBatch}
+            />
+            <PlanEditModal
+                isOpen={isPlanEditOpen}
+                onClose={() => { setIsPlanEditOpen(false); setEditingPlan(null); }}
+                planToEdit={editingPlan}
+                onSave={handleSavePlan}
+                onDelete={editingPlan ? handleDeletePlan : undefined}
+            />
+            <BatchPlanConfirmModal
+                isOpen={batchMatches !== null}
+                matches={batchMatches ?? []}
+                events={events}
+                onClose={() => setBatchMatches(null)}
+                onConfirm={(newEvents) => {
+                    handleSaveBatch(newEvents);
+                    setBatchMatches(null);
+                }}
             />
         </div>
     );

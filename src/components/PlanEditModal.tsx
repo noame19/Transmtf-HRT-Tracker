@@ -1,0 +1,530 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from '../contexts/LanguageContext';
+import { useDialog } from '../contexts/DialogContext';
+import { useAppData } from '../contexts/AppDataContext';
+import CustomSelect from './CustomSelect';
+import { getRouteIcon } from '../utils/helpers';
+import { ROUTE_DISPLAY_ORDER, getAvailableEsters } from '../utils/doseForm';
+import { Ester, ExtraKey, Plan, PlanSchedule, Route } from '../../types';
+import { findConflicts, validatePlan } from '../utils/planSchedule';
+import { X, Save, Trash2, Calendar } from 'lucide-react';
+
+interface PlanEditModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    /** When provided, modal is in "edit" mode; otherwise it creates a new plan. */
+    planToEdit?: Plan | null;
+    onSave: (plan: Plan) => void;
+    onDelete?: (id: string) => void;
+}
+
+/** Build an ISO local date string (`YYYY-MM-DD`) from a Date, in user's tz. */
+function toLocalDateStr(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** Parse a `YYYY-MM-DD` string into a local-midnight Date. */
+function parseLocalDate(s: string): Date {
+    const [y, m, d] = s.split('-').map((v) => parseInt(v, 10));
+    return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+}
+
+const DEFAULT_SCHEDULE: PlanSchedule = { kind: 'every_n_days', intervalDays: 5, times: ['20:00'] };
+
+const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEdit, onSave, onDelete }) => {
+    const { t } = useTranslation();
+    const { showDialog } = useDialog();
+    const { plans } = useAppData();
+
+    // Form state
+    const [route, setRoute] = useState<Route>(Route.injection);
+    const [ester, setEster] = useState<Ester>(Ester.EV);
+    const [doseStr, setDoseStr] = useState('5');
+    const [scheduleKind, setScheduleKind] = useState<PlanSchedule['kind']>('every_n_days');
+    const [intervalDays, setIntervalDays] = useState('5');
+    const [weekdays, setWeekdays] = useState<number[]>([1, 3, 5]); // Mon Wed Fri
+    const [times, setTimes] = useState<string[]>(['20:00']);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [leadMinutes, setLeadMinutes] = useState('5');
+    const [enabled, setEnabled] = useState(true);
+
+    // Hydrate from `planToEdit` whenever the modal opens. Reset all fields first
+    // so a stale field doesn't leak across opens.
+    useEffect(() => {
+        if (!isOpen) return;
+        if (planToEdit) {
+            setRoute(planToEdit.route);
+            setEster(planToEdit.ester);
+            setDoseStr(String(planToEdit.doseMG));
+            setScheduleKind(planToEdit.schedule.kind);
+            if (planToEdit.schedule.kind === 'every_n_days') {
+                setIntervalDays(String(planToEdit.schedule.intervalDays));
+            }
+            if (planToEdit.schedule.kind === 'weekly') {
+                setWeekdays(planToEdit.schedule.weekdays);
+            }
+            setTimes(planToEdit.schedule.times.length > 0 ? planToEdit.schedule.times : ['20:00']);
+            setStartDate(toLocalDateStr(new Date(planToEdit.startDateH * 3600000)));
+            setEndDate(planToEdit.endDateH ? toLocalDateStr(new Date(planToEdit.endDateH * 3600000)) : '');
+            setLeadMinutes(String(planToEdit.leadMinutes));
+            setEnabled(planToEdit.enabled);
+        } else {
+            setRoute(Route.injection);
+            setEster(Ester.EV);
+            setDoseStr('5');
+            setScheduleKind('every_n_days');
+            setIntervalDays('5');
+            setWeekdays([1, 3, 5]);
+            setTimes(['20:00']);
+            setStartDate(toLocalDateStr(new Date()));
+            setEndDate('');
+            setLeadMinutes('5');
+            setEnabled(true);
+        }
+    }, [isOpen, planToEdit]);
+
+    // Reset ester when route changes, if the new route doesn't support the
+    // current ester (mirrors DoseFormModal's pattern).
+    const availableEsters = useMemo(() => getAvailableEsters(route), [route]);
+    useEffect(() => {
+        if (!availableEsters.includes(ester) && availableEsters.length > 0) {
+            setEster(availableEsters[0]);
+        }
+    }, [availableEsters, ester]);
+
+    const addTimeSlot = () => {
+        if (times.length >= 4) return; // cap matches BatchDoseModal's timesPerDay
+        setTimes([...times, '12:00']);
+    };
+    const removeTimeSlot = (idx: number) => {
+        if (times.length <= 1) return;
+        setTimes(times.filter((_, i) => i !== idx));
+    };
+    const updateTime = (idx: number, val: string) => {
+        const next = [...times];
+        next[idx] = val;
+        setTimes(next);
+    };
+    const toggleWeekday = (day: number) => {
+        setWeekdays(weekdays.includes(day) ? weekdays.filter((d) => d !== day) : [...weekdays, day].sort());
+    };
+
+    /** Try to save; if the user enables a plan that conflicts with an existing
+     *  enabled one, pop a confirm dialog before persisting. */
+    const handleSave = async () => {
+        const dose = parseFloat(doseStr);
+        const lead = parseInt(leadMinutes, 10);
+
+        const startD = parseLocalDate(startDate);
+        const startH = startD.getTime() / 3600000;
+        const endH = endDate ? parseLocalDate(endDate).getTime() / 3600000 : undefined;
+
+        const schedule: PlanSchedule =
+            scheduleKind === 'daily'
+                ? { kind: 'daily', times }
+                : scheduleKind === 'every_n_days'
+                    ? { kind: 'every_n_days', intervalDays: parseInt(intervalDays, 10) || 1, times }
+                    : { kind: 'weekly', weekdays, times };
+
+        const nowH = Date.now() / 3600000;
+        const draft: Plan = {
+            id: planToEdit?.id ?? `plan-${uuidv4()}`,
+            ester,
+            route,
+            doseMG: dose,
+            schedule,
+            startDateH: startH,
+            endDateH: endH,
+            enabled,
+            leadMinutes: Number.isFinite(lead) ? lead : 5,
+            extras: planToEdit?.extras ?? {},
+            createdAtH: planToEdit?.createdAtH ?? nowH,
+            updatedAtH: nowH,
+        };
+
+        // Validate first — reject early so we don't prompt the user about a
+        // conflict for an obviously broken form.
+        const errors = validatePlan(draft);
+        if (errors.length > 0) {
+            await showDialog('alert', `${t('plan.error.invalid') || '计划有误'}：${errors.map((e) => e.message).join('；')}`);
+            return;
+        }
+
+        // Conflict rule: same (ester, route) cannot have two enabled plans.
+        if (draft.enabled) {
+            const conflicts = findConflicts(plans, draft);
+            if (conflicts.length > 0) {
+                const ok = await showDialog(
+                    'confirm',
+                    t('plan.conflict_disable_existing') ||
+                    '同一药物的另一个计划当前已启用。保存将自动停用旧的计划。是否继续？',
+                );
+                if (ok !== 'confirm') return;
+            }
+        }
+
+        onSave(draft);
+    };
+
+    const handleDelete = async () => {
+        if (!planToEdit || !onDelete) return;
+        const ok = await showDialog(
+            'confirm',
+            t('plan.confirm.delete') || '确定删除这条用药计划吗？',
+        );
+        if (ok === 'confirm') {
+            onDelete(planToEdit.id);
+        }
+    };
+
+    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return (
+        <div
+            className="fixed inset-0 flex items-center justify-center z-50 animate-in fade-in duration-200"
+            style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        >
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="plan-modal-title"
+                className="relative rounded-3xl w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-spring-glass glass-modal"
+            >
+                {/* Header */}
+                <div className="p-6 md:p-8 border-b flex justify-between items-center shrink-0"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
+                    <h3 id="plan-modal-title" className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {planToEdit ? (t('plan.edit') || '编辑计划') : (t('plan.new') || '新增计划')}
+                    </h3>
+                    <button onClick={onClose} aria-label={t('btn.close')} className="p-2 rounded-full transition"
+                        style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}>
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                    {/* Drug */}
+                    <div className="space-y-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--text-tertiary)' }}>
+                            {t('plan.field.drug') || '药物'}
+                        </label>
+                        <CustomSelect
+                            label={t('field.route')}
+                            value={route}
+                            onChange={(val) => setRoute(val as Route)}
+                            options={ROUTE_DISPLAY_ORDER.map((r) => ({
+                                value: r,
+                                label: t(`route.${r}`),
+                                icon: getRouteIcon(r),
+                            }))}
+                        />
+                        {route !== Route.patchRemove && availableEsters.length > 1 && (
+                            <CustomSelect
+                                label={t('field.ester')}
+                                value={ester}
+                                onChange={(val) => setEster(val as Ester)}
+                                options={availableEsters.map((e) => ({
+                                    value: e,
+                                    label: t(`ester.${e}`),
+                                }))}
+                            />
+                        )}
+                        {route !== Route.patchRemove && (
+                            <div className="space-y-1">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.dose') || '剂量'} (mg)
+                                </label>
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={doseStr}
+                                    onChange={(e) => setDoseStr(e.target.value)}
+                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                    style={{
+                                        background: 'var(--bg-card-hover)',
+                                        border: '1px solid var(--border-primary)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Schedule */}
+                    <div className="space-y-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--text-tertiary)' }}>
+                            {t('plan.field.schedule') || '周期'}
+                        </label>
+                        <div className="flex gap-1 p-1 rounded-xl glass-card">
+                            {(['daily', 'every_n_days', 'weekly'] as const).map((k) => (
+                                <button
+                                    key={k}
+                                    onClick={() => setScheduleKind(k)}
+                                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition btn-press-glass ${scheduleKind === k ? 'glass-btn-primary text-white' : ''}`}
+                                    style={
+                                        scheduleKind !== k
+                                            ? { color: 'var(--text-secondary)' }
+                                            : undefined
+                                    }
+                                >
+                                    {t(`plan.schedule.${k}`) || k}
+                                </button>
+                            ))}
+                        </div>
+
+                        {scheduleKind === 'every_n_days' && (
+                            <div className="space-y-1">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.interval') || '间隔（天）'}
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={intervalDays}
+                                    onChange={(e) => setIntervalDays(e.target.value)}
+                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                    style={{
+                                        background: 'var(--bg-card-hover)',
+                                        border: '1px solid var(--border-primary)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
+                        )}
+
+                        {scheduleKind === 'weekly' && (
+                            <div className="space-y-2">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.weekdays') || '星期'}
+                                </label>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {weekdayLabels.map((label, idx) => {
+                                        const selected = weekdays.includes(idx);
+                                        return (
+                                            <button
+                                                key={idx}
+                                                onClick={() => toggleWeekday(idx)}
+                                                className="w-12 py-2 rounded-lg text-xs font-bold transition btn-press-glass"
+                                                style={
+                                                    selected
+                                                        ? {
+                                                            background: 'var(--accent-500)',
+                                                            color: '#fff',
+                                                        }
+                                                        : {
+                                                            background: 'var(--bg-card-hover)',
+                                                            color: 'var(--text-secondary)',
+                                                            border: '1px solid var(--border-primary)',
+                                                        }
+                                                }
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Time chips */}
+                        <div className="space-y-2">
+                            <label className="block text-sm font-bold"
+                                style={{ color: 'var(--text-secondary)' }}>
+                                {t('plan.field.times') || '时间'}
+                            </label>
+                            {times.map((tt, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                    <input
+                                        type="time"
+                                        value={tt}
+                                        onChange={(e) => updateTime(idx, e.target.value)}
+                                        className="flex-1 p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={{
+                                            background: 'var(--bg-card-hover)',
+                                            border: '1px solid var(--border-primary)',
+                                            color: 'var(--text-primary)',
+                                        }}
+                                    />
+                                    {times.length > 1 && (
+                                        <button
+                                            onClick={() => removeTimeSlot(idx)}
+                                            className="p-2 rounded-lg"
+                                            style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
+                                            aria-label={t('btn.remove') || '移除'}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                            {times.length < 4 && (
+                                <button
+                                    onClick={addTimeSlot}
+                                    className="w-full py-2 rounded-lg text-xs font-bold transition btn-press-glass"
+                                    style={{
+                                        background: 'var(--bg-card-hover)',
+                                        color: 'var(--text-secondary)',
+                                        border: '1px dashed var(--border-primary)',
+                                    }}
+                                >
+                                    + {t('plan.add_time') || '添加时间'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Date range */}
+                    <div className="space-y-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--text-tertiary)' }}>
+                            {t('plan.field.date_range') || '起止日期'}
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.start_date') || '开始'}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={{
+                                            background: 'var(--bg-card-hover)',
+                                            border: '1px solid var(--border-primary)',
+                                            color: 'var(--text-primary)',
+                                        }}
+                                    />
+                                    <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ color: 'var(--text-tertiary)' }} />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.end_date') || '结束（可选）'}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={{
+                                            background: 'var(--bg-card-hover)',
+                                            border: '1px solid var(--border-primary)',
+                                            color: 'var(--text-primary)',
+                                        }}
+                                    />
+                                    <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ color: 'var(--text-tertiary)' }} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Lead minutes + enabled */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold"
+                                style={{ color: 'var(--text-secondary)' }}>
+                                {t('plan.field.lead_minutes') || '提前提醒（分钟）'}
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={leadMinutes}
+                                onChange={(e) => setLeadMinutes(e.target.value)}
+                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                style={{
+                                    background: 'var(--bg-card-hover)',
+                                    border: '1px solid var(--border-primary)',
+                                    color: 'var(--text-primary)',
+                                }}
+                            />
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-xl"
+                            style={{
+                                background: 'var(--bg-card-hover)',
+                                border: '1px solid var(--border-primary)',
+                            }}>
+                            <div>
+                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    {t('plan.field.enabled') || '启用'}
+                                </p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.enabled_desc') || '启用后会在通知栏发送提醒'}
+                                </p>
+                            </div>
+                            <label className="inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={enabled}
+                                    onChange={(e) => setEnabled(e.target.checked)}
+                                />
+                                <div className="relative w-11 h-6 rounded-full transition-colors"
+                                    style={{ background: enabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
+                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                        style={{ transform: enabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 md:p-6 border-t flex items-center justify-between gap-2 shrink-0"
+                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
+                    {planToEdit && onDelete ? (
+                        <button
+                            onClick={handleDelete}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition btn-press-glass"
+                            style={{ background: 'var(--bg-card)', color: '#dc2626' }}
+                        >
+                            <Trash2 size={14} />
+                            <span>{t('plan.delete') || '删除'}</span>
+                        </button>
+                    ) : (
+                        <span />
+                    )}
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 h-11 rounded-xl text-sm font-bold transition btn-press-glass"
+                            style={{ background: 'var(--bg-card)', color: 'var(--text-secondary)' }}
+                        >
+                            {t('btn.cancel') || '取消'}
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
+                        >
+                            <Save size={14} />
+                            <span>{t('btn.save') || '保存'}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default PlanEditModal;

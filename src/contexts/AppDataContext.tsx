@@ -6,6 +6,8 @@ import {
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
     ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
 } from '../../logic';
+import { Plan } from '../../types';
+import { planKey } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
 import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
@@ -19,6 +21,8 @@ const THEME_COLOR_KEY = 'hrt-theme-color';
 const DARK_MODE_KEY = 'hrt-dark-mode';
 const WEIGHT_MIGRATION_FLAG = 'hrt-weight-per-dose-migrated';
 const LEGACY_WEIGHT_KEY = 'hrt-weight';
+const PLANS_KEY = 'hrt-plans';
+const REMINDERS_ENABLED_KEY = 'hrt-reminders-enabled';
 
 export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
@@ -76,6 +80,13 @@ interface AppDataContextType {
      * data is available.
      */
     baselineE2PGmL: number | null;
+    /** Recurring medication plans. Writes go through a conflict-rule guard so
+     *  no two enabled plans can share the same (ester, route). */
+    plans: Plan[];
+    setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
+    /** Global reminder toggle (Android system notifications). Default ON. */
+    remindersEnabled: boolean;
+    setRemindersEnabled: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -190,6 +201,56 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
     const [gelProducts, setGelProducts] = useState<GelProductSpec[]>(() => readCustomGelProducts());
 
+    const [plans, setPlansRaw] = useState<Plan[]>(() => {
+        const raw = localStorage.getItem(PLANS_KEY);
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? (parsed as Plan[]) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const [remindersEnabled, setRemindersEnabled] = useState<boolean>(() => {
+        const raw = localStorage.getItem(REMINDERS_ENABLED_KEY);
+        // Default ON — the plan feature ships with notifications enabled.
+        if (raw === null) return true;
+        return raw === '1' || raw.toLowerCase() === 'true';
+    });
+
+    /**
+     * Conflict-rule-enforcing setter: at most one enabled plan per (ester, route).
+     * If the proposed next state has any (ester, route) tuple shared by two
+     * enabled plans, we reject the write (return prev) and console.warn so a
+     * buggy import / cloud-sync race can't put the user into an inconsistent
+     * state. The UI layer is responsible for asking the user to disable the
+     * conflicting plan BEFORE attempting to enable a new one.
+     */
+    const setPlans = useCallback(
+        (updater: React.SetStateAction<Plan[]>) => {
+            setPlansRaw((prev) => {
+                const next = typeof updater === 'function' ? (updater as (p: Plan[]) => Plan[])(prev) : updater;
+                const seen = new Map<string, string>(); // key → first planId
+                for (const p of next) {
+                    if (!p.enabled) continue;
+                    const k = planKey(p);
+                    const first = seen.get(k);
+                    if (first !== undefined) {
+                        // eslint-disable-next-line no-console
+                        console.warn(
+                            `[plans] conflict rejected: "${p.label || p.id}" and "${first}" both enabled for ${k}`,
+                        );
+                        return prev;
+                    }
+                    seen.set(k, p.id);
+                }
+                return next;
+            });
+        },
+        [],
+    );
+
     const suppressLocalUpdateRef = useRef({
         events: false,
         labResults: false,
@@ -198,6 +259,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         applyE2LearningToCPA: false,
         applyCPAInhibitionToE2: false,
         gelProducts: false,
+        plans: false,
+        remindersEnabled: false,
     });
     const isInitialLoadRef = useRef({
         events: true,
@@ -207,6 +270,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         applyE2LearningToCPA: true,
         applyCPAInhibitionToE2: true,
         gelProducts: true,
+        plans: true,
+        remindersEnabled: true,
     });
 
     const markExternalUpdate = (key: keyof typeof suppressLocalUpdateRef.current) => {
@@ -266,6 +331,14 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         writeCustomGelProducts(gelProducts);
         finalizeLocalUpdate('gelProducts', GEL_PRODUCTS_KEY);
     }, [gelProducts]);
+    useEffect(() => {
+        localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+        finalizeLocalUpdate('plans', PLANS_KEY);
+    }, [plans]);
+    useEffect(() => {
+        localStorage.setItem(REMINDERS_ENABLED_KEY, remindersEnabled ? '1' : '0');
+        finalizeLocalUpdate('remindersEnabled', REMINDERS_ENABLED_KEY);
+    }, [remindersEnabled]);
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
@@ -274,9 +347,9 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const darkMode = darkModeRaw === '1' || darkModeRaw === 'true';
         const gelProductsRaw = localStorage.getItem(GEL_PRODUCTS_KEY);
         const gelProductsParsed = gelProductsRaw ? JSON.parse(gelProductsRaw) : [];
-        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode, gelProducts: gelProductsParsed });
+        const hash = computeDataHash({ events, weight: latestEventWeight(events), labResults, lang, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, themeColor, darkMode, gelProducts: gelProductsParsed, plans, remindersEnabled });
         localStorage.setItem('hrt-data-hash', hash);
-    }, [events, labResults, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, gelProducts]);
+    }, [events, labResults, calibrationModel, calibrationMode, applyE2LearningToCPA, applyCPAInhibitionToE2, gelProducts, plans, remindersEnabled]);
 
     // Update current time every minute
     useEffect(() => {
@@ -286,7 +359,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', CALIBRATION_MODE_KEY, APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY, GEL_PRODUCTS_KEY];
+            const syncKeys = ['hrt-events', 'hrt-lab-results', 'hrt-calibration-model', CALIBRATION_MODE_KEY, APPLY_E2_LEARNING_TO_CPA_KEY, APPLY_CPA_INHIBITION_TO_E2_KEY, THEME_COLOR_KEY, DARK_MODE_KEY, GEL_PRODUCTS_KEY, PLANS_KEY, REMINDERS_ENABLED_KEY];
             const isCloudSync = e.key === 'hrt-data-synced';
             const isOtherTabSync = e.storageArea === localStorage && e.key && syncKeys.includes(e.key);
             if (!isCloudSync && !isOtherTabSync) {
@@ -358,6 +431,28 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                 setGelProducts(readCustomGelProducts());
             }
 
+            if (e.key === PLANS_KEY || (isCloudSync && e.key === null)) {
+                // Plans list is not part of the cloud-sync payload yet, so only
+                // react to other-tab updates; on a cloud-sync broadcast we'd
+                // need to plumb a snapshot — defer that until cloud-sync ships.
+                if (isOtherTabSync) {
+                    markExternalUpdate('plans');
+                    const saved = localStorage.getItem(PLANS_KEY);
+                    try {
+                        const parsed = saved ? JSON.parse(saved) : [];
+                        setPlansRaw(Array.isArray(parsed) ? parsed : []);
+                    } catch {
+                        setPlansRaw([]);
+                    }
+                }
+            }
+
+            if (e.key === REMINDERS_ENABLED_KEY && isOtherTabSync) {
+                markExternalUpdate('remindersEnabled');
+                const saved = localStorage.getItem(REMINDERS_ENABLED_KEY);
+                if (saved !== null) setRemindersEnabled(saved === '1' || saved.toLowerCase() === 'true');
+            }
+
             if (isCloudSync) {
                 markExternalUpdate('gelProducts');
                 setGelProducts(readCustomGelProducts());
@@ -420,6 +515,39 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             setSimulation(null);
         }
     }, [events, gelProducts]);
+
+    /**
+     * Re-sync Android AlarmManager reminders whenever the plan list or the
+     * global reminder toggle changes. The Tauri commands may not exist on
+     * web/dev — wrapped in defensive try/catch so a missing bridge fails
+     * silently. The Kotlin side deduplicates alarms by (planId, isoTime),
+     * so calling schedule_reminders with the same plan list is idempotent.
+     */
+    useEffect(() => {
+        const invoke = (typeof window !== 'undefined'
+            ? (window as any).__TAURI_INTERNALS__?.invoke
+            : null);
+        if (typeof invoke !== 'function') return; // web preview: no-op
+
+        const run = async () => {
+            try {
+                if (!remindersEnabled) {
+                    await invoke('cancel_all_reminders');
+                    return;
+                }
+                if (plans.length === 0) {
+                    await invoke('cancel_all_reminders');
+                    return;
+                }
+                await invoke('ensure_notification_channel');
+                await invoke('schedule_plan_reminders', { plansJson: JSON.stringify(plans) });
+            } catch {
+                /* Command may not be wired yet (Step 7 lands later) — fail
+                 * silently so the web preview doesn't break. */
+            }
+        };
+        run();
+    }, [remindersEnabled, plans]);
 
     // Rebuild personal model whenever events, labResults, or the custom-gel
     // registry change (gel calibration resolves kinetics from the registry).
@@ -528,6 +656,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setGelProducts,
         resetPersonalModel,
         baselineE2PGmL,
+        plans,
+        setPlans,
+        remindersEnabled,
+        setRemindersEnabled,
     };
 
     return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
