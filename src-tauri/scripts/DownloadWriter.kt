@@ -21,6 +21,7 @@ import java.io.File
  * Returns the content:// uri string (API 29+) or absolute file path (API ≤28).
  */
 object DownloadWriter {
+    @JvmStatic
     fun saveToDownloads(context: Context, subdir: String, filename: String, contentB64: String): String {
         val safeSubdir = sanitizeSubdir(subdir)
         // Decode on Kotlin side so binary payloads (PNG, JPEG) survive — Rust
@@ -43,6 +44,7 @@ object DownloadWriter {
      *
      * 返回 "OK"。
      */
+    @JvmStatic
     fun copyToClipboard(context: Context, text: String): String {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("text", text))
