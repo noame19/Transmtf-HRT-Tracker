@@ -50,4 +50,4 @@ codegen-units = 1
 # the panic info + backtrace to logcat before abort so crashes are still
 # debuggable.
 panic = "abort"
-opt-level = "3"  # release default — best perf, ~5 MB larger than "z"
+opt-level = 3  # release default — best perf, ~5 MB larger than "z"
