@@ -148,6 +148,68 @@ jobs:
             grep -nA2 "lint {" "$APP_GRADLE" || true
           fi
 
+      - name: Inject ProGuard keep rule for DownloadWriter (R8 strip fix)
+        run: |
+          set -e
+          PROGUARD_FILE="src-tauri/gen/android/app/proguard-rules.pro"
+          # Tauri `android init --ci` doesn't always ship proguard-rules.pro;
+          # create an empty one if missing so the `>>` append doesn't fail.
+          touch "$PROGUARD_FILE"
+          cat >> "$PROGUARD_FILE" <<'EOF'
+
+          # Keep DownloadWriter accessible from Rust via JNI reflection.
+          # R8's reachability graph can't see Rust→JNI reflection, so it
+          # would otherwise strip every @JvmStatic method on this Kotlin
+          # object. We hit this on the first signed release APK with
+          # "NoSuchMethodError: Lcom/.../DownloadWriter;.saveToDownloads"
+          # when the user tapped the export button — the class shell was
+          # present in dex but every method was gone.
+          -keep class com.smirnovayama.hrttracker.DownloadWriter { *; }
+          -keep class com.smirnovayama.hrttracker.DownloadWriter$* { *; }
+          EOF
+          echo "--- proguard-rules.pro after patch ---"
+          cat "$PROGUARD_FILE"
+
+      - name: Ensure release buildType enables R8 + references proguard-rules.pro
+        run: |
+          set -e
+          APP_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          if [ ! -f "$APP_GRADLE" ]; then
+            echo "::error::app/build.gradle.kts not found"
+            exit 1
+          fi
+          if grep -Eq "isMinifyEnabled[[:space:]]*=[[:space:]]*true|minifyEnabled[[:space:]]+true" "$APP_GRADLE"; then
+            echo "--- release block already has minifyEnabled = true ---"
+          else
+            # Multi-line injection into Kotlin DSL is too brittle with sed —
+            # use python so we can locate the release { block and splice in
+            # isMinifyEnabled + proguardFiles idempotently.
+            python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
+          s = p.read_text()
+          m = re.search(r"release\s*\{", s)
+          if not m:
+              raise SystemExit("no release { block found in app/build.gradle.kts")
+          if re.search(r"isMinifyEnabled\s*=\s*true", s) or re.search(r"minifyEnabled\s+true", s):
+              print("already has minifyEnabled = true; no-op")
+          else:
+              insert_at = m.end()
+              injection = (
+                  "\n        isMinifyEnabled = true\n"
+                  "        proguardFiles(\n"
+                  "            getDefaultProguardFile(\"proguard-android-optimize.txt\"),\n"
+                  "            \"proguard-rules.pro\"\n"
+                  "        )\n"
+              )
+              s = s[:insert_at] + injection + s[insert_at:]
+              p.write_text(s)
+              print("injected isMinifyEnabled + proguardFiles into release { }")
+          PY
+          fi
+          echo "--- release block after patch ---"
+          awk '/release[[:space:]]*\{/,/^[[:space:]]*\}/' "$APP_GRADLE" | head -n 20
+
       - name: Materialize release keystore (Gradle signing)
         run: |
           set -e
