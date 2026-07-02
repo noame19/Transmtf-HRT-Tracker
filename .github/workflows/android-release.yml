@@ -88,7 +88,83 @@ jobs:
           echo "--- DownloadWriter.kt injected ---"
           ls -la "$KOTLIN_DIR/DownloadWriter.kt"
 
-      - name: Patch AndroidManifest.xml with WRITE_EXTERNAL_STORAGE (maxSdkVersion=28)
+      - name: Inject notification Kotlin sources into generated Android project
+        run: |
+          set -e
+          KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
+          mkdir -p "$KOTLIN_DIR"
+          for f in NotificationScheduler.kt ReminderReceiver.kt BootReceiver.kt; do
+            cp "src-tauri/scripts/$f" "$KOTLIN_DIR/"
+          done
+          echo "--- notification sources injected ---"
+          ls -la "$KOTLIN_DIR/"
+
+      - name: Patch MainActivity.kt with onNewIntent deep-link handler
+        run: |
+          set -e
+          # Tauri 2's `android init --ci` generates MainActivity.kt as a
+          # bare class with no onNewIntent override. We need to capture
+          # the notification deep-link (planId + scheduledAtMs) and write
+          # it to the same SharedPreferences NotificationScheduler reads
+          # from so the JS poller can pick it up.
+          #
+          # Idempotent: skipped if a marker comment is already present.
+          MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt"
+          if [ ! -f "$MAIN_ACTIVITY" ]; then
+            echo "::error::MainActivity.kt not found at $MAIN_ACTIVITY"
+            exit 1
+          fi
+          if grep -q "hrt-deep-link-marker" "$MAIN_ACTIVITY"; then
+            echo "--- already patched ---"
+          else
+            python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt")
+          s = p.read_text()
+          marker = "// hrt-deep-link-marker"
+          # Locate the class body opening brace and the closing brace so we
+          # can splice the override just after the class opening.
+          # The generated MainActivity is tiny: `class MainActivity : ...`
+          # followed by `{ ... }`. We insert an onNewIntent override inside
+          # the class body.
+          i = s.find("class MainActivity")
+          if i < 0:
+              raise SystemExit("MainActivity class declaration not found")
+          # Find the first '{' AFTER the class declaration line.
+          brace_open = s.find("{", i)
+          if brace_open < 0:
+              raise SystemExit("class opening brace not found")
+          injection = (
+              "\n    " + marker + "\n"
+              "    override fun onNewIntent(intent: android.content.Intent) {\n"
+              "        super.onNewIntent(intent)\n"
+              "        setIntent(intent)\n"
+              '        val planId = intent.getStringExtra("deep_link_plan_id") ?: return\n'
+              '        val scheduledAtMs = intent.getLongExtra("deep_link_scheduled_at", 0L)\n'
+              "        if (planId.isEmpty() || scheduledAtMs <= 0L) return\n"
+              "        // Same SharedPreferences NotificationScheduler writes the\n"
+              "        // fired-event payload to; JS reads via get_pending_reminders.\n"
+              "        val pending = org.json.JSONObject().apply {\n"
+              '            put("planId", planId)\n'
+              '            put("scheduledAtMs", scheduledAtMs)\n'
+              '            put("firedAtMs", System.currentTimeMillis())\n'
+              "        }.toString()\n"
+              '        getSharedPreferences("hrt_notification_cache", android.content.Context.MODE_PRIVATE)\n'
+              "            .edit()\n"
+              '            .putString("pending_deep_link", pending)\n'
+              "            .apply()\n"
+              "    }\n"
+          )
+          # Insert immediately after the class opening brace, with proper indent.
+          s = s[:brace_open + 1] + injection + s[brace_open + 1:]
+          p.write_text(s)
+          print("MainActivity.kt: injected onNewIntent deep-link handler")
+          PY
+          fi
+          echo "--- MainActivity.kt after patch ---"
+          cat "$MAIN_ACTIVITY"
+
+      - name: Patch AndroidManifest.xml with permissions + receivers
         run: |
           set -e
           MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
@@ -96,14 +172,46 @@ jobs:
             echo "::error::AndroidManifest.xml not found"
             exit 1
           fi
-          if grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
-            echo "--- already patched ---"
-            cat "$MANIFEST"
-          else
+          # WRITE_EXTERNAL_STORAGE — used by DownloadWriter on API <= 28.
+          # POST_NOTIFICATIONS — runtime permission on API 33+.
+          # RECEIVE_BOOT_COMPLETED — required for BootReceiver to fire after
+          # device restart (which clears AlarmManager state).
+          if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
             sed -i 's|</manifest>|    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n</manifest>|' "$MANIFEST"
-            echo "--- patched manifest ---"
-            cat "$MANIFEST"
           fi
+          if ! grep -q "POST_NOTIFICATIONS" "$MANIFEST"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>|' "$MANIFEST"
+          fi
+          if ! grep -q "RECEIVE_BOOT_COMPLETED" "$MANIFEST"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n</manifest>|' "$MANIFEST"
+          fi
+          # ReminderReceiver — internal receiver fired by AlarmManager.
+          # BootReceiver — exported (system sends BOOT_COMPLETED to it).
+          # We use python (not sed) because we splice a multi-line <receiver>
+          # block into the existing <application> element and a brittle sed
+          # here will silently mangle the manifest.
+          python3 - <<'PY'
+          import pathlib, re
+          p = pathlib.Path("src-tauri/gen/android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          if "ReminderReceiver" not in s and "</application>" in s:
+              injection = (
+                  "\n        <receiver android:name=\".ReminderReceiver\" android:exported=\"false\" />"
+                  "\n        <receiver android:name=\".BootReceiver\" android:exported=\"true\">"
+                  "\n            <intent-filter>"
+                  "\n                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />"
+                  "\n                <action android:name=\"android.intent.action.MY_PACKAGE_REPLACED\" />"
+                  "\n            </intent-filter>"
+                  "\n        </receiver>"
+              )
+              s = s.replace("</application>", injection + "\n    </application>", 1)
+              p.write_text(s)
+              print("injected ReminderReceiver + BootReceiver into <application>")
+          else:
+              print("receivers already declared — no-op")
+          PY
+          echo "--- patched manifest ---"
+          cat "$MANIFEST"
 
       - name: Copy frontend dist into Android assets/public
         run: |
@@ -166,6 +274,17 @@ jobs:
           # present in dex but every method was gone.
           -keep class com.smirnovayama.hrttracker.DownloadWriter { *; }
           -keep class com.smirnovayama.hrttracker.DownloadWriter$* { *; }
+
+          # Same rationale for the notification bridge. AlarmManager fires
+          # the receivers via Intent action lookups, so the class + method
+          # names MUST survive R8. The scheduler is reachable from Rust
+          # via JNI, same as DownloadWriter.
+          -keep class com.smirnovayama.hrttracker.NotificationScheduler { *; }
+          -keep class com.smirnovayama.hrttracker.NotificationScheduler$* { *; }
+          -keep class com.smirnovayama.hrttracker.ReminderReceiver { *; }
+          -keep class com.smirnovayama.hrttracker.ReminderReceiver$* { *; }
+          -keep class com.smirnovayama.hrttracker.BootReceiver { *; }
+          -keep class com.smirnovayama.hrttracker.BootReceiver$* { *; }
           EOF
           echo "--- proguard-rules.pro after patch ---"
           cat "$PROGUARD_FILE"

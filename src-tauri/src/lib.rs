@@ -71,9 +71,9 @@ static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
 /// framework object (`ThreadedRenderer$ProcessInitializer$1`) and every
 /// method lookup crashed with `NoSuchMethodError`.
 #[cfg(target_os = "android")]
-fn with_android_env<F>(f: F) -> Result<String, String>
+fn with_android_env<F, R>(f: F) -> Result<R, String>
 where
-    F: FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> Result<String, String>,
+    F: FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> Result<R, String>,
 {
     let ctx = tao::platform::android::prelude::main_android_context()
         .ok_or_else(|| "no Android context (activity not yet created?)".to_string())?;
@@ -89,9 +89,10 @@ where
 }
 
 #[cfg(target_os = "android")]
-fn load_writer_class<'a>(
+fn load_class_by_name<'a>(
     env: &mut jni::JNIEnv<'a>,
     activity: &jni::objects::JObject,
+    class_name: &str,
 ) -> Result<jni::objects::JClass<'a>, String> {
     use jni::objects::JValue;
     let class_loader = env
@@ -100,7 +101,7 @@ fn load_writer_class<'a>(
         .l()
         .map_err(|e| format!("call_method(getClassLoader).l(): {}", e))?;
     let jname = env
-        .new_string("com/smirnovayama/hrttracker/DownloadWriter")
+        .new_string(class_name)
         .map_err(|e| format!("new_string(class name): {}", e))?;
     let class_obj = env
         .call_method(
@@ -113,6 +114,25 @@ fn load_writer_class<'a>(
         .l()
         .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
     Ok(class_obj.into())
+}
+
+/// Back-compat shim so existing DownloadWriter call sites keep working after
+/// the loader was generalised into `load_class_by_name`.
+#[cfg(target_os = "android")]
+fn load_writer_class<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    activity: &jni::objects::JObject,
+) -> Result<jni::objects::JClass<'a>, String> {
+    load_class_by_name(env, activity, "com/smirnovayama/hrttracker/DownloadWriter")
+}
+
+/// Convenience: `load_class_by_name` wrapped for the NotificationScheduler.
+#[cfg(target_os = "android")]
+fn load_notification_class<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    activity: &jni::objects::JObject,
+) -> Result<jni::objects::JClass<'a>, String> {
+    load_class_by_name(env, activity, "com/smirnovayama/hrttracker/NotificationScheduler")
 }
 
 #[cfg(target_os = "android")]
@@ -311,6 +331,202 @@ fn save_data_to_download(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Reminder (Android notification) plumbing
+//
+// Each command is a thin shim that hands off to the matching
+// `NotificationScheduler` `@JvmStatic` method. The Kotlin side does the real
+// work (channel creation, AlarmManager registration, permission requests,
+// pending-deep-link read/write) — Rust just plumbs the strings across JNI.
+// All non-Android builds return a friendly error so the web preview never
+// blows up on missing commands.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Create the "hrt_reminders" NotificationChannel (idempotent, no-op on
+/// API < 26 or when the channel already exists).
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn ensure_notification_channel(_app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(cls, "ensureChannel", "(Landroid/content/Context;)Z", &[JValue::Object(activity)])
+                .map_err(|e| format!("call_static_method(ensureChannel): {}", e))?
+                .z()
+                .map_err(|e| format!("ensureChannel.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("ensure_notification_channel only available on Android".to_string())
+    }
+}
+
+/// Returns the user's notification preference as a Z (boolean). On API < 33
+/// the platform has no runtime toggle, so we just return `true` (the channel
+/// can still be muted by the user in system settings; AlarmManager fires
+/// regardless).
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn request_notification_permission(_app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(cls, "areNotificationsEnabled", "(Landroid/content/Context;)Z", &[JValue::Object(activity)])
+                .map_err(|e| format!("call_static_method(areNotificationsEnabled): {}", e))?
+                .z()
+                .map_err(|e| format!("areNotificationsEnabled.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("request_notification_permission only available on Android".to_string())
+    }
+}
+
+/// Re-derive every upcoming dose moment from the supplied plan list and
+/// (re)register AlarmManager alarms for each. Idempotent — Kotlin clears
+/// the cached plans before scheduling so stale entries can't linger. The
+/// returned integer is the count of alarms actually scheduled (for log
+/// debugging; UI doesn't surface it).
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn schedule_plan_reminders(_app: tauri::AppHandle, plans_json: String) -> Result<i32, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let jplans = env
+                .new_string(&plans_json)
+                .map_err(|e| format!("new_string(plans_json): {}", e))?;
+            let n = env
+                .call_static_method(
+                    cls,
+                    "scheduleReminders",
+                    "(Landroid/content/Context;Ljava/lang/String;)I",
+                    &[JValue::Object(activity), JValue::Object(&jplans)],
+                )
+                .map_err(|e| format!("call_static_method(scheduleReminders): {}", e))?
+                .i()
+                .map_err(|e| format!("scheduleReminders.i: {}", e))?;
+            Ok(n as i32)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("schedule_plan_reminders only available on Android".to_string())
+    }
+}
+
+/// Cancel alarms whose requestCode maps back to any of the supplied plan
+/// ids. JS passes a JSON array of ids (string), e.g. `["plan-1","plan-2"]`.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn cancel_plan_reminders(_app: tauri::AppHandle, plan_ids_json: String) -> Result<i32, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let jids = env
+                .new_string(&plan_ids_json)
+                .map_err(|e| format!("new_string(plan_ids_json): {}", e))?;
+            let n = env
+                .call_static_method(
+                    cls,
+                    "cancelReminders",
+                    "(Landroid/content/Context;Ljava/lang/String;)I",
+                    &[JValue::Object(activity), JValue::Object(&jids)],
+                )
+                .map_err(|e| format!("call_static_method(cancelReminders): {}", e))?
+                .i()
+                .map_err(|e| format!("cancelReminders.i: {}", e))?;
+            Ok(n as i32)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("cancel_plan_reminders only available on Android".to_string())
+    }
+}
+
+/// Drop every alarm the app ever registered. Called when the user disables
+/// the global reminder toggle, so the system isn't plagued by dead alarms.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn cancel_all_reminders(_app: tauri::AppHandle) -> Result<i32, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let n = env
+                .call_static_method(
+                    cls,
+                    "cancelAll",
+                    "(Landroid/content/Context;)I",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(cancelAll): {}", e))?
+                .i()
+                .map_err(|e| format!("cancelAll.i: {}", e))?;
+            Ok(n as i32)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("cancel_all_reminders only available on Android".to_string())
+    }
+}
+
+/// Returns the deep-link JSON written by `ReminderReceiver` after firing
+/// (one-shot read — the entry is cleared immediately so a fresh app launch
+/// never replays an old reminder). Returns `None` if nothing pending.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn get_pending_reminders(_app: tauri::AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "readPending",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(readPending): {}", e))?
+                .l()
+                .map_err(|e| format!("readPending.l: {}", e))?;
+            if result.is_null() {
+                return Ok::<Option<String>, String>(None);
+            }
+            let jstr = env
+                .get_string((&result).into())
+                .map_err(|e| format!("get_string: {}", e))?;
+            // Clear after read so the next call doesn't replay the same one.
+            let cls2 = load_notification_class(env, activity)?;
+            let _ = env.call_static_method(cls2, "clearPending", "(Landroid/content/Context;)V", &[JValue::Object(activity)]);
+            Ok(Some(jstr.into()))
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("get_pending_reminders only available on Android".to_string())
+    }
+}
+
 /// Install a Rust panic hook that writes the panic info + a backtrace to
 /// logcat (`RustStdoutStderr` tag) before the process aborts. The release
 /// build sets `panic = "abort"`, which kills the process the moment a
@@ -354,7 +570,13 @@ pub fn run() {
             set_debug_mode,
             export_logs_to_download,
             save_data_to_download,
-            clipboard_write_text
+            clipboard_write_text,
+            ensure_notification_channel,
+            request_notification_permission,
+            schedule_plan_reminders,
+            cancel_plan_reminders,
+            cancel_all_reminders,
+            get_pending_reminders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
