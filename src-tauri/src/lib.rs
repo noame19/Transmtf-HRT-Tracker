@@ -60,13 +60,13 @@ static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
 /// Initialize ndk-context from Kotlin side (MainActivity.onCreate).
 /// tauri 2 + wry 0.55 no longer call ndk_context::initialize_android_context
 /// automatically (tao 0.35 dropped the ndk_glue init path), so we expose our
-/// own JNI entry: `Rust.initializeAndroidContext(this)`. Kotlin then forwards
+/// own JNI entry: `NativeBridge.initializeAndroidContext(this)`. Kotlin then forwards
 /// to us and we feed the JavaVM + Activity jobject pointers into the crate's
 /// static `ANDROID_CONTEXT`. Until this runs, any subsequent JNI call panics
 /// at ndk-context-0.1.1/src/lib.rs:72:30.
 #[cfg(target_os = "android")]
 #[no_mangle]
-pub extern "system" fn Java_com_smirnovayama_hrttracker_Rust_initializeAndroidContext(
+pub extern "system" fn Java_com_smirnovayama_hrttracker_NativeBridge_initializeAndroidContext(
     env: jni::JNIEnv,
     _class: jni::objects::JClass,
     activity: jni::objects::JObject,
