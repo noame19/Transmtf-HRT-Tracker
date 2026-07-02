@@ -212,7 +212,7 @@ jobs:
       - name: Sign APK with apksigner
         id: sign-apk
         env:
-          KEYSTORE_FILE: $RUNNER_TEMP/release.keystore
+          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           KEY_ALIAS: hrttracker
         run: |
           set -e
