@@ -26,7 +26,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Android Rust targets (arm-only release: arm64-v8a + armeabi-v7a)
+      - name: "Add Android Rust targets (arm-only release: arm64-v8a + armeabi-v7a)"
         run: |
           rustup target add aarch64-linux-android
           rustup target add armv7-linux-androideabi
