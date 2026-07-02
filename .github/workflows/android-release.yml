@@ -214,6 +214,8 @@ jobs:
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           KEY_ALIAS: hrttracker
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -e
           UNSIGNED="${{ steps.locate-unsigned.outputs.unsigned_apk }}"
