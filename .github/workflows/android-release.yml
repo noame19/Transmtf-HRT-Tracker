@@ -241,14 +241,11 @@ jobs:
           KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           KEY_ALIAS: hrttracker
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          # PKCS12 keystores produced by `keytool -genkey` use the same
-          # password for the key entry as for the store, UNLESS the user
-          # explicitly typed a different one at the
-          # "Enter key password for <alias> (RETURN if same as keystore
-          # password):" prompt. We try the dedicated secret first so
-          # users with a distinct key password keep their setup, and
-          # fall back to the store password otherwise.
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # PKCS12 keystores (keytool default since JDK 8) only support a
+          # single password — `keytool -genkeypair -keypass X` is silently
+          # ignored with the warning "PKCS12 密钥库不支持其他存储和密钥口令".
+          # So we reuse the store password for both apksigner flags.
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -e
           UNSIGNED="${{ steps.locate-unsigned.outputs.unsigned_apk }}"
