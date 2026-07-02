@@ -1,11 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
-#[cfg(target_os = "android")]
-use std::sync::mpsc;
 use once_cell::sync::Lazy;
 use serde::Serialize;
-#[cfg(target_os = "android")]
-use tauri::Manager;
 
 const LOG_BUFFER_CAPACITY: usize = 2000;
 
@@ -61,26 +57,69 @@ impl LogState {
 
 static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
 
-/// Dispatch a synchronous closure to the Android UI thread via Tauri 2's
-/// runtime handle, then block this thread until the closure finishes and
-/// returns a result. This replaces the previous `ndk_context::android_context()`
-/// approach, which panicked at runtime because nothing on the Tauri 2 + wry
-/// path ever called `ndk_context::initialize_android_context`.
+/// Initialize ndk-context from Kotlin side (MainActivity.onCreate).
+/// tauri 2 + wry 0.55 no longer call ndk_context::initialize_android_context
+/// automatically (tao 0.35 dropped the ndk_glue init path), so we expose our
+/// own JNI entry: `Rust.initializeAndroidContext(this)`. Kotlin then forwards
+/// to us and we feed the JavaVM + Activity jobject pointers into the crate's
+/// static `ANDROID_CONTEXT`. Until this runs, any subsequent JNI call panics
+/// at ndk-context-0.1.1/src/lib.rs:72:30.
 #[cfg(target_os = "android")]
-fn with_android_context<F>(app: &tauri::AppHandle, f: F) -> Result<String, String>
-where
-    F: FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> Result<String, String> + Send + 'static,
-{
-    let (tx, rx) = mpsc::channel();
-    let runtime_handle = match app.runtime() {
-        tauri::RuntimeOrDispatch::Runtime(r) => r.handle(),
-        tauri::RuntimeOrDispatch::RuntimeHandle(h) => h,
-        _ => unreachable!(),
+#[no_mangle]
+pub extern "system" fn Java_com_smirnovayama_hrttracker_Rust_initializeAndroidContext(
+    env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    activity: jni::objects::JObject,
+) {
+    let vm = match env.get_java_vm() {
+        Ok(vm) => vm.get_java_vm_pointer() as *mut std::ffi::c_void,
+        Err(e) => {
+            android_log(&format!("initializeAndroidContext: get_java_vm failed: {}", e));
+            return;
+        }
     };
-    runtime_handle.run_on_android_context(move |env, activity, _webview| {
-        let _ = tx.send(f(env, activity));
-    });
-    rx.recv().map_err(|e| format!("android channel error: {}", e))?
+    let activity_global = match env.new_global_ref(&activity) {
+        Ok(g) => g,
+        Err(e) => {
+            android_log(&format!("initializeAndroidContext: new_global_ref failed: {}", e));
+            return;
+        }
+    };
+    let ctx_ptr = activity_global.as_raw() as *mut std::ffi::c_void;
+    unsafe {
+        ndk_context::initialize_android_context(vm, ctx_ptr);
+    }
+    android_log("initializeAndroidContext: ndk-context ready");
+}
+
+#[cfg(target_os = "android")]
+fn android_log(msg: &str) {
+    // Cheap logcat sink; Rust panics surface via RustStdoutStderr but a successful
+    // info log doesn't, so this fills the gap.
+    use std::io::Write;
+    let _ = writeln!(
+        std::io::stderr(),
+        "[hrt-tracker/jni] {}",
+        msg
+    );
+}
+
+#[cfg(target_os = "android")]
+fn with_android_env<F>(f: F) -> Result<String, String>
+where
+    F: FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> Result<String, String>,
+{
+    use ndk_context::android_context;
+    let ctx = android_context();
+    let vm_ptr = ctx.vm() as *mut _;
+    let ctx_ptr = ctx.context() as *mut _;
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr) }
+        .map_err(|e| format!("JavaVM::from_raw: {}", e))?;
+    let mut env = vm
+        .attach_current_thread_as_daemon()
+        .map_err(|e| format!("attach_current_thread_as_daemon: {}", e))?;
+    let activity = unsafe { jni::objects::JObject::from_raw(ctx_ptr) };
+    f(&mut env, &activity)
 }
 
 #[cfg(target_os = "android")]
@@ -89,9 +128,6 @@ fn load_writer_class<'a>(
     activity: &jni::objects::JObject,
 ) -> Result<jni::objects::JClass<'a>, String> {
     use jni::objects::JValue;
-    // env.find_class only sees the system classloader on Android; app classes
-    // (com.smirnovayama.hrttracker.DownloadWriter) must be loaded via the
-    // activity's own classloader.
     let class_loader = env
         .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
         .map_err(|e| format!("call_method(getClassLoader): {}", e))?
@@ -100,16 +136,17 @@ fn load_writer_class<'a>(
     let jname = env
         .new_string("com/smirnovayama/hrttracker/DownloadWriter")
         .map_err(|e| format!("new_string(class name): {}", e))?;
-    env.call_method(
-        class_loader,
-        "loadClass",
-        "(Ljava/lang/String;)Ljava/lang/Class;",
-        &[JValue::Object(&jname)],
-    )
-    .map_err(|e| format!("call_method(loadClass): {}", e))?
-    .l()
-    .map_err(|e| format!("call_method(loadClass).l(): {}", e))?
-    .into()
+    let class_obj = env
+        .call_method(
+            class_loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::Object(&jname)],
+        )
+        .map_err(|e| format!("call_method(loadClass): {}", e))?
+        .l()
+        .map_err(|e| format!("call_method(loadClass).l(): {}", e))?;
+    Ok(class_obj.into())
 }
 
 #[cfg(target_os = "android")]
@@ -215,7 +252,6 @@ fn clipboard_write_inner(
 }
 
 #[tauri::command]
-#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
 fn set_debug_mode(app: tauri::AppHandle, enabled: bool) {
     // Toggle the in-memory gate; webview console + Rust panic both reach
     // this buffer via consoleBridge.ts / append_log. The old "spawn logcat
@@ -228,7 +264,7 @@ fn set_debug_mode(app: tauri::AppHandle, enabled: bool) {
     if !enabled {
         LOG_STATE.clear();
     }
-    let _ = app; // 保留参数，未来扩展
+    let _ = app;
 }
 
 #[tauri::command]
@@ -243,7 +279,7 @@ fn append_log(level: String, msg: String) {
 
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
-fn export_logs_to_download(app: tauri::AppHandle) -> Result<String, String> {
+fn export_logs_to_download(_app: tauri::AppHandle) -> Result<String, String> {
     let entries = LOG_STATE.snapshot();
     if entries.is_empty() {
         return Err("No logs captured. Enable debug mode and reproduce the issue first.".to_string());
@@ -258,43 +294,37 @@ fn export_logs_to_download(app: tauri::AppHandle) -> Result<String, String> {
     }
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let filename = format!("hrt-tracker-logs-{}.txt", ts);
-    #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+    #[cfg(target_os = "android")]
     {
-        #[cfg(target_os = "android")]
-        {
-            return with_android_context(&app, move |env, activity| {
-                save_to_downloads_inner(env, activity, &filename, &text)
-            });
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            Err("export_logs_to_download only available on Android".to_string())
-        }
+        return with_android_env(|env, activity| {
+            save_to_downloads_inner(env, activity, &filename, &text)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("export_logs_to_download only available on Android".to_string())
     }
 }
 
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
-fn clipboard_write_text(app: tauri::AppHandle, text: String) -> Result<String, String> {
-    #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+fn clipboard_write_text(_app: tauri::AppHandle, text: String) -> Result<String, String> {
+    #[cfg(target_os = "android")]
     {
-        #[cfg(target_os = "android")]
-        {
-            return with_android_context(&app, move |env, activity| {
-                clipboard_write_inner(env, activity, &text)
-            });
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            Err("clipboard_write_text only available on Android".to_string())
-        }
+        return with_android_env(|env, activity| {
+            clipboard_write_inner(env, activity, &text)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("clipboard_write_text only available on Android".to_string())
     }
 }
 
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
 fn save_data_to_download(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     subdir: String,
     filename: String,
     content_b64: String,
@@ -302,21 +332,16 @@ fn save_data_to_download(
     // Frontend sends `contentB64`; Tauri's ArgumentCase::Camel default rewrites
     // the param name to camelCase for IPC, so `content_b64` here matches `contentB64` from JS.
     // Base64 decode happens on the Kotlin side (DownloadWriter.saveToDownloads),
-    // so binary payloads like PNG/JPEG survive the JNI String hop. Earlier this
-    // function did BASE64.decode + String::from_utf8 here, which panicked or
-    // errored for any non-UTF8 byte sequence.
-    #[cfg_attr(not(target_os = "android"), allow(unused_variables))]
+    // so binary payloads like PNG/JPEG survive the JNI String hop.
+    #[cfg(target_os = "android")]
     {
-        #[cfg(target_os = "android")]
-        {
-            return with_android_context(&app, move |env, activity| {
-                save_to_downloads_with_subdir_inner(env, activity, &subdir, &filename, &content_b64)
-            });
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            Err("save_data_to_download only available on Android".to_string())
-        }
+        return with_android_env(|env, activity| {
+            save_to_downloads_with_subdir_inner(env, activity, &subdir, &filename, &content_b64)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("save_data_to_download only available on Android".to_string())
     }
 }
 
