@@ -30,7 +30,7 @@ object DownloadWriter {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             saveViaMediaStore(context, safeSubdir, filename, bytes)
         } else {
-            saveViaLegacyFile(safeSubdir, filename, bytes)
+            saveViaLegacyFile(context, safeSubdir, filename, bytes)
         }
     }
 
@@ -81,12 +81,27 @@ object DownloadWriter {
         return uri.toString()
     }
 
-    private fun saveViaLegacyFile(subdir: String, filename: String, bytes: ByteArray): String {
+    private fun saveViaLegacyFile(context: Context, subdir: String, filename: String, bytes: ByteArray): String {
+        // Some devices (and many Android emulators / cloud-phone sandboxes) mount
+        // /storage/emulated/0 via sdcardfs in "strict" mode (fsuid=1023, mask=6,
+        // default_normal). Under that mount untrusted_app uids cannot mkdir new
+        // subdirs under the public Download tree, so Environment.getExternal
+        // StoragePublicDirectory(Downloads)/<subdir> throws EACCES. The path
+        // under getExternalFilesDir() is app-owned, bypasses the sdcardfs gate,
+        // and works on real devices and emulators alike. Real public Download
+        // is attempted as a fallback for users who actually want the file in
+        // the system Downloads folder on a non-strict device.
+        val appDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), subdir)
+        if (appDir.exists() || appDir.mkdirs()) {
+            val file = File(appDir, filename)
+            file.writeBytes(bytes)
+            return file.absolutePath
+        }
         @Suppress("DEPRECATION")
         val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val dir = File(root, subdir)
         if (!dir.exists() && !dir.mkdirs()) {
-            throw RuntimeException("mkdirs failed for $dir")
+            throw RuntimeException("mkdirs failed for appDir=$appDir and publicDir=$dir")
         }
         val file = File(dir, filename)
         file.writeBytes(bytes)
