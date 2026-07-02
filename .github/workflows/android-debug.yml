@@ -149,6 +149,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-debug-apk
+          name: android-release-apk
           path: ${{ steps.locate.outputs.apk_path }}
           if-no-files-found: error

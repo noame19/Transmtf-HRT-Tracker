@@ -42,3 +42,10 @@ custom-protocol = ["tauri/custom-protocol"]
 lto = true
 strip = "symbols"
 codegen-units = 1
+# panic=abort drops the unwind tables and the landing-pad code that the
+# default `unwind` strategy emits into every .so. On a Tauri/Android APK
+# this is the single biggest shrinker (each ABI's libhrt_tracker_lib.so
+# goes from ~100 MB to ~10 MB in our build). We have no catch_unwind use
+# anywhere, so abort is safe.
+panic = "abort"
+opt-level = "z"  # smallest release binary; trade ~5% perf for ~10% size off "3"

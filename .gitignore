@@ -35,3 +35,9 @@ src-tauri/gen
 
 # local artifacts (downloaded APKs from gh run download)
 _artifacts/
+
+# release keystore (used by tauri.conf.json signing block; populated from
+# ANDROID_KEYSTORE_B64 secret in CI, never committed)
+src-tauri/release.keystore
+src-tauri/*.jks
+src-tauri/*.keystore

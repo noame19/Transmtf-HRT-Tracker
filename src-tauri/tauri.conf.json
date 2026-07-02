@@ -38,6 +38,14 @@
     ],
     "android": {
       "minSdkVersion": 24
+    },
+    "signing": {
+      "release": {
+        "keytoolKeyFile": "release.keystore",
+        "keytoolKeyAlias": "hrttracker",
+        "keytoolKeyPassword": "env:ANDROID_KEY_PASSWORD",
+        "keytoolStorePassword": "env:ANDROID_KEYSTORE_PASSWORD"
+      }
     }
   },
   "plugins": {}
