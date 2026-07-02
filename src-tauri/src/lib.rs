@@ -57,68 +57,34 @@ impl LogState {
 
 static LOG_STATE: Lazy<LogState> = Lazy::new(LogState::new);
 
-/// Initialize ndk-context from Kotlin side (MainActivity.onCreate).
-/// tauri 2 + wry 0.55 no longer call ndk_context::initialize_android_context
-/// automatically (tao 0.35 dropped the ndk_glue init path), so we expose our
-/// own JNI entry: `NativeBridge.initializeAndroidContext(this)`. Kotlin then forwards
-/// to us and we feed the JavaVM + Activity jobject pointers into the crate's
-/// static `ANDROID_CONTEXT`. Until this runs, any subsequent JNI call panics
-/// at ndk-context-0.1.1/src/lib.rs:72:30.
-#[cfg(target_os = "android")]
-#[no_mangle]
-pub extern "system" fn Java_com_smirnovayama_hrttracker_NativeBridge_initializeAndroidContext(
-    env: jni::JNIEnv,
-    _class: jni::objects::JClass,
-    activity: jni::objects::JObject,
-) {
-    let vm = match env.get_java_vm() {
-        Ok(vm) => vm.get_java_vm_pointer() as *mut std::ffi::c_void,
-        Err(e) => {
-            android_log(&format!("initializeAndroidContext: get_java_vm failed: {}", e));
-            return;
-        }
-    };
-    let activity_global = match env.new_global_ref(&activity) {
-        Ok(g) => g,
-        Err(e) => {
-            android_log(&format!("initializeAndroidContext: new_global_ref failed: {}", e));
-            return;
-        }
-    };
-    let ctx_ptr = activity_global.as_raw() as *mut std::ffi::c_void;
-    unsafe {
-        ndk_context::initialize_android_context(vm, ctx_ptr);
-    }
-    android_log("initializeAndroidContext: ndk-context ready");
-}
-
-#[cfg(target_os = "android")]
-fn android_log(msg: &str) {
-    // Cheap logcat sink; Rust panics surface via RustStdoutStderr but a successful
-    // info log doesn't, so this fills the gap.
-    use std::io::Write;
-    let _ = writeln!(
-        std::io::stderr(),
-        "[hrt-tracker/jni] {}",
-        msg
-    );
-}
-
+/// Attach a daemon JNI thread and run the closure with the current Activity
+/// (the same one tao/wry cached during `Rust.onActivityCreate(this)`).
+///
+/// We use `tao::platform::android::ndk_glue::main_android_context()` instead
+/// of `ndk_context::android_context()`: tao populates its `CONTEXTS` map from
+/// the JNI entry that tauri/wry already wired up, so the JavaVM + jobject we
+/// get back are byte-for-byte the same pointers wry uses internally. The
+/// `ndk-context` crate has a separate global that nobody initialises on
+/// Tauri 2 / wry 0.55 / tao 0.35, and earlier attempts to fill it ourselves
+/// from Kotlin hit a different problem: when re-attaching on a different
+/// thread, the stored jobject's class resolved to an unrelated Android
+/// framework object (`ThreadedRenderer$ProcessInitializer$1`) and every
+/// method lookup crashed with `NoSuchMethodError`.
 #[cfg(target_os = "android")]
 fn with_android_env<F>(f: F) -> Result<String, String>
 where
     F: FnOnce(&mut jni::JNIEnv, &jni::objects::JObject) -> Result<String, String>,
 {
-    use ndk_context::android_context;
-    let ctx = android_context();
-    let vm_ptr = ctx.vm() as *mut _;
-    let ctx_ptr = ctx.context() as *mut _;
-    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr) }
+    let ctx = tao::platform::android::prelude::main_android_context()
+        .ok_or_else(|| "no Android context (activity not yet created?)".to_string())?;
+    let vm_ptr = ctx.java_vm;
+    let ctx_ptr = ctx.context_jobject;
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr as *mut _) }
         .map_err(|e| format!("JavaVM::from_raw: {}", e))?;
     let mut env = vm
         .attach_current_thread_as_daemon()
         .map_err(|e| format!("attach_current_thread_as_daemon: {}", e))?;
-    let activity = unsafe { jni::objects::JObject::from_raw(ctx_ptr) };
+    let activity = unsafe { jni::objects::JObject::from_raw(ctx_ptr as *mut _) };
     f(&mut env, &activity)
 }
 

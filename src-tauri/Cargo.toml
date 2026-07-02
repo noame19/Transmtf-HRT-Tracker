@@ -21,7 +21,14 @@ jni = "0.21"
 once_cell = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
-ndk-context = "0.1"
+# tao 0.35 is what tauri-runtime-wry 2.x pins; we use its
+# `pub fn main_android_context()` to grab the same Activity pointer that
+# wry/tao already stored during `Rust.onActivityCreate(...)` — no Kotlin-side
+# init dance required. Earlier attempt used the `ndk-context` crate and
+# Kotlin-injected the JavaVM/Activity, but a JNI call then resolved the
+# stored context_jobject to the wrong class (ThreadedRenderer$ProcessInitializer$1)
+# when re-attached on a different thread, so all method lookups failed.
+tao = { version = "0.35", default-features = false, features = ["rwh_06"] }
 
 [lib]
 name = "hrt_tracker_lib"

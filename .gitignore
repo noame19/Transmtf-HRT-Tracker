@@ -32,3 +32,6 @@ src-tauri/gen
 .env
 .env.*
 !.env.example
+
+# local artifacts (downloaded APKs from gh run download)
+_artifacts/
