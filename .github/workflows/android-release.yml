@@ -209,7 +209,7 @@ jobs:
           "$ANDROID_HOME/build-tools/31.0.0/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
           ls -la "$ALIGNED"
 
-      - name: Inspect keystore (diagnostic: list aliases + key fingerprints)
+      - name: "Inspect keystore (diagnostic, list aliases and key fingerprints)"
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
