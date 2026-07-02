@@ -311,8 +311,42 @@ fn save_data_to_download(
     }
 }
 
+/// Install a Rust panic hook that writes the panic info + a backtrace to
+/// logcat (`RustStdoutStderr` tag) before the process aborts. The release
+/// build sets `panic = "abort"`, which kills the process the moment a
+/// panic fires, so without this hook crashes leave zero evidence in the
+/// log — `signal 6 (SIGABRT)` only. The hook costs nothing on the happy
+/// path and lets us still triage user-reported crashes.
+///
+/// `set_hook` is process-global; calling it more than once replaces the
+/// previous hook, so we keep the call inside `run()` (entry point) and
+/// guard with a one-shot atomic so accidental double-init is a no-op.
+#[cfg(any(target_os = "android", debug_assertions))]
+fn install_panic_hook() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::panic::set_hook(Box::new(|info| {
+        // 1. Forward to the default hook so logcat still gets the
+        //    "thread '<name>' panicked at ..." line that `adb logcat`
+        //    users are used to.
+        eprintln!("thread '{}' panicked at {}\n\nbacktrace:\n{:?}",
+            std::thread::current().name().unwrap_or("<unnamed>"),
+            info,
+            std::backtrace::Backtrace::force_capture(),
+        );
+        // 2. Push into our in-memory ring buffer so the webview can
+        //    surface the crash via the existing debug-log export path.
+        LOG_STATE.append("rust", "panic", &format!("{}\n{:?}", info, std::backtrace::Backtrace::force_capture()));
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(any(target_os = "android", debug_assertions))]
+    install_panic_hook();
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             get_log_count,

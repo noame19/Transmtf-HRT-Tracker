@@ -148,20 +148,86 @@ jobs:
             grep -nA2 "lint {" "$APP_GRADLE" || true
           fi
 
-      - name: Materialize release keystore from GitHub Secret
+      - name: Materialize release keystore (Gradle signing)
         run: |
           set -e
           if [ -z "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
             echo "::error::ANDROID_KEYSTORE_B64 secret is empty — set it in repo Settings → Secrets → Actions"
             exit 1
           fi
-          mkdir -p src-tauri
-          echo -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > src-tauri/release.keystore
-          ls -la src-tauri/release.keystore
-          # Expose secrets to the tauri-cli subprocess. tauri.conf.json reads
-          # `env:ANDROID_KEY_PASSWORD` / `env:ANDROID_KEYSTORE_PASSWORD`.
-          echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
-          echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          # Decode the keystore to a runner-local path (gitignored, ephemeral).
+          KEYSTORE_FILE="$RUNNER_TEMP/release.keystore"
+          echo -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$KEYSTORE_FILE"
+          ls -la "$KEYSTORE_FILE"
+          # Tauri 2 release signing is wired through Gradle. The official
+          # pattern (https://v2.tauri.app/distribute/sign/android) is:
+          #   1. Drop a keystore.properties file next to settings.gradle
+          #   2. Add a signingConfigs.release block to app/build.gradle.kts
+          #      that reads those properties at build time
+          #   3. Wire buildTypes.release.signingConfig to that config
+          # We do step 1 here; step 2+3 are injected as a separate patch step
+          # below (idempotent — skips if already wired).
+          KEYSTORE_PROPS="src-tauri/gen/android/keystore.properties"
+          cat > "$KEYSTORE_PROPS" <<EOF
+          storeFile=$KEYSTORE_FILE
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+          echo "--- keystore.properties ---"
+          cat "$KEYSTORE_PROPS"
+
+      - name: Patch build.gradle.kts to wire release signingConfig
+        run: |
+          set -e
+          APP_GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+          if [ ! -f "$APP_GRADLE" ]; then
+            echo "::error::$APP_GRADLE not found"
+            exit 1
+          fi
+          if grep -q "signingConfigs.getByName(\"release\")" "$APP_GRADLE"; then
+            echo "--- signingConfig already wired ---"
+          else
+            # Inject before the first `buildTypes {` line, append a
+            # signingConfigs block, and append a buildTypes.release stanza.
+            # Tauri-generated build.gradle.kts uses `buildTypes { release { ... } }`.
+            python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path("src-tauri/gen/android/app/build.gradle.kts")
+          src = p.read_text()
+          # 1. signingConfigs block — before `buildTypes`
+          signing_block = (
+              'signingConfigs {\n'
+              '    create("release") {\n'
+              '        val keystorePropertiesFile = rootProject.file("keystore.properties")\n'
+              '        val keystoreProperties = java.util.Properties()\n'
+              '        if (keystorePropertiesFile.exists()) {\n'
+              '            keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))\n'
+              '        }\n'
+              '        keyAlias = keystoreProperties["keyAlias"] as String\n'
+              '        keyPassword = keystoreProperties["keyPassword"] as String\n'
+              '        storeFile = file(keystoreProperties["storeFile"] as String)\n'
+              '        storePassword = keystoreProperties["storePassword"] as String\n'
+              '    }\n'
+              '}\n\n'
+          )
+          src = re.sub(r'(\n\s*buildTypes\s*\{)', signing_block + r'\1', src, count=1)
+          # 2. Wire buildTypes.release.signingConfig if not already set
+          if 'signingConfig = signingConfigs.getByName("release")' not in src:
+              src = re.sub(
+                  r'(getByName\("release"\)\s*\{)',
+                  r'\1\n        signingConfig = signingConfigs.getByName("release")',
+                  src, count=1,
+              )
+          p.write_text(src)
+          print("--- patched build.gradle.kts (signing section) ---")
+          for i, line in enumerate(src.splitlines(), 1):
+              if 'signing' in line.lower():
+                  print(f"{i:3} {line}")
+          PY
+          fi
+          echo "--- final build.gradle.kts (signing area) ---"
+          grep -nB1 -A1 "signing" "$APP_GRADLE" || true
 
       - name: Build Release APK
         run: cd src-tauri && npx @tauri-apps/cli@2 android build --apk

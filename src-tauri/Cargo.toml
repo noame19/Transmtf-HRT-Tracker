@@ -46,6 +46,8 @@ codegen-units = 1
 # default `unwind` strategy emits into every .so. On a Tauri/Android APK
 # this is the single biggest shrinker (each ABI's libhrt_tracker_lib.so
 # goes from ~100 MB to ~10 MB in our build). We have no catch_unwind use
-# anywhere, so abort is safe.
+# anywhere, so abort is safe. The companion panic hook in lib.rs writes
+# the panic info + backtrace to logcat before abort so crashes are still
+# debuggable.
 panic = "abort"
-opt-level = "z"  # smallest release binary; trade ~5% perf for ~10% size off "3"
+opt-level = "3"  # release default — best perf, ~5 MB larger than "z"
