@@ -23,7 +23,7 @@ const MainLayout: React.FC = () => {
     const { showDialog } = useDialog();
     const navigate = useNavigate();
     const location = useLocation();
-    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans } = useAppData();
+    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans, remindersEnabled } = useAppData();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
