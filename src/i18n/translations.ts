@@ -835,6 +835,7 @@ export const TRANSLATIONS_BASE = {
         // Medication calendar heatmap
         "heatmap.title": "用药日历",
         "heatmap.today": "今天",
+        "heatmap.planned": "计划",
         "heatmap.no_events": "无记录",
         "heatmap.kpi.total": "累计用药",
         "heatmap.kpi.active_days": "活跃天数",
@@ -1682,6 +1683,7 @@ export const TRANSLATIONS_BASE = {
         // Medication calendar heatmap
         "heatmap.title": "Medication Calendar",
         "heatmap.today": "Today",
+        "heatmap.planned": "Planned",
         "heatmap.no_events": "No doses",
         "heatmap.kpi.total": "Total doses",
         "heatmap.kpi.active_days": "Active days",
