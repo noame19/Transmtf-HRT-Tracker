@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { Settings, Plus, Activity, Calendar, FlaskConical } from 'lucide-react';
+import { Settings, Activity, Calendar, FlaskConical } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { DoseEvent, LabResult } from '../../logic';
+import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
+import { isPatchApply } from '../utils/patch';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
 import DoseFormModal from './DoseFormModal';
@@ -202,7 +203,6 @@ const MainLayout: React.FC = () => {
         { id: 'settings' as ViewKey, label: t('nav.settings'), icon: Settings },
     ], [t]);
 
-    const handleAddEvent = () => { setEditingEvent(null); setIsFormOpen(true); };
     const handleEditEvent = (e: DoseEvent) => { setEditingEvent(e); setIsFormOpen(true); };
 
     /**
@@ -213,12 +213,21 @@ const MainLayout: React.FC = () => {
      * so the saved event lines up with what was actually scheduled.
      */
     const handleSmartAddEvent = (timeOverride?: Date | null) => {
-        const refTime = timeOverride ?? currentTime;
-        const matches = matchPlansForNow(plans, refTime, SMART_MATCH_TOLERANCE_MIN);
+        // Defensive: a button that wires `onClick={onAddEvent}` will pass
+        // the React SyntheticEvent as `timeOverride` (events are truthy).
+        // Anything other than a Date instance — including SyntheticEvent —
+        // must fall back to `currentTime` so the button stays clickable.
+        const refTimeRaw = timeOverride instanceof Date ? timeOverride : currentTime;
+        const refDate = refTimeRaw instanceof Date
+            ? refTimeRaw
+            : new Date(refTimeRaw ?? Date.now());
+        const matches = matchPlansForNow(plans, refDate, SMART_MATCH_TOLERANCE_MIN);
         if (matches.length === 0) {
             setEditingEvent(null);
             setPrefillFromPlan(null);
-            setPrefillTimeOverride(timeOverride ?? null);
+            // Only pass through to DoseFormModal if timeOverride is actually a Date;
+            // a SyntheticEvent leakage would crash the modal's `new Date(...).toISOString()`.
+            setPrefillTimeOverride(timeOverride instanceof Date ? timeOverride : null);
             setIsFormOpen(true);
         } else if (matches.length === 1) {
             setEditingEvent(null);
@@ -241,6 +250,68 @@ const MainLayout: React.FC = () => {
             return exists ? prev.map(p => p.id === e.id ? e : p) : [...prev, e];
         });
     };
+    /**
+     * Paired save for the unified "贴片" form. The DoseFormModal builds a
+     * shared companionGroupId for both events so the /history list can render
+     * them as one logical record and the "贴片移除" button on the apply card
+     * vanishes the moment the remove is logged.
+     *
+     * Both events go through the same id-existence rule (edit-in-place when
+     * the id already exists, append otherwise) — the form reuses the apply
+     * event's id when editing, so a re-save updates the apply and adds the
+     * remove in one shot.
+     */
+    const handleSavePatch = (apply: DoseEvent, remove: DoseEvent) => {
+        setEvents(prev => {
+            const applyExists = prev.some(p => p.id === apply.id);
+            const afterApply = applyExists
+                ? prev.map(p => p.id === apply.id ? apply : p)
+                : [...prev, apply];
+            const removeExists = afterApply.some(p => p.id === remove.id);
+            return removeExists
+                ? afterApply.map(p => p.id === remove.id ? remove : p)
+                : [...afterApply, remove];
+        });
+    };
+    /**
+     * One-tap "贴片移除" from the /history list. Builds a Route.patchRemove
+     * event stamped with the apply's companionGroupId (so the existing apply
+     * card immediately hides the button on next render) and `timeH = now`.
+     * The event is appended to storage; the apply itself is untouched, so the
+     * PK engine's existing time-axis pairing logic continues to see both
+     * events even if companionGroupId were ever stripped.
+     */
+    const handleRemovePatch = (applyId: string) => {
+        setEvents(prev => {
+            const apply = prev.find(p => p.id === applyId);
+            if (!apply || !isPatchApply(apply)) return prev;
+            const nowH = Date.now() / 3600000;
+            if (nowH <= apply.timeH) {
+                // Refuse to record a remove at/before the apply time — the
+                // time-axis pairing would be nonsense and the UI already
+                // hides the button when no future-time remove exists.
+                return prev;
+            }
+            const groupId = apply.companionGroupId && apply.companionGroupId.trim().length > 0
+                ? apply.companionGroupId
+                : (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+            const removeEvent: DoseEvent = {
+                id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `rem-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                route: Route.patchRemove,
+                ester: Ester.E2,
+                timeH: nowH,
+                doseMG: 0,
+                weightKG: apply.weightKG,
+                extras: {},
+                companionGroupId: groupId,
+            };
+            return [...prev, removeEvent];
+        });
+    };
     const handleDeleteEvent = (id: string) => {
         showDialog('confirm', t('timeline.delete_confirm'), () => {
             setEvents(prev => prev.filter(e => e.id !== id));
@@ -256,8 +327,15 @@ const MainLayout: React.FC = () => {
     const handleEditPlan = (p: Plan) => { setEditingPlan(p); setIsPlanEditOpen(true); };
     const handleSavePlan = (plan: Plan) => {
         // Conflict-rule auto-disable: if the saved plan is enabled and shares a
-        // key with another enabled plan, flip the older one off so the save
-        // succeeds. PlanEditModal already prompted the user about this.
+        // drug category with another enabled plan, flip the older one(s) off so
+        // the save succeeds. PlanEditModal already prompted the user about this.
+        //
+        // Bug fix (2026-07): previously the "create new" branch returned
+        // `[...prev, plan]`, which DROPPED the auto-disable — context's setPlans
+        // guard then rejected the write as a category conflict and rolled back
+        // to `prev`, leaving the user staring at "nothing happened". Now both
+        // branches flow through `nextOthers` so the disabled-older plan actually
+        // lands in the result.
         setPlans(prev => {
             const others = prev.filter(p2 => p2.id !== plan.id);
             let nextOthers = others;
@@ -271,7 +349,7 @@ const MainLayout: React.FC = () => {
             const exists = prev.some(p2 => p2.id === plan.id);
             return exists
                 ? prev.map(p2 => p2.id === plan.id ? plan : (nextOthers.find(p3 => p3.id === p2.id) ?? p2))
-                : [...prev, plan];
+                : [...nextOthers, plan];
         });
         setIsPlanEditOpen(false);
         setEditingPlan(null);
@@ -336,13 +414,6 @@ const MainLayout: React.FC = () => {
                         <span style={{ color: 'var(--accent-300)' }}>·</span>
                         <span className="font-mono">{formatTime(currentTime)}</span>
                     </div>
-                    <button
-                        onClick={handleAddEvent}
-                        className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold text-white glass-btn-primary btn-press-glass transition"
-                    >
-                        <Plus size={15} />
-                        <span>{t('btn.add')}</span>
-                    </button>
                 </div>
             </header>
 
@@ -368,6 +439,7 @@ const MainLayout: React.FC = () => {
                         onEditPlan: handleEditPlan,
                         onDeletePlan: handleDeletePlan,
                         onTogglePlan: handleTogglePlan,
+                        onRemovePatch: handleRemovePatch,
                         pendingReminder,
                         matchedPendingPlan,
                         onConfirmPendingReminder: handleConfirmPendingReminder,
@@ -447,6 +519,7 @@ const MainLayout: React.FC = () => {
                 prefillFromPlan={prefillFromPlan}
                 prefillTimeOverride={prefillTimeOverride}
                 onSave={handleSaveEvent}
+                onSavePatch={handleSavePatch}
                 onDelete={handleDeleteEvent}
             />
             <LabResultModal

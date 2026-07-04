@@ -7,7 +7,7 @@ import {
     ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
 } from '../../logic';
 import { Plan } from '../../types';
-import { planKey } from '../utils/planSchedule';
+import { drugCategoryOf, sanitizePlansForConflict } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
 import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
@@ -81,7 +81,8 @@ interface AppDataContextType {
      */
     baselineE2PGmL: number | null;
     /** Recurring medication plans. Writes go through a conflict-rule guard so
-     *  no two enabled plans can share the same (ester, route). */
+     *  no two enabled plans can share the same drug category (estrogen /
+     *  anti_androgen / …) at the same time. */
     plans: Plan[];
     setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
     /** Global reminder toggle (Android system notifications). Default ON. */
@@ -206,7 +207,15 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         if (!raw) return [];
         try {
             const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? (parsed as Plan[]) : [];
+            if (!Array.isArray(parsed)) return [];
+            const cleaned = sanitizePlansForConflict(parsed as Plan[]);
+            // If sanitize had to disable any duplicates, persist the cleaned
+            // state immediately so dirty data doesn't survive a reload — even
+            // before the user touches anything.
+            if (cleaned !== parsed) {
+                localStorage.setItem(PLANS_KEY, JSON.stringify(cleaned));
+            }
+            return cleaned;
         } catch {
             return [];
         }
@@ -231,15 +240,15 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         (updater: React.SetStateAction<Plan[]>) => {
             setPlansRaw((prev) => {
                 const next = typeof updater === 'function' ? (updater as (p: Plan[]) => Plan[])(prev) : updater;
-                const seen = new Map<string, string>(); // key → first planId
+                const seen = new Map<string, string>(); // drugCategory → first planId
                 for (const p of next) {
                     if (!p.enabled) continue;
-                    const k = planKey(p);
+                    const k = drugCategoryOf(p.ester);
                     const first = seen.get(k);
                     if (first !== undefined) {
                         // eslint-disable-next-line no-console
                         console.warn(
-                            `[plans] conflict rejected: "${p.label || p.id}" and "${first}" both enabled for ${k}`,
+                            `[plans] conflict rejected: "${p.label || p.id}" and "${first}" both enabled in ${k}`,
                         );
                         return prev;
                     }

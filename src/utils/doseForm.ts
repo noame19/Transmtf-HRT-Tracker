@@ -15,13 +15,20 @@ import {
  * Display order for the route selector. Decoupled from the `Route` enum
  * declaration order (which is serialized to storage and must stay stable) so we
  * can surface the most-used routes — sublingual then oral — at the top.
+ *
+ * Note: `Route.patchRemove` is intentionally NOT surfaced here. The
+ * DoseFormModal exposes a single "贴片" entry (= `Route.patchApply`) and
+ * handles patch removal via an optional "摘下时间" field on the form OR via
+ * the "贴片移除" button on the /history list — both code paths write a
+ * separate `Route.patchRemove` event linked by `companionGroupId`. The PK
+ * engine still pairs apply↔remove by scanning the time axis, so legacy data
+ * with two un-grouped events continues to work.
  */
 export const ROUTE_DISPLAY_ORDER: Route[] = [
     Route.sublingual,
     Route.oral,
     Route.injection,
     Route.patchApply,
-    Route.patchRemove,
     Route.gel,
 ];
 

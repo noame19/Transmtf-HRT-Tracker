@@ -341,6 +341,13 @@
 
         /* Accent spinner */
         .accent-spinner { width: 16px; height: 16px; border: 2px solid var(--accent-200); border-top-color: var(--accent-500); border-radius: 50%; animation: spin 0.6s linear infinite; }
+
+        /* Override Tailwind's default w-28 (7rem) for the SettingsPage language
+           CustomSelect — 10rem fits the longest localized label without
+           truncating the dropdown trigger. The custom rule is parsed before the
+           cdn.tailwindcss.com runtime injects its generated utility styles, so
+           we add !important to win the cascade. */
+        .w-28 { width: 10rem !important; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         /* Skeleton shimmer */

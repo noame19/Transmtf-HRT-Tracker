@@ -12,6 +12,18 @@ export const formatTime = (date: Date) => {
     return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
+/**
+ * Full date+time for the patch-removed hint. Includes year so an apply/remove
+ * pair that spans a year boundary is unambiguous (e.g. "2025-12-31 23:50" vs
+ * "2026-01-01 00:10"). Local timezone — matches the rest of the app.
+ */
+export const formatDateTime = (date: Date, lang: Lang) => {
+    const locale = lang === 'zh' ? 'zh-CN' : (lang === 'zh-TW' ? 'zh-TW' : (lang === 'ja' ? 'ja-JP' : 'en-US'));
+    const datePart = date.toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const timePart = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${datePart} ${timePart}`;
+};
+
 export const getRouteIcon = (route: Route) => {
     switch (route) {
         case Route.injection: return <Syringe className="w-5 h-5 text-pink-400" />;

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDialog } from '../contexts/DialogContext';
 import { useTranslation } from '../contexts/LanguageContext';
 import { getRouteIcon } from '../utils/helpers';
 import { Ester, Route as RouteEnum } from '../../types';
@@ -16,6 +17,18 @@ interface PlanListProps {
 
 const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan }) => {
     const { t } = useTranslation();
+    const { showDialog } = useDialog();
+
+    const handleDeleteClick = async (e: React.MouseEvent, plan: Plan) => {
+        // Defensive: stop bubbling so a future parent onClick (e.g. inline-edit)
+        // can't swallow the click before the dialog runs.
+        e.stopPropagation();
+        e.preventDefault();
+        const ok = await showDialog('confirm', t('plan.confirm.delete') || '确定删除这条用药计划吗？');
+        if (ok === 'confirm') {
+            onDeletePlan(plan.id);
+        }
+    };
 
     // A plan is "replaced" when it's disabled AND another enabled plan shares
     // its (ester, route). Used to surface an amber subtitle so the user knows
@@ -122,7 +135,7 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                                 <span>{t('plan.edit') || '编辑'}</span>
                             </button>
                             <button
-                                onClick={() => onDeletePlan(plan.id)}
+                                onClick={(e) => handleDeleteClick(e, plan)}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition btn-press-glass"
                                 style={{ background: 'var(--bg-card-hover)', color: '#dc2626' }}
                             >
@@ -133,23 +146,6 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                     </div>
                 );
             })}
-
-            {plans.length > 0 && (
-                <div className="mx-4">
-                    <button
-                        onClick={onAddPlan}
-                        className="w-full py-3 rounded-2xl border border-dashed text-sm font-bold transition btn-press-glass flex items-center justify-center gap-2"
-                        style={{
-                            color: 'var(--text-secondary)',
-                            borderColor: 'var(--border-primary)',
-                            background: 'var(--bg-card)',
-                        }}
-                    >
-                        <Plus size={16} />
-                        <span>{t('plan.new') || '新增计划'}</span>
-                    </button>
-                </div>
-            )}
         </div>
     );
 };

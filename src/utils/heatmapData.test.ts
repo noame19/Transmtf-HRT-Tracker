@@ -1,0 +1,297 @@
+import { describe, it, expect } from 'vitest';
+import { DoseEvent, Ester, Route } from '../../types';
+import {
+    buildHeatmapRange,
+    routesOfCell,
+    timeSortedCellRows,
+    heatmapColorForEster,
+    HEATMAP_COLOR_BY_CATEGORY,
+} from './heatmapData';
+import { drugCategoryOf } from './planSchedule';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HOUR = 3600000;
+
+/** Local-time helper: build a Date for a given Y/M/D at local midnight. */
+function localMid(year: number, month: number, day: number, hours = 0, minutes = 0): Date {
+    return new Date(year, month - 1, day, hours, minutes, 0, 0);
+}
+
+/** Local-time helper: build an event's `timeH` (hours since Unix epoch) for
+ *  a given local date. Mirrors the project's convention (date stored as a wall-
+ *  clock Date.getTime() / 3600000). */
+function localTimeH(year: number, month: number, day: number, hours = 0, minutes = 0): number {
+    return localMid(year, month, day, hours, minutes).getTime() / HOUR;
+}
+
+function makeEvent(overrides: Partial<DoseEvent> = {}): DoseEvent {
+    return {
+        id: overrides.id ?? `ev-${Math.random().toString(36).slice(2)}`,
+        route: Route.injection,
+        timeH: localTimeH(2026, 7, 4, 20, 0),
+        doseMG: 5,
+        ester: Ester.EV,
+        weightKG: 70,
+        extras: {},
+        ...overrides,
+    };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
+    it('maps each drug class to a stable hex colour', () => {
+        expect(HEATMAP_COLOR_BY_CATEGORY.estrogen).toBe('#EC4899');
+        expect(HEATMAP_COLOR_BY_CATEGORY.anti_androgen).toBe('#3B82F6');
+        expect(HEATMAP_COLOR_BY_CATEGORY.progestin).toBe('#F59E0B');
+        expect(HEATMAP_COLOR_BY_CATEGORY.other).toBe('#64748B');
+    });
+
+    it('routes a real Ester to the right palette bucket', () => {
+        // Estradiol family → estrogen → pink
+        expect(heatmapColorForEster(Ester.EV)).toBe('#EC4899');
+        expect(heatmapColorForEster(Ester.E2)).toBe('#EC4899');
+        // Anti-androgen → blue
+        expect(heatmapColorForEster(Ester.CPA)).toBe('#3B82F6');
+        // Other (anything not in the switch arms — e.g. PRL isn't an Enum
+        // value here, but a defensive read confirms the bucket contract).
+        const otherEster = 'XYZ' as Ester;
+        expect(heatmapColorForEster(otherEster)).toBe('#64748B');
+    });
+
+    it('uses the same DrugCategory contract as planSchedule', () => {
+        // Invariant: drugCategoryOf must agree with heatmapColorForEster.
+        for (const e of Object.values(Ester)) {
+            const cat = drugCategoryOf(e);
+            expect(HEATMAP_COLOR_BY_CATEGORY[cat]).toBeDefined();
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — empty input', () => {
+    it('produces a non-empty 7-row grid when there are no events', () => {
+        const today = localMid(2026, 7, 4);
+        const range = buildHeatmapRange([], today, 21);
+        // Should snap start to the Monday of (today - 60d) and end to the
+        // Sunday of (today + 21d). Either way, ≥ 7 days.
+        expect(range.weeks.length).toBeGreaterThanOrEqual(2);
+        for (const w of range.weeks) {
+            expect(w.days.length).toBe(7);
+        }
+        expect(range.todayKey).toBe('2026-07-04');
+    });
+
+    it('snaps start to Monday', () => {
+        // Today is 2026-07-04 which is a Saturday. First event is on 2026-01-15
+        // (a Thursday). The Monday BEFORE 2026-01-15 is 2026-01-12.
+        const events = [makeEvent({ timeH: localTimeH(2026, 1, 15, 20, 0) })];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        expect(range.startDate.getDay()).toBe(1); // Monday
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — single day admin event', () => {
+    it('places the event on its date and routes it via the helper', () => {
+        const ev = makeEvent({ id: 'a', timeH: localTimeH(2026, 7, 3, 20, 0), route: Route.injection });
+        const range = buildHeatmapRange([ev], localMid(2026, 7, 4), 21);
+        // Find the cell for 2026-07-03 (Friday).
+        const cell = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-03');
+        expect(cell).toBeDefined();
+        expect(cell!.events.some((e) => e.id === 'a')).toBe(true);
+        expect(routesOfCell(cell!)).toEqual([Route.injection]);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — same day multiple events', () => {
+    it('aggregates multiple events on the same day into one cell', () => {
+        const events = [
+            makeEvent({ id: 'ev-1', timeH: localTimeH(2026, 7, 4, 7, 0), route: Route.sublingual }),
+            makeEvent({ id: 'ev-2', timeH: localTimeH(2026, 7, 4, 20, 0), route: Route.oral, ester: Ester.CPA }),
+            makeEvent({ id: 'ev-3', timeH: localTimeH(2026, 7, 4, 22, 0), route: Route.injection }),
+        ];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        const cell = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-04');
+        expect(cell).toBeDefined();
+        const rows = timeSortedCellRows(cell!);
+        expect(rows.map((r) => r.route)).toEqual([Route.sublingual, Route.oral, Route.injection]);
+        expect(rows.map((r) => r.timeH)).toEqual([
+            localTimeH(2026, 7, 4, 7, 0),
+            localTimeH(2026, 7, 4, 20, 0),
+            localTimeH(2026, 7, 4, 22, 0),
+        ]);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — today marker', () => {
+    it('flags exactly one cell as today', () => {
+        const events = [makeEvent({ timeH: localTimeH(2026, 7, 4, 7, 0) })];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        const todayCells = range.weeks.flatMap((w) => w.days).filter((c) => c.isToday);
+        expect(todayCells.length).toBe(1);
+        expect(todayCells[0].dateKey).toBe('2026-07-04');
+    });
+
+    it('marks days strictly after today as isFuture', () => {
+        const events = [makeEvent({ timeH: localTimeH(2026, 7, 4, 7, 0) })];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        const futureCells = range.weeks.flatMap((w) => w.days).filter((c) => c.isFuture);
+        // Today + 21d of padding then snapped forward to Sunday → at least 21.
+        expect(futureCells.length).toBeGreaterThanOrEqual(21);
+        // ...but no farther than the nearest Sunday after today + 21d.
+        // 2026-07-04 (Sat) + 21d = 2026-07-25 (Sat), snap to 2026-07-26 (Sun) → 22.
+        expect(futureCells.length).toBeLessThanOrEqual(22);
+        for (const c of futureCells) {
+            expect(c.date.getTime()).toBeGreaterThan(range.today.getTime());
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — patch apply without remove', () => {
+    it('shows the apply event only on its own day', () => {
+        const apply = makeEvent({
+            id: 'patch-apply',
+            route: Route.patchApply,
+            timeH: localTimeH(2026, 7, 4, 8, 0),
+        });
+        const range = buildHeatmapRange([apply], localMid(2026, 7, 4), 21);
+
+        const applyDay = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-04');
+        expect(applyDay).toBeDefined();
+        expect(applyDay!.events.some((e) => e.id === 'patch-apply')).toBe(true);
+
+        // The next day must NOT carry the apply event synthetically.
+        const next = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-05');
+        expect(next!.events.some((e) => e.id === 'patch-apply')).toBe(false);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — patch apply + remove (modern companionGroupId)', () => {
+    it('propagates the apply event across every day from apply to remove inclusive', () => {
+        const gid = 'pair-001';
+        const apply = makeEvent({
+            id: 'apply-1',
+            route: Route.patchApply,
+            timeH: localTimeH(2026, 7, 4, 8, 0),
+            companionGroupId: gid,
+        });
+        const remove = makeEvent({
+            id: 'remove-1',
+            route: Route.patchRemove,
+            timeH: localTimeH(2026, 7, 8, 8, 0),
+            companionGroupId: gid,
+        });
+        const range = buildHeatmapRange([apply, remove], localMid(2026, 7, 4), 21);
+
+        // 2026-07-04 .. 2026-07-08 inclusive should all show apply-1.
+        for (const dateKey of ['2026-07-04', '2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08']) {
+            const cell = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === dateKey);
+            expect(cell, `cell for ${dateKey}`).toBeDefined();
+            expect(cell!.events.some((e) => e.id === 'apply-1'), `${dateKey} should carry apply`).toBe(true);
+        }
+
+        // 2026-07-09 (the day after remove) must NOT carry apply.
+        const afterRemove = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-09');
+        if (afterRemove) {
+            expect(afterRemove.events.some((e) => e.id === 'apply-1')).toBe(false);
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — patch apply + remove (legacy, no companionGroupId)', () => {
+    it('falls back to time-axis pairing so the segment still propagates', () => {
+        const apply = makeEvent({
+            id: 'legacy-apply',
+            route: Route.patchApply,
+            timeH: localTimeH(2026, 7, 4, 8, 0),
+        });
+        const remove = makeEvent({
+            id: 'legacy-remove',
+            route: Route.patchRemove,
+            timeH: localTimeH(2026, 7, 8, 8, 0),
+        });
+        const range = buildHeatmapRange([apply, remove], localMid(2026, 7, 4), 21);
+
+        for (const k of ['2026-07-04', '2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08']) {
+            const cell = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === k);
+            expect(cell!.events.some((e) => e.id === 'legacy-apply'), `${k} should carry apply`).toBe(true);
+        }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — week alignment', () => {
+    it('always returns 7 cells per column', () => {
+        const events = [makeEvent({ timeH: localTimeH(2026, 7, 4, 8, 0) })];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        for (const w of range.weeks) {
+            expect(w.days.length).toBe(7);
+        }
+    });
+
+    it('places the month label on the column where each new month first appears', () => {
+        // Today = 2026-07-04 (Sat). Spread events across all 12 months so the
+        // range starts in late June (week of 2026-06-29) and runs through
+        // early January 2027, exercising multiple month-boundary labels.
+        const events: DoseEvent[] = [];
+        for (let m = 1; m <= 12; m++) {
+            events.push(makeEvent({
+                id: `ev-${m}`,
+                timeH: localTimeH(2026, m, 15, 8, 0),
+            }));
+        }
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        const labelsOnCols = range.weeks.map((w) => w.monthLabel ?? '');
+        const distinctLabels = Array.from(new Set(labelsOnCols.filter((s) => s !== '')));
+        // Must include the latest event's month (Sep first appearance for the
+        // event-on-2026-09-15 case) and at least 2 distinct month labels in
+        // total. The exact first label depends on the Monday of the first
+        // event's week (Jun for this fixture).
+        expect(distinctLabels.length).toBeGreaterThanOrEqual(3);
+        expect(labelsOnCols).toContain('Sep');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildHeatmapRange — end-date selection', () => {
+    it('extends past today + futurePadDays when there are later events', () => {
+        // Today = 2026-07-04, pad = 21d → expected end ~2026-07-25 unless an
+        // event is later. Add an event on 2026-12-15 to push the window far
+        // beyond the future-pad.
+        const events = [
+            makeEvent({ timeH: localTimeH(2026, 6, 1, 7, 0) }),
+            makeEvent({ timeH: localTimeH(2026, 12, 15, 20, 0) }),
+        ];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        // The last day rendered must be ≥ 2026-12-15.
+        expect(range.endDate.getTime()).toBeGreaterThanOrEqual(localMid(2026, 12, 15).getTime());
+    });
+
+    it('falls back to today + futurePadDays when the latest event is in the past', () => {
+        const events = [
+            makeEvent({ timeH: localTimeH(2026, 1, 5, 7, 0) }),
+            makeEvent({ timeH: localTimeH(2026, 6, 30, 20, 0) }),
+        ];
+        const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
+        // End must be at least today + 21d → 2026-07-25.
+        expect(range.endDate.getTime()).toBeGreaterThanOrEqual(localMid(2026, 7, 25).getTime());
+    });
+});

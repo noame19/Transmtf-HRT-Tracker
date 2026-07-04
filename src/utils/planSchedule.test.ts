@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Ester, Plan, Route } from '../../types';
 import {
     drugCategoryOf,
@@ -10,6 +10,9 @@ import {
     findConflicts,
     summarizeSchedule,
     validatePlan,
+    formatNextDue,
+    sanitizePlansForConflict,
+    pickPrimaryEnabledPlan,
 } from './planSchedule';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,6 +54,12 @@ const tStub = (k: string, fallback?: string): string => {
         'plan.weekday.5': 'Fri',
         'plan.weekday.6': 'Sat',
         'plan.next': 'Next {when}',
+        'overview.due.today': '今天',
+        'overview.due.tomorrow': '明天',
+        'overview.due.day_after': '后天',
+        'overview.due.this_weekday': '本周{day}',
+        'overview.due.next_weekday': '下周{day}',
+        'overview.due.exact': '{m}月{d}日',
     };
     return templates[k] ?? fallback ?? k;
 };
@@ -240,6 +249,33 @@ describe('matchPlansForNow', () => {
         expect(matches).toHaveLength(1);
         expect(matches[0].scheduledAt.getHours()).toBe(21);
     });
+
+    // ── Regression: defensive coercion of `now` to a number of ms.
+    // Triggered in dev by a stale HMR closure that handed matchPlansForNow
+    // a non-Date value via MainLayout.handleSmartAddEvent. The function
+    // signature still says Date, but the runtime accepts epoch-ms numbers
+    // (and anything else coercible via Number) without throwing.
+    it('accepts `now` as an epoch-ms number without throwing', () => {
+        const plan = makePlan({
+            schedule: { kind: 'daily', times: ['20:00'] },
+        });
+        const nowMs = new Date(2026, 6, 5, 20, 5).getTime();
+        expect(() => matchPlansForNow([plan], nowMs, 15)).not.toThrow();
+        const matches = matchPlansForNow([plan], nowMs, 15);
+        expect(matches).toHaveLength(1);
+        expect(matches[0].scheduledAt.getHours()).toBe(20);
+    });
+
+    it('falls back to Date.now() when `now` is non-coercible (NaN)', () => {
+        // We don't assert the exact matches — just that the call doesn't
+        // throw and returns a sensible shape. The fallback path is what
+        // keeps the "+新增用药" button clickable when the input is garbage.
+        const plan = makePlan({
+            schedule: { kind: 'daily', times: ['20:00'] },
+        });
+        expect(() => matchPlansForNow([plan], Number('not-a-date'), 15)).not.toThrow();
+        expect(Array.isArray(matchPlansForNow([plan], Number('not-a-date'), 15))).toBe(true);
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -251,26 +287,30 @@ describe('findConflicts', () => {
         expect(findConflicts([a, b], a)).toEqual([]);
     });
 
-    it('returns plans that share (ester, route) AND are enabled AND candidate is enabled', () => {
-        const old = makePlan({
-            id: 'old',
-            ester: Ester.EV,
-            route: Route.injection,
-            enabled: true,
-            schedule: { kind: 'daily', times: ['09:00'] },
-        });
-        const fresh = makePlan({
-            id: 'fresh',
+    it('flags two estrogen plans (different ester / route) as conflicting', () => {
+        // The category rule is broader than (ester, route): EV IM and EB oral
+        // are both estrogen, so the user must disable one before enabling the
+        // other. Switching regimens should go through the conflict-disable
+        // dialog, not silently produce two enabled estrogen plans.
+        const evIm = makePlan({
+            id: 'ev-im',
             ester: Ester.EV,
             route: Route.injection,
             enabled: true,
             schedule: { kind: 'every_n_days', intervalDays: 5, times: ['20:00'] },
         });
-        const conflicts = findConflicts([old, fresh], fresh);
-        expect(conflicts.map((c) => c.id)).toEqual(['old']);
+        const ebOral = makePlan({
+            id: 'eb-oral',
+            ester: Ester.EB,
+            route: Route.oral,
+            enabled: true,
+            schedule: { kind: 'daily', times: ['20:00'] },
+        });
+        const conflicts = findConflicts([evIm, ebOral], ebOral);
+        expect(conflicts.map((c) => c.id)).toEqual(['ev-im']);
     });
 
-    it('does not conflict across different esters or routes', () => {
+    it('allows estrogen + anti-androgen to coexist (different drug categories)', () => {
         const cpa = makePlan({
             id: 'cpa',
             ester: Ester.CPA,
@@ -286,6 +326,25 @@ describe('findConflicts', () => {
             schedule: { kind: 'daily', times: ['20:00'] },
         });
         expect(findConflicts([cpa, ev], cpa)).toEqual([]);
+    });
+
+    it('flags two anti-androgen plans (CPA + BICA) as conflicting', () => {
+        const cpa = makePlan({
+            id: 'cpa',
+            ester: Ester.CPA,
+            route: Route.oral,
+            enabled: true,
+            schedule: { kind: 'daily', times: ['20:00'] },
+        });
+        const bica = makePlan({
+            id: 'bica',
+            ester: Ester.BICA,
+            route: Route.oral,
+            enabled: true,
+            schedule: { kind: 'daily', times: ['20:00'] },
+        });
+        const conflicts = findConflicts([cpa, bica], bica);
+        expect(conflicts.map((c) => c.id)).toEqual(['cpa']);
     });
 });
 
@@ -340,5 +399,187 @@ describe('validatePlan', () => {
     it('flags weekly schedule with no weekdays', () => {
         const errors = validatePlan(makePlan({ schedule: { kind: 'weekly', weekdays: [], times: ['08:00'] } }));
         expect(errors.some((e) => e.field === 'weekdays')).toBe(true);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatNextDue — relative phrase chosen by absolute day diff.
+//
+// Reference "now": Friday 2026-07-03 10:00 local. Mon of this week = 2026-06-29,
+// Sun = 2026-07-05. Mon of next week = 2026-07-06, Sun = 2026-07-12.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('formatNextDue', () => {
+    const NOW = new Date(2026, 6, 3, 10, 0, 0); // 2026-07-03 Fri 10:00 local
+
+    const tEn = (k: string, fallback?: string): string => {
+        const templates: Record<string, string> = {
+            'plan.weekday.0': 'Sun', 'plan.weekday.1': 'Mon', 'plan.weekday.2': 'Tue',
+            'plan.weekday.3': 'Wed', 'plan.weekday.4': 'Thu', 'plan.weekday.5': 'Fri', 'plan.weekday.6': 'Sat',
+            'overview.due.today': 'Today',
+            'overview.due.tomorrow': 'Tomorrow',
+            'overview.due.day_after': 'Day after',
+            'overview.due.this_weekday': 'this {day}',
+            'overview.due.next_weekday': 'next {day}',
+        };
+        return templates[k] ?? fallback ?? k;
+    };
+
+    it('dayDiff=0 → 今天 (zh) / Today (en)', () => {
+        const due = new Date(2026, 6, 3, 20, 0, 0);
+        expect(formatNextDue(due, NOW, tStub, 'zh')).toBe('今天');
+        expect(formatNextDue(due, NOW, tEn, 'en')).toBe('Today');
+    });
+
+    it('dayDiff=1 → 明天 (zh) / Tomorrow (en)', () => {
+        const due = new Date(2026, 6, 4, 20, 0, 0);
+        expect(formatNextDue(due, NOW, tStub, 'zh')).toBe('明天');
+        expect(formatNextDue(due, NOW, tEn, 'en')).toBe('Tomorrow');
+    });
+
+    it('dayDiff=2 → 后天 (zh) / Day after (en)', () => {
+        const due = new Date(2026, 6, 5, 20, 0, 0); // Sunday
+        expect(formatNextDue(due, NOW, tStub, 'zh')).toBe('后天');
+        expect(formatNextDue(due, NOW, tEn, 'en')).toBe('Day after');
+    });
+
+    it('dayDiff in current week (≥ 3) → 本周X (zh) / this {day} (en)', () => {
+        // 2026-07-04 is Saturday (dayDiff=1 falls to tomorrow, dayDiff=4 = Tue)
+        // Use Saturday 2026-07-04 — that's dayDiff=1, falls to "tomorrow".
+        // Use 2026-06-29 Mon — would be in the past (already passed this week).
+        // Use 2026-06-30 Tue — also in the past relative to NOW (2026-07-03).
+        // Saturday Mon-Sun block containing NOW spans 2026-06-29 (Mon) → 2026-07-05 (Sun).
+        // Future dates in this block: only Sunday 2026-07-05 — but that's dayDiff=2.
+        // So this branch needs dayDiff ≥ 3 in current week. Use a now earlier in the week.
+        const wedNow = new Date(2026, 6, 1, 10, 0, 0); // 2026-07-01 Wed
+        // 2026-07-04 Sat: dayDiff = 3, in this week → 本周六
+        const dueSat = new Date(2026, 6, 4, 20, 0, 0);
+        expect(formatNextDue(dueSat, wedNow, tStub, 'zh')).toBe('本周Sat');
+        expect(formatNextDue(dueSat, wedNow, tEn, 'en')).toBe('this Sat');
+    });
+
+    it('dayDiff in next week → 下周X (zh) / next {day} (en)', () => {
+        // Next Mon-Sun block: 2026-07-06 (Mon) → 2026-07-12 (Sun).
+        const dueWed = new Date(2026, 6, 8, 20, 0, 0); // 2026-07-08 Wed
+        expect(formatNextDue(dueWed, NOW, tStub, 'zh')).toBe('下周Wed');
+        expect(formatNextDue(dueWed, NOW, tEn, 'en')).toBe('next Wed');
+    });
+
+    it('dayDiff ≥ 14 with CJK lang → exact "X月Y日"', () => {
+        const due = new Date(2026, 6, 20, 20, 0, 0); // 2026-07-20, dayDiff=17
+        expect(formatNextDue(due, NOW, tStub, 'zh')).toBe('7月20日');
+    });
+
+    it('dayDiff ≥ 14 with English lang → Intl short month + day', () => {
+        const due = new Date(2026, 6, 20, 20, 0, 0); // 2026-07-20
+        // Intl en-US with {month:'short', day:'numeric'} → "Jul 20"
+        expect(formatNextDue(due, NOW, tEn, 'en')).toBe('Jul 20');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Defensive sanitization (dirty localStorage / cloud-sync races)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('sanitizePlansForConflict', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        warnSpy.mockRestore();
+    });
+
+    it('returns the same reference when input already satisfies invariant', () => {
+        const plans: Plan[] = [
+            makePlan({ id: 'e1', ester: Ester.EV }),
+            makePlan({ id: 'a1', ester: Ester.CPA, route: Route.oral, schedule: { kind: 'daily', times: ['08:00'] } }),
+        ];
+        const out = sanitizePlansForConflict(plans);
+        expect(out).toBe(plans);
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('handles empty list', () => {
+        expect(sanitizePlansForConflict([])).toEqual([]);
+    });
+
+    it('disables older enabled duplicates in same category, keeps most-recent', () => {
+        const t0 = 1000;
+        const older = makePlan({ id: 'old', ester: Ester.EV, updatedAtH: t0 });
+        const newer = makePlan({ id: 'new', ester: Ester.EV, updatedAtH: t0 + 100 });
+        const cpa = makePlan({ id: 'cpa', ester: Ester.CPA, route: Route.oral, schedule: { kind: 'daily', times: ['08:00'] } });
+        const out = sanitizePlansForConflict([older, newer, cpa]);
+
+        // newer kept (most recent EV), older disabled, CPA untouched
+        const byId = Object.fromEntries(out.map((p) => [p.id, p]));
+        expect(byId.new.enabled).toBe(true);
+        expect(byId.old.enabled).toBe(false);
+        expect(byId.cpa.enabled).toBe(true);
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(/loaded localStorage had 2 enabled estrogen/);
+    });
+
+    it('keeps the only enabled plan in a category untouched (no warn)', () => {
+        const ev = makePlan({ id: 'ev', ester: Ester.EV });
+        const eb = makePlan({ id: 'eb', ester: Ester.EB, enabled: false }); // disabled, doesn't count
+        const out = sanitizePlansForConflict([ev, eb]);
+        expect(out[0].enabled).toBe(true);
+        expect(out[1].enabled).toBe(false);
+        // EB is disabled before sanitization so no conflict, no warn
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('disables multiple duplicates while keeping the single most-recent', () => {
+        const a = makePlan({ id: 'a', ester: Ester.EV, updatedAtH: 100 });
+        const b = makePlan({ id: 'b', ester: Ester.EV, updatedAtH: 300 });
+        const c = makePlan({ id: 'c', ester: Ester.EV, updatedAtH: 200 });
+        const out = sanitizePlansForConflict([a, b, c]);
+        const byId = Object.fromEntries(out.map((p) => [p.id, p]));
+        expect(byId.a.enabled).toBe(false);
+        expect(byId.b.enabled).toBe(true);
+        expect(byId.c.enabled).toBe(false);
+    });
+
+    it('cross-category enabled pairs (estrogen + anti-androgen) are NOT conflicts', () => {
+        const ev = makePlan({ id: 'ev', ester: Ester.EV });
+        const cpa = makePlan({ id: 'cpa', ester: Ester.CPA, route: Route.oral, schedule: { kind: 'daily', times: ['08:00'] } });
+        const out = sanitizePlansForConflict([ev, cpa]);
+        expect(out).toEqual([ev, cpa]); // no copy needed (sanitize is a no-op)
+        expect(out[0]).toBe(ev); // same reference confirms no-copy
+        expect(out[1]).toBe(cpa);
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('pickPrimaryEnabledPlan', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+        warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        warnSpy.mockRestore();
+    });
+
+    it('returns null when no plan matches the category', () => {
+        const ev = makePlan({ id: 'ev', ester: Ester.EV });
+        expect(pickPrimaryEnabledPlan([ev], 'anti_androgen')).toBeNull();
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns the only enabled plan, no warning', () => {
+        const ev = makePlan({ id: 'ev', ester: Ester.EV });
+        expect(pickPrimaryEnabledPlan([ev], 'estrogen')).toBe(ev);
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('picks the most-recently-updated enabled plan when multiple qualify', () => {
+        const older = makePlan({ id: 'old', ester: Ester.EV, updatedAtH: 100 });
+        const newer = makePlan({ id: 'new', ester: Ester.EV, updatedAtH: 200 });
+        const got = pickPrimaryEnabledPlan([older, newer], 'estrogen');
+        expect(got?.id).toBe('new');
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy.mock.calls[0][0]).toMatch(/compute-time defensive fallback/);
     });
 });

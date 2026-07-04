@@ -1,164 +1,20 @@
-import React, { useMemo, useState, useRef, useLayoutEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Activity, Info, Camera, Syringe, Pill, Droplet, Sticker } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
+import MedicationHeatmap from '../components/MedicationHeatmap';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
 import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
+import { Plan } from '../../types';
+import { drugCategoryOf, formatNextDue, nextDueAfter, pickPrimaryEnabledPlan } from '../utils/planSchedule';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
 function hexToRgb(hex: string): string {
   const h = hex.replace('#', '');
   const n = parseInt(h, 16);
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
-}
-
-/**
- * Auto-fit font size, measured against the actually-rendered DOM (not a
- * canvas) so the natural width always matches the displayed glyph metrics —
- * canvas measurement diverges from CSS font-stack rendering across devices
- * and tripped the home page after route remounts. The hook returns refs for
- * both the visible container and an invisible measuring sibling that the
- * consumer renders at `maxPx`. Re-runs on:
- *  - mount (initial sync layout phase)
- *  - the next two animation frames (post-CSS-animation settling)
- *  - 100ms and 300ms after mount (defensive, covers the 250ms fadeSlideIn)
- *  - `document.fonts.ready` (font swap)
- *  - ResizeObserver on the container, the measuring element, AND the
- *    documentElement (orientation / viewport changes)
- *  - `window.resize` and `orientationchange` events
- */
-function useAutoFitFontSize(
-  text: string,
-  maxPx: number,
-  minPx: number,
-  fitRatio: number = 0.88,
-): {
-  containerRef: React.RefObject<HTMLDivElement>;
-  measureRef: React.RefObject<HTMLSpanElement>;
-  fontSize: number;
-  letterSpacing: number;
-} {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLSpanElement>(null);
-  const [sizing, setSizing] = useState<{ fontSize: number; letterSpacing: number }>(
-    { fontSize: minPx, letterSpacing: 0 },
-  );
-
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    const m = measureRef.current;
-    if (!el || !m) return;
-
-    const apply = (next: { fontSize: number; letterSpacing: number }) => {
-      setSizing(prev => (
-        prev.fontSize === next.fontSize && Math.abs(prev.letterSpacing - next.letterSpacing) < 0.01
-          ? prev
-          : next
-      ));
-    };
-
-    let rafPending = false;
-
-    const measureNow = () => {
-      rafPending = false;
-      const containerWidth = Math.floor(el.getBoundingClientRect().width);
-      const naturalWidth = Math.ceil(
-        Math.max(m.scrollWidth, m.offsetWidth, m.getBoundingClientRect().width),
-      );
-      // Skip until both the container and the hidden measuring sibling have
-      // valid sizes — otherwise we'd clobber a previous good measurement
-      // mid-route-transition with a transient 0.
-      if (containerWidth <= 0 || naturalWidth <= 0 || text.length === 0) return;
-      if (naturalWidth <= containerWidth) {
-        apply({ fontSize: maxPx, letterSpacing: 0 });
-        return;
-      }
-      const availableWidth = Math.max(1, (containerWidth - 2) * fitRatio);
-      const scaled = Math.floor(maxPx * (availableWidth / naturalWidth) * 0.98);
-      if (scaled >= minPx) {
-        apply({ fontSize: scaled, letterSpacing: 0 });
-        return;
-      }
-      // Below minPx: clamp font and tighten letter-spacing across the gaps.
-      // Monospace width scales linearly with font size, so we can derive the
-      // width at minPx directly from the maxPx measurement.
-      const widthAtMin = naturalWidth * (minPx / maxPx);
-      const overshoot = widthAtMin - availableWidth;
-      const gaps = Math.max(1, text.length - 1);
-      const tightening = overshoot > 0 ? -(overshoot / gaps) - 0.1 : 0;
-      apply({ fontSize: minPx, letterSpacing: tightening });
-    };
-
-    const rafIds: number[] = [];
-
-    const measure = () => {
-      if (rafPending) return;
-      rafPending = true;
-      rafIds.push(requestAnimationFrame(measureNow));
-    };
-
-    const cleanups: Array<() => void> = [];
-
-    measureNow();
-
-    rafIds.push(requestAnimationFrame(() => {
-      measureNow();
-      rafIds.push(requestAnimationFrame(measureNow));
-    }));
-    cleanups.push(() => rafIds.forEach(cancelAnimationFrame));
-
-    const timeouts = [50, 100, 250, 300, 600, 1000].map(delay => setTimeout(measure, delay));
-    cleanups.push(() => timeouts.forEach(clearTimeout));
-
-    const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
-    if (fonts?.ready) {
-      let alive = true;
-      fonts.ready.then(() => { if (alive) measure(); }).catch(() => { /* ignore */ });
-      cleanups.push(() => { alive = false; });
-    }
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(measure);
-      ro.observe(el);
-      ro.observe(m);
-      if (el.parentElement) ro.observe(el.parentElement);
-      cleanups.push(() => ro.disconnect());
-      const docRo = new ResizeObserver(measure);
-      docRo.observe(document.documentElement);
-      cleanups.push(() => docRo.disconnect());
-    }
-
-    const onResize = () => measure();
-    window.addEventListener('resize', onResize, { passive: true });
-    window.addEventListener('orientationchange', onResize, { passive: true });
-    window.visualViewport?.addEventListener('resize', onResize, { passive: true });
-    window.visualViewport?.addEventListener('scroll', onResize, { passive: true });
-    window.addEventListener('pageshow', onResize);
-    document.addEventListener('animationend', onResize, true);
-    document.addEventListener('transitionend', onResize, true);
-    document.addEventListener('visibilitychange', onResize);
-    cleanups.push(() => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
-      window.visualViewport?.removeEventListener('resize', onResize);
-      window.visualViewport?.removeEventListener('scroll', onResize);
-      window.removeEventListener('pageshow', onResize);
-      document.removeEventListener('animationend', onResize, true);
-      document.removeEventListener('transitionend', onResize, true);
-      document.removeEventListener('visibilitychange', onResize);
-    });
-
-    return () => cleanups.forEach((fn) => fn());
-  }, [text, maxPx, minPx, fitRatio]);
-
-  return {
-    containerRef,
-    measureRef,
-    fontSize: sizing.fontSize,
-    letterSpacing: sizing.letterSpacing,
-  };
 }
 
 interface SimCI {
@@ -178,6 +34,8 @@ interface OverviewViewProps {
   currentTime: Date;
   simCI?: SimCI | null;
   baselineE2PGmL?: number | null;
+  /** Optional — when supplied, the side cards show the next scheduled dose. */
+  plans?: Plan[];
   onEditEvent: (event: DoseEvent) => void;
 }
 
@@ -204,6 +62,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   currentTime,
   simCI,
   baselineE2PGmL,
+  plans,
   onEditEvent,
 }) => {
   const { t, lang } = useTranslation();
@@ -223,6 +82,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const primaryAASpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
   const aaCI = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
   const hasPersonalAaModel = !!aaCI && aaCI.adjusted.length === (simCI?.timeH.length ?? -1) && aaCI.adjusted.length > 0;
+
+  // Format a stored dose (mg) for display: show the exact value the user
+  // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
+  // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
+  // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
+  // Declared here (not lower in the file) because lastE2DoseStr's useMemo below
+  // references it — `const` arrow functions are hoisted into the TDZ until their
+  // definition runs, so a useMemo defined earlier would throw at first render.
+  const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const rawLevel = useMemo(() => {
     if (!simulation) return 0;
@@ -274,7 +142,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [hasPersonalAaModel, aaCI, primaryAASpec, simCI, h]);
 
   const currentAA = personalAA ?? rawAA;
-  const E2_DOSE_MAX_FONT_PX = 24;
 
   const currentAACI = useMemo(() => {
     if (!hasPersonalAaModel || !aaCI) return null;
@@ -325,27 +192,54 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return latest;
   }, [events, h]);
 
-  // Pre-format the E2 dose display string. Font size is computed dynamically
-  // via useAutoFitFontSize below so the dose + ester abbreviation stays on a
-  // single line regardless of breakpoint or string length.
+  // Pre-format the E2 dose display string for the meta row. Patch route shows
+  // µg/d, all others show plain mg — same convention the DoseEvent list uses.
   const lastE2DoseStr = useMemo<string>(() => {
     if (!lastE2Dose) return '';
     const rate = lastE2Dose.extras?.[ExtraKey.releaseRateUGPerDay];
     if (lastE2Dose.route === Route.patchApply && rate) {
       return `${rate} µg/d`;
     }
-    const digits = lastE2Dose.doseMG >= 10 ? 1 : 2;
-    if (lastE2Dose.ester === Ester.E2) return `${lastE2Dose.doseMG.toFixed(digits)} mg`;
-    return `${lastE2Dose.doseMG.toFixed(digits)} mg ${t(`ester.${lastE2Dose.ester}`)}`;
-  }, [lastE2Dose, t]);
+    return `${formatDoseMG(lastE2Dose.doseMG)} mg`;
+  }, [lastE2Dose]);
 
-  // Auto-fit the dose font to whatever container width is currently available.
-  // Keep it visually balanced instead of forcing it to fill the card.
-  const { containerRef: e2DoseRef, measureRef: e2MeasureRef, fontSize: e2DoseFontSize, letterSpacing: e2DoseLetterSpacing } = useAutoFitFontSize(
-    lastE2DoseStr,
-    E2_DOSE_MAX_FONT_PX,
-    12,
-    0.86,
+  /**
+   * Compute "next due" for the two side cards.
+   *
+   * Pick the "primary" enabled plan in each drug category (most-recently-
+   * updated wins on ties) and resolve its earliest upcoming moment against
+   * `currentTime`. The plan category invariant ("one enabled plan per drug
+   * category") is enforced at write time by setPlans + re-validated on every
+   * load by sanitizePlansForConflict. pickPrimaryEnabledPlan additionally
+   * defends against dirty localStorage / cloud-sync races at compute time —
+   * if multiple enabled plans slipped through, it picks deterministically and
+   * console.warns so the inconsistency surfaces to devs.
+   *
+   * Null when:
+   *   - no plans supplied
+   *   - no enabled plan in this category
+   *   - the chosen plan has ended or has no remaining due moments
+   */
+  const nextAntiandrogenDue = useMemo<Date | null>(() => {
+    if (!plans) return null;
+    const primary = pickPrimaryEnabledPlan(plans, 'anti_androgen');
+    return primary ? nextDueAfter(primary, currentTime) : null;
+  }, [plans, currentTime]);
+
+  const nextE2Due = useMemo<Date | null>(() => {
+    if (!plans) return null;
+    const primary = pickPrimaryEnabledPlan(plans, 'estrogen');
+    return primary ? nextDueAfter(primary, currentTime) : null;
+  }, [plans, currentTime]);
+
+  /** Localized "下次 本周三" / "Next Mon" / etc. for the side-card subtitle. */
+  const nextAntiandrogenDueStr = useMemo<string | null>(
+    () => nextAntiandrogenDue ? formatNextDue(nextAntiandrogenDue, currentTime, t, lang) : null,
+    [nextAntiandrogenDue, currentTime, t, lang],
+  );
+  const nextE2DueStr = useMemo<string | null>(
+    () => nextE2Due ? formatNextDue(nextE2Due, currentTime, t, lang) : null,
+    [nextE2Due, currentTime, t, lang],
   );
 
   // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
@@ -386,12 +280,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     if (currentLevel > 0) return getLevelStatus(currentLevel);
     return null;
   }, [currentLevel, isDark]);
-
-  // Format a stored dose (mg) for display: show the exact value the user
-  // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
-  // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
-  // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
-  const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const formatHeadlineE2 = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
   // Format an anti-androgen value for the headline, auto-scaling ng/mL → µg/mL.
@@ -615,60 +503,46 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           {/* Side cards */}
-          <div className="flex flex-col gap-3 md:h-full">
+          <div className="flex flex-row gap-2 md:flex-col md:gap-3 md:h-full">
 
-            {/* Row 1: total dose count + last CPA (compact, paired) */}
-            <div className="grid grid-cols-2 gap-3">
-
-              {/* Total dose count */}
-              <div className="flex items-center gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--accent-50)', borderColor: 'var(--accent-200)' }}>
-                  <Activity size={16} style={{ color: 'var(--accent-500)' }} />
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.total_doses')}
-                  </p>
-                  <p className="text-lg md:text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {events.length || 0}
-                  </p>
-                </div>
+            {/* Last anti-androgen dose (CPA / bicalutamide) — full row width now.
+                Showing "下次" date when at least one enabled anti-androgen plan exists. */}
+            <div className="flex items-start gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0 flex-1 md:flex-none">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                <Pill size={16} style={{ color: '#3b82f6' }} />
               </div>
-
-              {/* Last anti-androgen dose (CPA / bicalutamide) */}
-              <div className="flex items-start gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                  <Pill size={16} style={{ color: '#3b82f6' }} />
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.last_antiandrogen')}
+              <div className="leading-tight min-w-0 flex-1">
+                <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                  {t('overview.last_antiandrogen')}
+                </p>
+                {lastAntiandrogenDose ? (
+                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                    <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                      {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
+                    </p>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                      style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                      {lastAntiandrogenDose.ester}
+                    </span>
+                    <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                      {formatTimeAgo(lastAntiandrogenDose.timeH)}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                )}
+                {nextAntiandrogenDueStr && (
+                  <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                    style={{ color: '#3b82f6' }}>
+                    {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
                   </p>
-                  {lastAntiandrogenDose ? (
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
-                      </p>
-                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                        {lastAntiandrogenDose.ester}
-                      </span>
-                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                  )}
-                </div>
+                )}
               </div>
-
             </div>
 
             {/* Last estradiol dose (non-oral) — full width, content redistributes when stretched on desktop */}
-            <div className="flex flex-col p-3 md:p-4 glass-card card-lift-glass md:flex-1 min-h-0">
+            <div className="flex flex-col p-3 md:p-4 glass-card card-lift-glass flex-1 min-h-0">
               {/* Top row: icon + label + route badge + time-ago */}
               <div className="flex items-start gap-3 shrink-0">
                 <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
@@ -685,70 +559,41 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   }
                 </div>
                 <div className="leading-tight min-w-0 flex-1">
-                  <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.last_e2')}
-                  </p>
-                  {lastE2Dose && (
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      {t('overview.last_e2')}
+                    </p>
+                    {lastE2Dose && (
                       <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                         style={{ background: 'var(--accent-50)', color: 'var(--accent-500)' }}>
                         {t(`route.${lastE2Dose.route}`)}
                       </span>
+                    )}
+                  </div>
+                  {lastE2Dose ? (
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                        {lastE2DoseStr}
+                      </p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                        {lastE2Dose.ester}
+                      </span>
                       <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {formatTimeAgo(lastE2Dose.timeH)}
+                        {`${formatTimeAgo(lastE2Dose.timeH)} ${formatTime(new Date(lastE2Dose.timeH * 3600000))}`}
                       </span>
                     </div>
+                  ) : (
+                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                  )}
+                  {nextE2DueStr && (
+                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                      style={{ color: 'var(--accent-500)' }}>
+                      {`${t('overview.next_due')} ${nextE2DueStr} ${nextE2Due ? formatTime(nextE2Due) : ''}`}
+                    </p>
                   )}
                 </div>
               </div>
-
-              {/* Body: dose number — auto-fits to container width, always one line */}
-              {lastE2Dose ? (
-                <div className="flex flex-col mt-3 md:mt-4 md:flex-1 md:justify-center min-w-0">
-                  <div ref={e2DoseRef} className="w-full min-w-0 relative overflow-hidden">
-                    <p className="font-semibold font-mono leading-none whitespace-nowrap"
-                      aria-label={lastE2DoseStr}
-                      style={{ color: 'var(--text-secondary)', fontSize: `${e2DoseFontSize}px`, letterSpacing: `${e2DoseLetterSpacing}px` }}>
-                      {lastE2DoseStr}
-                    </p>
-                    {/* Invisible measuring sibling at maxPx: the hook reads its
-                        offsetWidth so the natural width matches what the DOM
-                        would actually render — canvas measureText diverges
-                        from the real font stack on some devices, which caused
-                        the responsive sizing to fail on route remount. */}
-                    <span
-                      ref={e2MeasureRef}
-                      aria-hidden
-                      className="font-semibold font-mono whitespace-nowrap"
-                      style={{
-                        position: 'absolute',
-                        display: 'inline-block',
-                        left: 0,
-                        top: 0,
-                        width: 'max-content',
-                        maxWidth: 'none',
-                        visibility: 'hidden',
-                        pointerEvents: 'none',
-                        fontSize: `${E2_DOSE_MAX_FONT_PX}px`,
-                        letterSpacing: 'normal',
-                        lineHeight: 1,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {lastE2DoseStr}
-                    </span>
-                  </div>
-                  <p className="text-[10px] md:text-xs font-mono mt-1.5 md:mt-2 whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                    {lastE2Dose.route === Route.patchApply
-                      ? t('overview.patch_applied_at').replace('{time}', formatTime(new Date(lastE2Dose.timeH * 3600000)))
-                      : formatTime(new Date(lastE2Dose.timeH * 3600000))}
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col mt-3 md:flex-1 md:justify-center">
-                  <p className="text-2xl md:text-3xl font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                </div>
-              )}
 
               {/* Bottom-aligned extra info (sublingual hold time / θ).
                   Priority mirrors DoseFormModal: if both fields exist on stale
@@ -792,6 +637,13 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           nowH={h}
           onShareImage={() => setShareImageOpen(true)}
         />
+
+        {/* Medication calendar heatmap — rendered after the blood-concentration
+         *  chart so the visual narrative goes "concentration now → history
+         *  of when doses actually landed". Pure client-side, no data fetch. */}
+        <div className="mt-4 md:mt-6">
+          <MedicationHeatmap events={events} today={currentTime} />
+        </div>
       </main>
 
       <ShareImageModal

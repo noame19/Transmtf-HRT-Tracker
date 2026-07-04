@@ -14,6 +14,7 @@ interface OutletContext {
     onEditPlan: (p: Plan) => void;
     onDeletePlan: (id: string) => void;
     onTogglePlan: (id: string, enabled: boolean) => void;
+    onRemovePatch: (applyId: string) => void;
     pendingReminder: PendingReminder | null;
     matchedPendingPlan: Plan | null;
     onConfirmPendingReminder: (scheduledAt: Date) => void;
@@ -26,6 +27,7 @@ const HistoryPage: React.FC = () => {
     const {
         onAddEvent, onEditEvent, onBatchAdd,
         onAddPlan, onEditPlan, onDeletePlan, onTogglePlan,
+        onRemovePatch,
         pendingReminder, matchedPendingPlan,
         onConfirmPendingReminder, onDismissPendingReminder,
         permissionDenied, onOpenNotificationSettings,
@@ -43,6 +45,7 @@ const HistoryPage: React.FC = () => {
             onEditPlan={onEditPlan}
             onDeletePlan={onDeletePlan}
             onTogglePlan={onTogglePlan}
+            onRemovePatch={onRemovePatch}
             pendingReminder={pendingReminder}
             matchedPendingPlan={matchedPendingPlan}
             onConfirmPendingReminder={onConfirmPendingReminder}

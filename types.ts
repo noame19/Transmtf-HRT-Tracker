@@ -96,6 +96,13 @@ export enum ExtraKey {
  * `doseMG` stores the administered compound amount in mg. For esterified forms
  * this is the ester/compound dose, not the estradiol-equivalent dose. Any
  * route-specific settings live in `extras`.
+ *
+ * `companionGroupId` is an optional UUID linking two related events together —
+ * for example, a patch "remove" event and its paired "apply" event. When
+ * present, the UI uses it to surface a single "贴片移除" button on the apply
+ * card and to render both events as one logical record. The PK engine itself
+ * still pairs apply↔remove by scanning the time axis, so an absent
+ * `companionGroupId` is fully backward-compatible with pre-unification data.
  */
 export interface DoseEvent {
     id: string;
@@ -105,6 +112,8 @@ export interface DoseEvent {
     ester: Ester;
     weightKG: number; // Body weight at time of administration, in kg
     extras: Partial<Record<ExtraKey, number>>;
+    /** UUID linking paired events (e.g. patch apply ↔ patch remove). */
+    companionGroupId?: string;
 }
 
 /**

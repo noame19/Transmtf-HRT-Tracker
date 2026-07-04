@@ -5,10 +5,18 @@ import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
 import CustomSelect from './CustomSelect';
 import { getRouteIcon } from '../utils/helpers';
-import { ROUTE_DISPLAY_ORDER, getAvailableEsters } from '../utils/doseForm';
-import { Ester, ExtraKey, Plan, PlanSchedule, Route } from '../../types';
+import {
+    ROUTE_DISPLAY_ORDER, getAvailableEsters, getAllGelProducts,
+} from '../utils/doseForm';
+import {
+    Ester, ExtraKey, Plan, PlanSchedule, Route,
+    GelSite, GEL_SITE_ORDER, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID,
+    GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
+    GEL_COAPPLICATION_ORDER, type GelProductSpec,
+    resolveGelCoverageArea,
+} from '../../logic';
 import { findConflicts, validatePlan } from '../utils/planSchedule';
-import { X, Save, Trash2, Calendar } from 'lucide-react';
+import { X, Save, Trash2, Calendar, Droplet } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -38,12 +46,32 @@ const DEFAULT_SCHEDULE: PlanSchedule = { kind: 'every_n_days', intervalDays: 5, 
 const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEdit, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
-    const { plans } = useAppData();
+    const { plans, gelProducts } = useAppData();
 
     // Form state
     const [route, setRoute] = useState<Route>(Route.injection);
     const [ester, setEster] = useState<Ester>(Ester.EV);
     const [doseStr, setDoseStr] = useState('5');
+
+    // Patch-specific state — mirrors DoseFormModal so a plan's "贴片" entry
+    // can express either a total mg per application or a µg/d release rate.
+    // Both data sources coexist in `extras` so a generated DoseEvent can later
+    // pick up whichever mode the user picked.
+    const [patchMode, setPatchMode] = useState<'dose' | 'rate'>('dose');
+    const [patchRate, setPatchRate] = useState('');
+
+    // Gel-specific state — mirrors DoseFormModal so the plan's gel context
+    // flows into auto-generated DoseEvents (smart-prefill reads these verbatim).
+    const allGelProducts = useMemo(() => getAllGelProducts(gelProducts), [gelProducts]);
+    const findGelProduct = (id: number): GelProductSpec =>
+        allGelProducts.find((p) => p.id === id) ?? GEL_PRODUCTS[0];
+    const [gelSite, setGelSite] = useState(0);
+    const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
+    const [gelArea, setGelArea] = useState('');
+    const [gelCoverage, setGelCoverage] = useState<number>(GEL_COVERAGE_DEFAULT_IDX);
+    const [gelCoApplied, setGelCoApplied] = useState<number>(0);
+    const [gelWash, setGelWash] = useState('');
+
     const [scheduleKind, setScheduleKind] = useState<PlanSchedule['kind']>('every_n_days');
     const [intervalDays, setIntervalDays] = useState('5');
     const [weekdays, setWeekdays] = useState<number[]>([1, 3, 5]); // Mon Wed Fri
@@ -73,10 +101,43 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setEndDate(planToEdit.endDateH ? toLocalDateStr(new Date(planToEdit.endDateH * 3600000)) : '');
             setLeadMinutes(String(planToEdit.leadMinutes));
             setEnabled(planToEdit.enabled);
+
+            // Patch extras: detect mode from which field is populated. A legacy
+            // plan with only a total mg dose falls back to "dose" mode so the
+            // edit form mirrors the original entry.
+            const planExtras = planToEdit.extras ?? {};
+            const rate = planExtras[ExtraKey.releaseRateUGPerDay];
+            if (typeof rate === 'number' && rate > 0) {
+                setPatchMode('rate');
+                setPatchRate(String(rate));
+            } else {
+                setPatchMode('dose');
+                setPatchRate('');
+            }
+
+            // Gel extras.
+            setGelSite(planExtras[ExtraKey.gelSite] ?? 0);
+            setGelProductId(planExtras[ExtraKey.gelProductId] ?? GEL_DEFAULT_PRODUCT_ID);
+            const areaRaw = planExtras[ExtraKey.areaCM2];
+            setGelArea(typeof areaRaw === 'number' && areaRaw > 0 ? String(areaRaw) : '');
+            const covRaw = planExtras[ExtraKey.gelCoverage];
+            setGelCoverage(typeof covRaw === 'number' && Number.isFinite(covRaw) ? Math.round(covRaw) : GEL_COVERAGE_DEFAULT_IDX);
+            const coAppRaw = planExtras[ExtraKey.gelCoApplied];
+            setGelCoApplied(typeof coAppRaw === 'number' && Number.isFinite(coAppRaw) ? Math.round(coAppRaw) : 0);
+            const washRaw = planExtras[ExtraKey.gelWashAfterH];
+            setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : '');
         } else {
             setRoute(Route.injection);
             setEster(Ester.EV);
             setDoseStr('5');
+            setPatchMode('dose');
+            setPatchRate('');
+            setGelSite(0);
+            setGelProductId(GEL_DEFAULT_PRODUCT_ID);
+            setGelArea('');
+            setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
+            setGelCoApplied(0);
+            setGelWash('');
             setScheduleKind('every_n_days');
             setIntervalDays('5');
             setWeekdays([1, 3, 5]);
@@ -114,6 +175,50 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         setWeekdays(weekdays.includes(day) ? weekdays.filter((d) => d !== day) : [...weekdays, day].sort());
     };
 
+    /** Drop the patch-mode overlay/area fields when the user navigates away
+     *  from those routes, so a stale gel `areaCM2` can't accidentally leak
+     *  into a freshly-edited E2-injection plan's extras. Mirrors the same
+     *  hydration-only-if-necessary pattern DoseFormModal uses for its slExtras. */
+    useEffect(() => {
+        if (route !== Route.patchApply) {
+            setPatchMode('dose');
+            setPatchRate('');
+        }
+        if (route !== Route.gel) {
+            // Don't reset product/site/co-applied — they may carry the user's
+            // last gel input (mirrors DoseFormModal). We only zero out the
+            // *values* specific to the gel route that would be wrong on other
+            // routes (no-op since we never read these unless route===gel).
+        }
+    }, [route]);
+
+    /** Coverage-template option label, mirroring DoseFormModal's gelCoverageLabel. */
+    const gelCoverageLabel = (tpl: typeof GEL_COVERAGE_TEMPLATES[number], idx: number): string => {
+        const base = t(`gel.coverage.${tpl.key}`);
+        if (tpl.kind === 'manual') return base;
+        const area = Math.round(resolveGelCoverageArea(idx, findGelProduct(gelProductId), 0));
+        return `${base} (~${area} cm²)`;
+    };
+
+    /** Switching the product re-derives the manual-area placeholder to match
+     *  its default; switching the coverage template does the same so the
+     *  user doesn't have to retype cm² each time. */
+    const handleGelProductSelect = (val: string) => {
+        const id = parseInt(val, 10);
+        if (!Number.isFinite(id)) return;
+        setGelProductId(id);
+        const manual = parseFloat(gelArea);
+        setGelArea(String(resolveGelCoverageArea(gelCoverage, findGelProduct(id), manual)));
+    };
+    const handleGelCoverageSelect = (val: string) => {
+        const idx = parseInt(val, 10) || 0;
+        setGelCoverage(idx);
+        const tpl = GEL_COVERAGE_TEMPLATES[idx];
+        if (tpl && tpl.kind !== 'manual') {
+            setGelArea(String(resolveGelCoverageArea(idx, findGelProduct(gelProductId), parseFloat(gelArea))));
+        }
+    };
+
     /** Try to save; if the user enables a plan that conflicts with an existing
      *  enabled one, pop a confirm dialog before persisting. */
     const handleSave = async () => {
@@ -131,6 +236,43 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                     ? { kind: 'every_n_days', intervalDays: parseInt(intervalDays, 10) || 1, times }
                     : { kind: 'weekly', weekdays, times };
 
+        // Build per-route extras so a plan with route=patchApply / route=gel
+        // carries the same intent into DoseFormModal.prefillFromPlan when the
+        // notification deep-link or "smart-add" path opens the dose form.
+        // On non-patch / non-gel routes, extras stays `{}` so legacy plans
+        // that never set these fields remain bit-identical.
+        const extras: Plan['extras'] = { ...(planToEdit?.extras ?? {}) };
+        if (route === Route.patchApply && patchMode === 'rate') {
+            const rate = parseFloat(patchRate);
+            if (Number.isFinite(rate) && rate > 0) {
+                extras[ExtraKey.releaseRateUGPerDay] = rate;
+            }
+        } else if (route === Route.patchApply && patchMode === 'dose') {
+            // Drop any stale rate carried over from a previous rate-mode save,
+            // so the generated DoseEvent reads as "total dose, no rate" — same
+            // invariant DoseFormModal respects on edit.
+            delete extras[ExtraKey.releaseRateUGPerDay];
+        }
+        if (route === Route.gel) {
+            extras[ExtraKey.gelSite] = gelSite;
+            extras[ExtraKey.gelProductId] = gelProductId;
+            const areaNum = parseFloat(gelArea);
+            if (Number.isFinite(areaNum) && areaNum > 0) {
+                extras[ExtraKey.areaCM2] = areaNum;
+            }
+            const cov = GEL_COVERAGE_TEMPLATES[gelCoverage];
+            if (cov && cov.kind !== 'manual') {
+                extras[ExtraKey.gelCoverage] = gelCoverage;
+            }
+            if (gelCoApplied > 0) {
+                extras[ExtraKey.gelCoApplied] = gelCoApplied;
+            }
+            const washNum = parseFloat(gelWash);
+            if (Number.isFinite(washNum) && washNum > 0) {
+                extras[ExtraKey.gelWashAfterH] = washNum;
+            }
+        }
+
         const nowH = Date.now() / 3600000;
         const draft: Plan = {
             id: planToEdit?.id ?? `plan-${uuidv4()}`,
@@ -142,7 +284,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             endDateH: endH,
             enabled,
             leadMinutes: Number.isFinite(lead) ? lead : 5,
-            extras: planToEdit?.extras ?? {},
+            extras,
             createdAtH: planToEdit?.createdAtH ?? nowH,
             updatedAtH: nowH,
         };
@@ -183,6 +325,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     };
 
     const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    if (!isOpen) return null;
 
     return (
         <div
@@ -237,25 +381,166 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                             />
                         )}
                         {route !== Route.patchRemove && (
-                            <div className="space-y-1">
-                                <label className="block text-sm font-bold"
-                                    style={{ color: 'var(--text-secondary)' }}>
-                                    {t('plan.field.dose') || '剂量'} (mg)
-                                </label>
-                                <input
-                                    type="number"
-                                    inputMode="decimal"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={doseStr}
-                                    onChange={(e) => setDoseStr(e.target.value)}
-                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                    style={{
-                                        background: 'var(--bg-card-hover)',
-                                        border: '1px solid var(--border-primary)',
-                                        color: 'var(--text-primary)',
-                                    }}
-                                />
+                            <div className="space-y-3">
+                                {/* Patch-specific: dose vs release-rate toggle, mirroring DoseFormModal */}
+                                {route === Route.patchApply ? (
+                                    <>
+                                        <div className="p-1 rounded-xl flex" style={{ background: 'var(--bg-card-hover)' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPatchMode('dose')}
+                                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all`}
+                                                style={patchMode === 'dose' ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: 'var(--shadow-sm)' } : { color: 'var(--text-tertiary)' }}
+                                            >
+                                                {t('field.patch_total') || '总剂量'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPatchMode('rate')}
+                                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all`}
+                                                style={patchMode === 'rate' ? { background: 'var(--bg-card)', color: 'var(--text-primary)', boxShadow: 'var(--shadow-sm)' } : { color: 'var(--text-tertiary)' }}
+                                            >
+                                                {t('field.patch_rate') || '释放速率 (µg/d)'}
+                                            </button>
+                                        </div>
+                                        {patchMode === 'dose' ? (
+                                            <div className="space-y-1">
+                                                <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                                    {t('plan.field.dose') || '剂量'} (mg)
+                                                </label>
+                                                <input
+                                                    type="number" inputMode="decimal" min="0.01" step="0.01"
+                                                    value={doseStr}
+                                                    onChange={(e) => setDoseStr(e.target.value)}
+                                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                                    {t('field.patch_rate') || '释放速率'} (µg/d)
+                                                </label>
+                                                <input
+                                                    type="number" inputMode="numeric" min="1" step="1"
+                                                    value={patchRate}
+                                                    onChange={(e) => setPatchRate(e.target.value)}
+                                                    placeholder="e.g. 50"
+                                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                                />
+                                                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                                                    {t('hint.patch_rate_plan') || '贴片释放速率。生成用药记录时把该值写入 µ g/d。'}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    /* Non-patch routes (incl. gel) just show the simple mg input. */
+                                    <div className="space-y-1">
+                                        <label className="block text-sm font-bold"
+                                            style={{ color: 'var(--text-secondary)' }}>
+                                            {route === Route.gel ? (t('plan.field.gel_dose') || '剂量') : (t('plan.field.dose') || '剂量')} (mg)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            min="0.01"
+                                            step="0.01"
+                                            value={doseStr}
+                                            onChange={(e) => setDoseStr(e.target.value)}
+                                            className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                            style={{
+                                                background: 'var(--bg-card-hover)',
+                                                border: '1px solid var(--border-primary)',
+                                                color: 'var(--text-primary)',
+                                            }}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Gel-specific: site / product / coverage / wash, mirroring DoseFormModal */}
+                                {route === Route.gel && (
+                                    <div className="space-y-3 pt-3 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
+                                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                            <Droplet size={12} />
+                                            <span>{t('plan.field.gel_extras') || '凝胶详情'}</span>
+                                        </div>
+                                        <CustomSelect
+                                            label={t('field.gel_product') || '产品'}
+                                            value={String(gelProductId)}
+                                            onChange={handleGelProductSelect}
+                                            options={[
+                                                ...(!allGelProducts.some((p) => p.id === gelProductId)
+                                                    ? [{ value: String(gelProductId), label: t('gel.product.missing') || '已删除' }]
+                                                    : []),
+                                                ...allGelProducts.map((p) => ({
+                                                    value: String(p.id),
+                                                    label: p.name || t(p.nameKey),
+                                                })),
+                                            ]}
+                                        />
+                                        <CustomSelect
+                                            label={t('field.gel_site') || '部位'}
+                                            value={String(gelSite)}
+                                            onChange={(val) => setGelSite(parseInt(val, 10) || 0)}
+                                            options={[0, 1, 3, 2].map((idx) => ({
+                                                value: String(idx),
+                                                label: t(`gel.site.${GEL_SITE_ORDER[idx]}`),
+                                            }))}
+                                        />
+                                        {GEL_SITE_ORDER[gelSite] !== GelSite.scrotal && (
+                                            <>
+                                                <CustomSelect
+                                                    label={t('field.gel_coverage') || '涂抹面积'}
+                                                    value={String(gelCoverage)}
+                                                    onChange={handleGelCoverageSelect}
+                                                    options={GEL_COVERAGE_TEMPLATES.map((tpl, idx) => ({
+                                                        value: String(idx),
+                                                        label: gelCoverageLabel(tpl, idx),
+                                                    }))}
+                                                />
+                                                {GEL_COVERAGE_TEMPLATES[gelCoverage]?.kind === 'manual' && (
+                                                    <div className="space-y-1">
+                                                        <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                                            {t('field.gel_area') || '面积'} (cm²)
+                                                        </label>
+                                                        <input
+                                                            type="number" inputMode="decimal" min="1" step="1"
+                                                            value={gelArea}
+                                                            onChange={(e) => setGelArea(e.target.value)}
+                                                            placeholder={String(findGelProduct(gelProductId).defaultAreaCM2)}
+                                                            className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                            style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                        <CustomSelect
+                                            label={t('field.gel_coapplied') || '混合护肤品'}
+                                            value={String(gelCoApplied)}
+                                            onChange={(val) => setGelCoApplied(parseInt(val, 10) || 0)}
+                                            options={GEL_COAPPLICATION_ORDER.map((k, idx) => ({
+                                                value: String(idx),
+                                                label: t(`gel.coapplied.${k}`),
+                                            }))}
+                                        />
+                                        <div className="space-y-1">
+                                            <label className="block text-sm font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                                {t('field.gel_wash') || '清洗时间'} (h)
+                                            </label>
+                                            <input
+                                                type="number" inputMode="decimal" min="0" step="0.5"
+                                                value={gelWash}
+                                                onChange={(e) => setGelWash(e.target.value)}
+                                                placeholder={t('gel.wash_none') || '不洗'}
+                                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

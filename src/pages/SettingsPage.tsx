@@ -402,28 +402,46 @@ const SettingsPage: React.FC = () => {
                                 <Toggle checked={isDark} onChange={setIsDark} />
                             </div>
                         </div>
-                    </div>
-                </section>
 
-                {/* Language Section */}
-                <section className="space-y-2">
-                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
-                        {t('settings.group.general') || 'General'}
-                    </h2>
-                    <div className="rounded-2xl glass-card p-4">
-                        <div className="mb-3 flex items-start gap-3">
-                            <Languages className="text-blue-500" size={20} />
-                            <div>
-                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('drawer.lang')}</p>
-                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.lang_hint')}</p>
+                        {/* Language */}
+                        <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
+                                    <Languages className="text-blue-500 shrink-0" size={20} />
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('drawer.lang')}</p>
+                                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.lang_hint')}</p>
+                                    </div>
+                                </div>
+                                <div className="w-28 shrink-0">
+                                    <CustomSelect
+                                        value={lang}
+                                        onChange={(value) => setLang(value as Lang)}
+                                        options={languageOptions}
+                                    />
+                                </div>
                             </div>
-                            <div className="ml-auto text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>{lang.toUpperCase()}</div>
                         </div>
-                        <CustomSelect
-                            value={lang}
-                            onChange={(value) => setLang(value as Lang)}
-                            options={languageOptions}
-                        />
+
+                        {/* Reminders */}
+                        <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
+                                    {remindersEnabled
+                                        ? <Bell className="text-amber-500 shrink-0" size={20} />
+                                        : <BellOff className="text-slate-400 shrink-0" size={20} />}
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                            {t('settings.reminders.title') || '用药提醒'}
+                                        </p>
+                                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                            {t('settings.reminders.desc') || '到点时在 Android 通知栏弹出提示，点击可一键确认。'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -433,31 +451,6 @@ const SettingsPage: React.FC = () => {
                         {t('settings.group.gels') || 'Custom gels'}
                     </h2>
                     <CustomGelManager />
-                </section>
-
-                {/* Reminders Section */}
-                <section className="space-y-2">
-                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
-                        {t('settings.group.reminders') || 'Reminders'}
-                    </h2>
-                    <div className="rounded-2xl glass-card p-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-start gap-3 min-w-0">
-                                {remindersEnabled
-                                    ? <Bell className="text-amber-500 shrink-0" size={20} />
-                                    : <BellOff className="text-slate-400 shrink-0" size={20} />}
-                                <div className="min-w-0">
-                                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                        {t('settings.reminders.title') || '用药提醒'}
-                                    </p>
-                                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                        {t('settings.reminders.desc') || '到点时在 Android 通知栏弹出提示，点击可一键确认。'}
-                                    </p>
-                                </div>
-                            </div>
-                            <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
-                        </div>
-                    </div>
                 </section>
 
                 {/* Data Section */}

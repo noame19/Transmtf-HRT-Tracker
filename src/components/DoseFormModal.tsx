@@ -13,6 +13,7 @@ import {
     drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
     getAllGelProducts, readLastGelEvent,
 } from '../utils/doseForm';
+import { findPatchRemoveForApply } from '../utils/patch';
 import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
 import {
     Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams,
@@ -100,10 +101,20 @@ export interface DoseFormModalProps {
      */
     prefillTimeOverride?: Date | null;
     onSave: (event: DoseEvent) => void;
+    /**
+     * Optional callback for a "paired save" — fires when the patch form has
+     * an optional "摘下时间" (remove time) filled in. The parent receives both
+     * events (apply + remove) sharing a fresh `companionGroupId` so the
+     * /history list can render them as one logical record and hide the
+     * "贴片移除" button on the apply card. When the form is used to edit an
+     * existing single event (or save a non-patch / patch-without-remove-time
+     * record), `onSave` is called instead.
+     */
+    onSavePatch?: (apply: DoseEvent, remove: DoseEvent) => void;
     onDelete?: (id: string) => void;
 }
 
-const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, prefillFromPlan, prefillTimeOverride, onSave, onDelete }) => {
+const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToEdit, prefillFromPlan, prefillTimeOverride, onSave, onSavePatch, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
     const { events: allEvents, gelProducts } = useAppData();
@@ -125,6 +136,12 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
     const [patchMode, setPatchMode] = useState<"dose" | "rate">("dose");
     const [patchRate, setPatchRate] = useState("");
+
+    // Optional patch remove time. When set, saving a "贴片" record writes
+    // a paired (apply, remove) event pair with a shared companionGroupId.
+    // Only meaningful for `route === Route.patchApply`; the form clears it
+    // for any other route via the effect below.
+    const [removeTimeStr, setRemoveTimeStr] = useState("");
 
     const [gelSite, setGelSite] = useState(0); // Index in GEL_SITE_ORDER
     const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
@@ -192,6 +209,24 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     }
                 }
 
+                // Patch prefill: if the event being edited is a patch "apply"
+                // with a paired remove, surface that remove's time in the
+                // "摘下时间" field so the user can adjust it. Editing a
+                // "remove" event by itself just clears the field (the form's
+                // dateStr is the remove time in that case).
+                if (eventToEdit.route === Route.patchApply) {
+                    const pairedRemove = findPatchRemoveForApply(eventToEdit, allEvents);
+                    if (pairedRemove && Number.isFinite(pairedRemove.timeH)) {
+                        const rd = new Date(pairedRemove.timeH * 3600000);
+                        const rIso = new Date(rd.getTime() - (rd.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+                        setRemoveTimeStr(rIso);
+                    } else {
+                        setRemoveTimeStr('');
+                    }
+                } else {
+                    setRemoveTimeStr('');
+                }
+
                 if (eventToEdit.route === Route.sublingual) {
                     if (eventToEdit.extras[ExtraKey.sublingualTier] !== undefined) {
                          setSlTier(eventToEdit.extras[ExtraKey.sublingualTier]);
@@ -232,7 +267,14 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 setWeightStr((eventToEdit.weightKG ?? prefillWeightKG(allEvents)).toString());
 
             } else {
-                const now = prefillTimeOverride ?? new Date();
+                const nowRaw = prefillTimeOverride ?? new Date();
+                // Defensive: prefillTimeOverride should always be a Date, but
+                // a stale HMR closure or a future caller can land here with a
+                // non-Date value. Coerce so .getTime() is safe and the modal
+                // opens instead of crashing the React tree.
+                const now = nowRaw instanceof Date
+                    ? nowRaw
+                    : new Date(nowRaw ?? Date.now());
                 const iso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                 setDateStr(iso);
 
@@ -301,6 +343,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                         setPatchMode('dose');
                         setPatchRate('');
                     }
+                    // New records start with no scheduled remove time; the
+                    // user can opt in by typing one in the "摘下时间" field.
+                    setRemoveTimeStr('');
                 } else {
                     // Land on the last drug used (sublingual + estradiol valerate as
                     // the cold-start default). The per-drug dose memory restore is
@@ -316,6 +361,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     setGelSite(0);
                     setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
                     setGelCoApplied(0);
+                    setRemoveTimeStr('');
                     // patchMode/patchRate + dose fields are restored per-drug by the
                     // dedicated effect below (keyed on route/ester).
                 }
@@ -562,8 +608,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
         // Route-determined esters always store as E2; otherwise use the outer
         // `safeEster` (computed once per render at component scope).
+        // (Route.patchRemove is no longer reachable from the route selector —
+        // paired patch saves go through the onSavePatch branch below.)
         const effectiveEster =
-            (route === Route.patchRemove || route === Route.patchApply || route === Route.gel)
+            (route === Route.patchApply || route === Route.gel)
                 ? Ester.E2
                 : safeEster;
 
@@ -599,7 +647,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 return;
             }
             finalDose = raw; // patch input is compound dose on patch
-        } else if (route !== Route.patchRemove) {
+        } else {
             if (isAntiandrogen(effectiveEster)) {
                 const rawVal = parseFloat(rawDose);
                 if (!Number.isFinite(rawVal) || rawVal <= 0) {
@@ -651,6 +699,63 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             ? parsedWeight
             : prefillWeightKG(allEvents);
 
+        // ── Paired save for "贴片" with an optional remove time ─────────────
+        // When the user filled in the optional "摘下时间" field on a patch
+        // record, emit TWO events sharing a fresh companionGroupId. The
+        // /history list uses that id to render a single "贴片" card and hide
+        // the "贴片移除" button on the apply side. Without a remove time we
+        // fall back to a plain single-event save so existing behavior
+        // (PK engine time-axis pairing) is preserved for legacy callers.
+        if (route === Route.patchApply && removeTimeStr.trim() !== '' && onSavePatch) {
+            const removeTimeMs = new Date(removeTimeStr).getTime();
+            if (isNaN(removeTimeMs)) {
+                showDialog('alert', t('error.invalidDate') || t('error.nonPositive'));
+                setIsSaving(false);
+                return;
+            }
+            const removeTimeH = removeTimeMs / 3600000;
+            if (removeTimeH <= timeH) {
+                // Remove must be strictly after apply; show a localized
+                // validation message.
+                showDialog('alert', t('error.patch_remove_before_apply') || t('error.nonPositive'));
+                setIsSaving(false);
+                return;
+            }
+            const groupId = uuidv4();
+            const applyEvent: DoseEvent = {
+                id: eventToEdit?.id || uuidv4(),
+                route: Route.patchApply,
+                ester: Ester.E2,
+                timeH,
+                doseMG: finalDose,
+                weightKG,
+                extras,
+                companionGroupId: groupId,
+            };
+            const removeEvent: DoseEvent = {
+                id: uuidv4(),
+                route: Route.patchRemove,
+                ester: Ester.E2,
+                timeH: removeTimeH,
+                doseMG: 0,
+                weightKG,
+                extras: {},
+                companionGroupId: groupId,
+            };
+            if (!eventToEdit) {
+                writeDoseMemo(Route.patchApply, Ester.E2, {
+                    rawDose, e2Dose,
+                    patchMode, patchRate,
+                    slTier, useCustomTheta, customTheta,
+                    customDose: useCustomDose,
+                });
+            }
+            onSavePatch(applyEvent, removeEvent);
+            setIsSaving(false);
+            onClose();
+            return;
+        }
+
         const newEvent: DoseEvent = {
             id: eventToEdit?.id || uuidv4(),
             route,
@@ -689,6 +794,15 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             setEster(availableEsters[0]);
         }
     }, [availableEsters, ester]);
+
+    // The "摘下时间" field is only meaningful on the "贴片" entry. Switching
+    // away from Route.patchApply must wipe it so the next save can't
+    // accidentally write a paired event for a non-patch route.
+    useEffect(() => {
+        if (route !== Route.patchApply && removeTimeStr !== '') {
+            setRemoveTimeStr('');
+        }
+    }, [route, removeTimeStr]);
 
     // Mirror handleSave's safeEster so UI gating (canGenerate/doseGuide) and
     // data write paths read the same value even mid-route-transition.
@@ -829,11 +943,9 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                         }))}
                     />
 
-                    {route === Route.patchRemove && (
-                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
-                            {t('beta.patch_remove')}
-                        </div>
-                    )}
+                    {/* (Route.patchRemove is no longer selectable from the route
+                     *  dropdown — paired patch saves go through the unified
+                     *  "贴片" entry, so the old "贴片移除"-only banner is dead.) */}
 
                     {route !== Route.patchRemove && (
                         <>
@@ -1045,6 +1157,48 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                         placeholder="e.g. 50"
                                     />
+                                </div>
+                            )}
+
+                            {/* Patch: optional 摘下时间 (remove time).
+                             *
+                             * Saving a "贴片" record with this field set writes TWO
+                             * events (apply + remove) sharing a companionGroupId so
+                             * the /history list can render them as a single record
+                             * and the "贴片移除" button on the apply card vanishes
+                             * once the remove is logged. Leave it blank to fall back
+                             * to a plain single-event save (the "贴片移除" button on
+                             * /history is the escape hatch for late removal). The
+                             * handleSave validator enforces removeTime > applyTime. */}
+                            {route === Route.patchApply && (
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                        {t('field.patch_remove_time')}
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="datetime-local"
+                                            value={removeTimeStr}
+                                            onChange={e => setRemoveTimeStr(e.target.value)}
+                                            className="flex-1 p-3 rounded-xl text-base font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                            style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                            placeholder={t('field.patch_remove_time_placeholder') || ''}
+                                        />
+                                        {removeTimeStr !== '' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setRemoveTimeStr('')}
+                                                aria-label={t('btn.clear') || t('btn.close')}
+                                                className="p-2 rounded-lg"
+                                                style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                                        {t('hint.patch_remove_time')}
+                                    </p>
                                 </div>
                             )}
 
