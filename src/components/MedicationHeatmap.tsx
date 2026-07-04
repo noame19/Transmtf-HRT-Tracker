@@ -54,6 +54,11 @@ interface MedicationHeatmapProps {
     today?: Date;
     /** Future pad appended after today (default 21d). */
     futurePadDays?: number;
+    /** Compact mode (used when the heatmap is rendered in a narrow column,
+     *  e.g. side-by-side with the blood-concentration chart on desktop).
+     *  Stacks the KPI sidebar BELOW the grid instead of on the right, and
+     *  uses a smaller default cell-size so 6M fits without horizontal scroll. */
+    compact?: boolean;
 }
 
 /** Gap between grid cells. The grid renders ALL weeks in the data range
@@ -66,14 +71,16 @@ const DEFAULT_GAP_PX = 5;
 const WEEKDAY_COL_PX = 36;
 
 /** Three discrete zoom levels, modelled on ResultChart's 2M / 3M / 6M /
- *  reset pattern. Each level maps to a per-cell pixel size — bigger cells
- *  mean fewer weeks visible at once, smaller cells pack more weeks in.
+ *  reset pattern. Each level maps to BOTH a per-cell pixel size (used in
+ *  the column width) AND a "weeks visible" count (used to crop the data
+ *  range so 6M literally means "last 6 months", not "6 months worth of
+ *  cells squeezed into the screen").
  *  The default is picked per-device (mobile = 2M, iPad = 3M, desktop = 6M)
  *  via `defaultZoomForWidth` below. */
 const ZOOM_LEVELS = {
-    '2M': 18,
-    '3M': 14,
-    '6M': 10,
+    '2M': { cellSize: 18, weeks: 9 },   // ~9 weeks  ≈ 2 months
+    '3M': { cellSize: 14, weeks: 13 },  // ~13 weeks ≈ 3 months
+    '6M': { cellSize: 10, weeks: 26 },  // ~26 weeks ≈ 6 months
 } as const;
 type ZoomLevel = keyof typeof ZOOM_LEVELS;
 
@@ -109,6 +116,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     plans,
     today,
     futurePadDays = 21,
+    compact = false,
 }) => {
     const { t, lang } = useTranslation();
     const { isDark } = useTheme();
@@ -153,8 +161,6 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [plans, todayRef, range.endDate]);
 
-    const totalWeeks = range.weeks.length;
-
     // Zoom = one of three discrete levels (2M / 3M / 6M). Each level maps to a
     // per-cell pixel size via ZOOM_LEVELS; bigger cells = fewer weeks visible
     // at once. The full range is still rendered so the user can drag back to
@@ -163,8 +169,25 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         if (typeof window === 'undefined') return '6M';
         return defaultZoomForWidth(window.innerWidth);
     });
-    const cellSize = ZOOM_LEVELS[zoomLevel];
+    const cellSize = ZOOM_LEVELS[zoomLevel].cellSize;
     const scrollRef = useRef<HTMLDivElement | null>(null);
+
+    // Crop the full range to the last N weeks dictated by the current zoom
+    // level so 2M / 3M / 6M actually show that many months of history. KPI
+    // stats continue to be computed from the full `events` list (see
+    // `computeStats` below) so the count of "累计用药 / 活跃天数" doesn't
+    // jump around as the user toggles zoom.
+    const visibleWeeksCount = ZOOM_LEVELS[zoomLevel].weeks;
+    const visibleRange: HeatmapRange = useMemo(() => {
+        const all = range.weeks;
+        if (all.length <= visibleWeeksCount) return range;
+        const start = all.length - visibleWeeksCount;
+        const weeks = all.slice(start);
+        // Anchor startDate to the first visible week's Monday so the grid's
+        // sticky weekday column still aligns with the cropped cells.
+        return { ...range, weeks };
+    }, [range, visibleWeeksCount]);
+    const totalWeeks = visibleRange.weeks.length;
 
     /** Snap the scroll container all the way to the right so "today" and the
      *  future plan-fire days sit at the right edge of the viewport. Used by
@@ -196,7 +219,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     useEffect(() => {
         if (!scrollRef.current) return;
         scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-    }, [range.weeks, cellSize]);
+    }, [visibleRange.weeks, cellSize]);
 
     // Drag-to-pan: the scrollbar is hidden (`.scrollbar-hide` className) so the
     // user has no native handle to grab. This listener lets them click + drag
@@ -233,7 +256,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     }, []);
 
     // ── KPI stats (right side card stack) ─────────────────────────────────
-    const stats = useMemo(() => computeStats(events, todayRef, range), [events, todayRef, range]);
+    const stats = useMemo(() => computeStats(events, todayRef), [events, todayRef]);
 
     // ── Tooltip state ─────────────────────────────────────────────────────
     const [tooltip, setTooltip] = useState<{
@@ -304,9 +327,15 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                 </div>
             </div>
 
-            {/* Body row: heatmap (left, flex-4) + KPI stack (right, flex-1) */}
+            {/* Body row: heatmap (left/top) + KPI stack (right/bottom).
+             *  In compact mode (e.g. side-by-side with ResultChart on desktop)
+             *  the KPI stack lives BELOW the grid because there's no horizontal
+             *  room for both. */}
             <div className="px-3 md:px-4 py-3 md:py-4">
-                <div className="flex flex-col md:flex-row md:items-stretch gap-3">
+                <div className={compact
+                    ? 'flex flex-col gap-3'
+                    : 'flex flex-col md:flex-row md:items-stretch gap-3'
+                }>
                 <div className="w-full md:flex-[4] min-w-0">
                     <div className="h-full flex flex-col justify-between">
                         {/* Heatmap area — scrollbar hidden; user pans by
@@ -350,7 +379,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                     className="relative h-4"
                                     style={{ gridColumn: `2 / span ${totalWeeks}` }}
                                 >
-                                    {range.weeks.map((w, idx) =>
+                                    {visibleRange.weeks.map((w, idx) =>
                                         w.monthLabel ? (
                                             <span
                                                 key={`mh-${idx}`}
@@ -383,7 +412,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                         >
                                             {t(`heatmap.weekday_${dayKey}`) || ''}
                                         </div>
-                                        {range.weeks.map((w, wIdx) => {
+                                        {visibleRange.weeks.map((w, wIdx) => {
                                             const d = w.days[dayIdx];
                                             if (!d) return <div key={`${wIdx}-${dayIdx}`} />;
                                                 const cats = categoriesOfCell(d);
@@ -440,8 +469,13 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                         </div>
                     </div>
 
-                {/* Right-side KPI card stack */}
-                <div className="grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch">
+                {/* Right-side KPI card stack — stacked vertically on the right
+                 *  in normal mode (≥md), or a 3-column row below the grid in
+                 *  compact mode (heatmap rendered in a narrow column). */}
+                <div className={compact
+                    ? 'grid grid-cols-3 gap-2 w-full'
+                    : 'grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch'
+                }>
                     <KpiCard
                         value={String(stats.totalEvents)}
                         label={t('heatmap.kpi.total') || '累计用药'}
@@ -649,17 +683,19 @@ interface KpiStats {
     currentStreak: number;
 }
 
-function computeStats(events: DoseEvent[], today: Date, range: HeatmapRange): KpiStats {
+function computeStats(events: DoseEvent[], today: Date): KpiStats {
     const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
     const adminEvents = events.filter((e) => !isPatchRemove(e));
     const totalEvents = adminEvents.length;
 
-    // Active days = distinct local days with ≥1 admin event in the visible range.
+    // Active days = distinct local days with ≥1 admin event in the FULL
+    // history (not the visible/cropped range). The KPI numbers represent
+    // the user's total usage, not "what's on screen right now" — otherwise
+    // toggling 2M/3M/6M would cause the count to jump around and confuse.
     const dayKeys = new Set<string>();
-    for (const w of range.weeks) {
-        for (const d of w.days) {
-            if (d.events.some((e) => !isPatchRemove(e))) dayKeys.add(d.dateKey);
-        }
+    for (const e of adminEvents) {
+        const d = new Date(e.timeH * 3600000);
+        dayKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
     }
     const activeDays = dayKeys.size;
 
