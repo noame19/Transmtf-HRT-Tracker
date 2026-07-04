@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, RotateCcw } from 'lucide-react';
 import { DoseEvent, Route, Ester, Plan } from '../../types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -56,16 +56,34 @@ interface MedicationHeatmapProps {
     futurePadDays?: number;
 }
 
-/** Cell-size zoom bounds (the grid now renders ALL weeks and uses a fixed
- *  pixel column width, so the user can drag the scrollbar back to see older
- *  records — e.g. 2024 entries alongside 2026 ones). */
-const MIN_CELL_PX = 8;
-const MAX_CELL_PX = 32;
-const TARGET_CELL_PX = 14;
+/** Gap between grid cells. The grid renders ALL weeks in the data range
+ *  and uses a fixed pixel column width (driven by the chosen ZOOM_LEVELS
+ *  entry), so the user can drag horizontally to see older history — e.g.
+ *  2024 entries alongside 2026 ones. */
 const DEFAULT_GAP_PX = 5;
 /** Width of the sticky weekday-label column on the left. Must match the
  *  `gridTemplateColumns` first track + the sticky weekday labels. */
 const WEEKDAY_COL_PX = 36;
+
+/** Three discrete zoom levels, modelled on ResultChart's 2M / 3M / 6M /
+ *  reset pattern. Each level maps to a per-cell pixel size — bigger cells
+ *  mean fewer weeks visible at once, smaller cells pack more weeks in.
+ *  The default is picked per-device (mobile = 2M, iPad = 3M, desktop = 6M)
+ *  via `defaultZoomForWidth` below. */
+const ZOOM_LEVELS = {
+    '2M': 18,
+    '3M': 14,
+    '6M': 10,
+} as const;
+type ZoomLevel = keyof typeof ZOOM_LEVELS;
+
+/** Pick the default zoom level for the current viewport width. Mobile (sm,
+ *  Tailwind <768px) → 2M, iPad (md <1024px) → 3M, desktop (≥1024px) → 6M. */
+function defaultZoomForWidth(width: number): ZoomLevel {
+    if (width < 768) return '2M';
+    if (width < 1024) return '3M';
+    return '6M';
+}
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
@@ -137,26 +155,47 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
     const totalWeeks = range.weeks.length;
 
-    // Zoom = pixel size of one cell. We render every week in the range (so
-    // older data like 2024 records stays in the DOM and the user can drag the
-    // horizontal scrollbar back to see them).
-    const [cellSize, setCellSize] = useState<number>(TARGET_CELL_PX);
+    // Zoom = one of three discrete levels (2M / 3M / 6M). Each level maps to a
+    // per-cell pixel size via ZOOM_LEVELS; bigger cells = fewer weeks visible
+    // at once. The full range is still rendered so the user can drag back to
+    // see older history after picking a tighter zoom.
+    const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(() => {
+        if (typeof window === 'undefined') return '6M';
+        return defaultZoomForWidth(window.innerWidth);
+    });
+    const cellSize = ZOOM_LEVELS[zoomLevel];
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    // Auto-scroll so "today" is centred on first mount + after every zoom
-    // change. Without this the user lands on the leftmost (oldest) week and
-    // has to drag right to find today.
+    /** Snap the scroll container all the way to the right so "today" and the
+     *  future plan-fire days sit at the right edge of the viewport. Used by
+     *  the 2M/3M/6M buttons and the reset button (which restores the device
+     *  default then re-snaps to the right end). */
+    const scrollToRightEnd = () => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    };
+
+    // Track the current device-default zoom so the reset button can restore
+    // it (and re-apply it on window resize, in case the user rotates their
+    // tablet or drags the window between desktop / mobile widths).
+    const defaultZoomRef = useRef<ZoomLevel>(zoomLevel);
     useEffect(() => {
-        const idx = range.weeks.findIndex((w) => w.days.some((d) => d.isToday));
-        if (idx < 0 || !scrollRef.current) return;
-        const stride = cellSize + DEFAULT_GAP_PX;
-        // Track 0 = weekday label col (36px), then 1 gap before track 1, then
-        // idx strides of (cellSize + gap) to reach today's column.
-        const todayLeft = WEEKDAY_COL_PX + DEFAULT_GAP_PX + idx * stride;
-        const todayCenter = todayLeft + cellSize / 2;
-        const containerW = scrollRef.current.clientWidth;
-        const target = todayCenter - containerW / 2;
-        scrollRef.current.scrollLeft = Math.max(0, target);
+        const update = () => {
+            defaultZoomRef.current = defaultZoomForWidth(window.innerWidth);
+        };
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, []);
+
+    // Auto-scroll to the right end on first mount + after every zoom / data
+    // change. The right end of the heatmap is "today + 21-day future pad",
+    // which is the most relevant view (shows today AND upcoming plan-fires
+    // without requiring the user to drag). The user can still drag back to
+    // see older history after the snap.
+    useEffect(() => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
     }, [range.weeks, cellSize]);
 
     // Drag-to-pan: the scrollbar is hidden (`.scrollbar-hide` className) so the
@@ -220,26 +259,47 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     </span>
                     {t('heatmap.title') || '用药日历'}
                 </h4>
-                <div className="ml-auto flex items-center gap-1">
+                <div className="ml-auto flex bg-[var(--bg-secondary)] rounded-xl p-1 gap-1 border border-[var(--border-primary)]">
+                    {(['2M', '3M', '6M'] as const).map((level) => {
+                        const isActive = zoomLevel === level;
+                        return (
+                            <button
+                                key={level}
+                                type="button"
+                                onClick={() => {
+                                    setZoomLevel(level);
+                                    // Defer the scroll so the new cellSize is
+                                    // applied to the layout first; otherwise
+                                    // scrollWidth still reflects the old size
+                                    // and we land on the wrong column.
+                                    requestAnimationFrame(scrollToRightEnd);
+                                }}
+                                className="px-3 py-1.5 text-xs md:text-sm font-bold rounded-lg transition-all"
+                                style={{
+                                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    background: isActive ? 'var(--bg-card)' : 'transparent',
+                                }}
+                            >
+                                {level}
+                            </button>
+                        );
+                    })}
+                    <div
+                        className="w-px h-4 self-center mx-1"
+                        style={{ background: 'var(--border-primary)' }}
+                    />
                     <button
                         type="button"
-                        aria-label="zoom-out"
-                        disabled={cellSize >= MAX_CELL_PX}
-                        onClick={() => setCellSize((c) => Math.min(MAX_CELL_PX, c + 2))}
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-md btn-press-glass transition disabled:opacity-40"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
+                        onClick={() => {
+                            setZoomLevel(defaultZoomRef.current);
+                            requestAnimationFrame(scrollToRightEnd);
+                        }}
+                        title="重置缩放"
+                        aria-label="重置缩放"
+                        className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-all"
+                        style={{ color: 'var(--text-secondary)' }}
                     >
-                        <ZoomOut size={13} />
-                    </button>
-                    <button
-                        type="button"
-                        aria-label="zoom-in"
-                        disabled={cellSize <= MIN_CELL_PX}
-                        onClick={() => setCellSize((c) => Math.max(MIN_CELL_PX, c - 2))}
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-md btn-press-glass transition disabled:opacity-40"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
-                    >
-                        <ZoomIn size={13} />
+                        <RotateCcw size={14} className="md:w-4 md:h-4" />
                     </button>
                 </div>
             </div>
@@ -331,10 +391,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 const isPatchOnly =
                                                     routes.length > 0 && routes.every((r) => r === Route.patchApply);
                                                 const isPlanFireFuture = !d.isToday && planFireKeys.has(d.dateKey);
-                                                // White day-number renders ONLY on today or a future
-                                                // plan-fire day — never on past days, never on
-                                                // ordinary future empty days.
-                                                const showDayNum = d.isToday || isPlanFireFuture;
+                                                // White day-number renders on any "signal" day:
+                                                // a real admin event landed, today, or a future
+                                                // plan-fire day. Past empty days stay blank so
+                                                // the colour bands read as the primary signal.
+                                                const hasEvents = d.events.some((e) => !isPatchRemove(e));
+                                                const showDayNum = d.isToday || isPlanFireFuture || hasEvents;
                                                 return (
                                                     <button
                                                         key={`${wIdx}-${dayIdx}`}
@@ -669,7 +731,7 @@ const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t, plans }) 
                         className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded"
                         style={{ background: 'rgb(245, 164, 255)', color: 'rgb(80, 0, 110)' }}
                     >
-                        {t('heatmap.planned') ?? '计划'}
+                        {t('heatmap.planned') || '计划'}
                     </span>
                 )}
             </div>

@@ -626,7 +626,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       </header>
 
       <main className="w-full overflow-x-hidden px-3 md:px-4 py-4 md:py-6 rounded-t-3xl"
-        style={{ background: 'var(--bg-card)', overscrollBehaviorX: 'none' }}>
+        style={{ overscrollBehaviorX: 'none' }}>
         <ResultChart
           sim={simulation}
           events={events}
