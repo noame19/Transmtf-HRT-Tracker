@@ -181,22 +181,18 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         : ZOOM_LEVELS[zoomLevel].cellSize;
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    // Crop the full range to the last N weeks dictated by the current zoom
-    // level so 2M / 3M / 6M actually show that many months of history. KPI
-    // stats continue to be computed from the full `events` list (see
-    // `computeStats` below) so the count of "累计用药 / 活跃天数" doesn't
-    // jump around as the user toggles zoom.
-    const visibleWeeksCount = ZOOM_LEVELS[zoomLevel].weeks;
-    const visibleRange: HeatmapRange = useMemo(() => {
-        const all = range.weeks;
-        if (all.length <= visibleWeeksCount) return range;
-        const start = all.length - visibleWeeksCount;
-        const weeks = all.slice(start);
-        // Anchor startDate to the first visible week's Monday so the grid's
-        // sticky weekday column still aligns with the cropped cells.
-        return { ...range, weeks };
-    }, [range, visibleWeeksCount]);
-    const totalWeeks = visibleRange.weeks.length;
+    // Render ALL weeks from the data range (not just the last N weeks) so the
+    // user can drag back to view history that's older than the 2M / 3M / 6M
+    // zoom labels. Cropping to a slice here would make the older history
+    // completely invisible — the grid only renders what we hand it, so any
+    // weeks outside the slice can't be reached by scrolling. KPI stats are
+    // computed from the full `events` list (see `computeStats` below) so the
+    // "累计用药 / 活跃天数" counts don't jump when the zoom level changes.
+    //
+    // The 2M / 3M / 6M labels now describe the *cell density* (cells per
+    // week's screen area) rather than a hard render cap, which mirrors the
+    // user expectation of "zoom button = bigger / smaller cells".
+    const totalWeeks = range.weeks.length;
 
     /** Snap the scroll container all the way to the right so "today" and the
      *  future plan-fire days sit at the right edge of the viewport. Used by
@@ -228,7 +224,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     useEffect(() => {
         if (!scrollRef.current) return;
         scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-    }, [visibleRange.weeks, cellSize]);
+    }, [range.weeks, cellSize]);
 
     // Drag-to-pan: the scrollbar is hidden (`.scrollbar-hide` className) so the
     // user has no native handle to grab. This listener lets them click + drag
@@ -388,7 +384,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                     className="relative h-4"
                                     style={{ gridColumn: `2 / span ${totalWeeks}` }}
                                 >
-                                    {visibleRange.weeks.map((w, idx) =>
+                                    {range.weeks.map((w, idx) =>
                                         w.monthLabel ? (
                                             <span
                                                 key={`mh-${idx}`}
@@ -421,7 +417,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                         >
                                             {t(`heatmap.weekday_${dayKey}`) || ''}
                                         </div>
-                                        {visibleRange.weeks.map((w, wIdx) => {
+                                        {range.weeks.map((w, wIdx) => {
                                             const d = w.days[dayIdx];
                                             if (!d) return <div key={`${wIdx}-${dayIdx}`} />;
                                                 const cats = categoriesOfCell(d);
