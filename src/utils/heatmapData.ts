@@ -1,5 +1,5 @@
-import { DoseEvent, Ester, Route } from '../../types';
-import { drugCategoryOf, DrugCategory } from './planSchedule';
+import { DoseEvent, Ester, Plan, Route } from '../../types';
+import { drugCategoryOf, dueMomentsInRange, DrugCategory } from './planSchedule';
 import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from './patch';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,8 +102,17 @@ function daysBetween(a: Date, b: Date): number {
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Localised month abbreviation. Accepts a translation callback for i18n. */
-export function monthLabelFor(start: Date, t?: (k: string) => string): string {
+/** Localised month label. Accepts a translation callback AND an optional
+ *  `lang` for hardcoded locale-native formats that the translations file
+ *  doesn't ship (e.g. zh "1月"..."12月", which is shorter than the keyed
+ *  `overview.month_jan` strings). */
+export function monthLabelFor(start: Date, t?: (k: string) => string, lang?: string): string {
+    // zh locales: numeric "N月" is shorter + more native than the i18n
+    // strings (and avoids relying on translation keys the project doesn't
+    // ship yet).
+    if (lang === 'zh' || lang === 'zh-TW') {
+        return `${start.getMonth() + 1}月`;
+    }
     if (t) {
         // The translations file already has overview.month_jan etc.; fall back
         // to the English short label if the translation is missing.
@@ -287,14 +296,17 @@ export function routesOfCell(cell: HeatmapDayCell): Route[] {
     return out;
 }
 
-/** Sorted-by-time list of (route, timeH, ester, doseMG) for tooltip rendering.
- *  Excludes bookkeeping (patchRemove) entries. */
+/** Sorted-by-time row for the tooltip. Comes from either a past DoseEvent
+ *  (`source: 'event'`) or from a future Plan firing on this day
+ *  (`source: 'plan'`). Tooltip layer branches on this for the small "📋 已记录"
+ *  / "📅 计划" caption. */
 export interface CellEventRow {
     timeH: number;
     route: Route;
     ester: Ester;
     doseMG: number;
     releaseRateUGPerDay?: number;
+    source: 'event' | 'plan';
 }
 
 export function timeSortedCellRows(cell: HeatmapDayCell): CellEventRow[] {
@@ -311,6 +323,33 @@ export function timeSortedCellRows(cell: HeatmapDayCell): CellEventRow[] {
                 // inline avoids pulling types into this pure module.
                 'release_rate_ug_per_day' as any
             ] as number | undefined,
+            source: 'event' as const,
         }))
         .sort((a, b) => a.timeH - b.timeH);
+}
+
+/** Build tooltip rows from any enabled plan that fires on the cell's local
+ *  day. Used by the heatmap tooltip when a future / today cell has no event
+ *  records yet but the user wants to see what the plan says they'll dose.
+ *
+ *  Returns [] if no enabled plan fires that day. */
+export function upcomingPlanRowsForCell(cell: HeatmapDayCell, plans: Plan[]): CellEventRow[] {
+    const dayStart = new Date(cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate(), 0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 86400000);
+    const rows: CellEventRow[] = [];
+    for (const p of plans) {
+        if (!p.enabled) continue;
+        const moments = dueMomentsInRange(p, dayStart, dayEnd);
+        for (const m of moments) {
+            rows.push({
+                timeH: m.getTime() / 3600000,
+                ester: p.ester,
+                route: p.route,
+                doseMG: p.doseMG,
+                source: 'plan' as const,
+            });
+        }
+    }
+    rows.sort((a, b) => a.timeH - b.timeH);
+    return rows;
 }

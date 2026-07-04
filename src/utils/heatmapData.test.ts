@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { DoseEvent, Ester, Route } from '../../types';
+import { DoseEvent, Ester, Plan, Route } from '../../types';
 import {
     buildHeatmapRange,
+    monthLabelFor,
     routesOfCell,
     timeSortedCellRows,
+    upcomingPlanRowsForCell,
     heatmapColorForEster,
     HEATMAP_COLOR_BY_CATEGORY,
+    type HeatmapDayCell,
 } from './heatmapData';
 import { drugCategoryOf } from './planSchedule';
 
@@ -362,5 +365,93 @@ describe('buildHeatmapRange — end-date selection', () => {
         const range = buildHeatmapRange(events, localMid(2026, 7, 4), 21);
         // End must be at least today + 21d → 2026-07-25.
         expect(range.endDate.getTime()).toBeGreaterThanOrEqual(localMid(2026, 7, 25).getTime());
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('monthLabelFor', () => {
+    it('returns "N月" for zh / zh-TW (numeric + 月 format)', () => {
+        const d = new Date(2026, 5, 1, 0, 0, 0, 0); // June
+        expect(monthLabelFor(d, undefined, 'zh')).toBe('6月');
+        expect(monthLabelFor(d, undefined, 'zh-TW')).toBe('6月');
+    });
+
+    it('returns English short label by default', () => {
+        const d = new Date(2026, 5, 1, 0, 0, 0, 0);
+        expect(monthLabelFor(d)).toBe('Jun');
+    });
+
+    it('returns English short label when lang is en/ja', () => {
+        const d = new Date(2026, 5, 1, 0, 0, 0, 0);
+        expect(monthLabelFor(d, undefined, 'en')).toBe('Jun');
+        expect(monthLabelFor(d, undefined, 'ja')).toBe('Jun');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('upcomingPlanRowsForCell — future plan tooltip', () => {
+    /** Minimal HeatmapDayCell fixture for unit-testing the row builder. */
+    function makeCell(y: number, m: number, d: number): HeatmapDayCell {
+        const date = new Date(y, m - 1, d, 0, 0, 0, 0);
+        return {
+            date,
+            dateKey: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+            events: [],
+            isToday: false,
+            isFuture: true,
+        };
+    }
+
+    function makePlan(overrides: Partial<Plan> = {}): Plan {
+        return {
+            id: overrides.id ?? 'plan-1',
+            ester: overrides.ester ?? Ester.EV,
+            route: overrides.route ?? Route.injection,
+            doseMG: overrides.doseMG ?? 5,
+            schedule: overrides.schedule ?? { kind: 'daily', times: ['20:00'] },
+            startDateH: overrides.startDateH ?? localTimeH(2026, 7, 1, 0, 0),
+            endDateH: overrides.endDateH,
+            enabled: overrides.enabled ?? true,
+            leadMinutes: overrides.leadMinutes ?? 5,
+            label: overrides.label,
+            extras: overrides.extras ?? {},
+            createdAtH: 0,
+            updatedAtH: 0,
+        };
+    }
+
+    it('emits one row per daily plan fire on the cell date', () => {
+        const plan = makePlan({ id: 'p-daily', schedule: { kind: 'daily', times: ['08:00', '20:00'] } });
+        const cell = makeCell(2026, 7, 4);
+        const rows = upcomingPlanRowsForCell(cell, [plan]);
+        expect(rows).toHaveLength(2);
+        expect(rows.map((r) => new Date(r.timeH * 3600000).getHours())).toEqual([8, 20]);
+        expect(rows[0].source).toBe('plan');
+    });
+
+    it('ignores disabled plans', () => {
+        const plan = makePlan({ enabled: false });
+        const rows = upcomingPlanRowsForCell(makeCell(2026, 7, 4), [plan]);
+        expect(rows).toHaveLength(0);
+    });
+
+    it('emits no rows when no plan fires that day', () => {
+        // every_n_days with interval=7, anchored at 2026-07-01. Next fires:
+        // 07-01, 07-08, 07-15, … so 07-04 is between fires → no row.
+        const plan = makePlan({
+            schedule: { kind: 'every_n_days', intervalDays: 7, times: ['20:00'] },
+            startDateH: localTimeH(2026, 7, 1, 0, 0),
+        });
+        const rows = upcomingPlanRowsForCell(makeCell(2026, 7, 4), [plan]);
+        expect(rows).toHaveLength(0);
+    });
+
+    it('sorts rows from multiple plans / fires by timeH ascending', () => {
+        const p1 = makePlan({ id: 'a', ester: Ester.EV, schedule: { kind: 'daily', times: ['22:00'] } });
+        const p2 = makePlan({ id: 'b', ester: Ester.CPA, schedule: { kind: 'daily', times: ['08:00'] } });
+        const rows = upcomingPlanRowsForCell(makeCell(2026, 7, 4), [p1, p2]);
+        expect(rows.map((r) => String(r.ester))).toEqual(['CPA', 'EV']);
     });
 });

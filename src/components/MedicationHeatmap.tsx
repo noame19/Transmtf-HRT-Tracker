@@ -13,6 +13,7 @@ import {
     monthLabelFor,
     routesOfCell,
     timeSortedCellRows,
+    upcomingPlanRowsForCell,
     type HeatmapDayCell,
     type HeatmapWeekColumn,
     type HeatmapRange,
@@ -252,7 +253,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         color: 'var(--text-tertiary)',
                                                     }}
                                                 >
-                                                    {monthLabelFor(w.startDate)}
+                                                    {monthLabelFor(w.startDate, undefined, lang)}
                                                     {w.yearLabel ? (
                                                         <span className="opacity-70 ml-0.5">{w.yearLabel}</span>
                                                     ) : null}
@@ -293,7 +294,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         className="relative rounded-[2px] aspect-square w-full cursor-pointer transition-opacity hover:opacity-80 btn-press-glass"
                                                         style={{
                                                             background: cellBackground(cats, d, isDark, isPlanFireFuture),
-                                                            opacity: d.isFuture ? 0.35 : 1,
+                                                            opacity: 1,
                                                             outline: d.isToday ? '1.5px solid var(--accent-300)' : 'none',
                                                             outlineOffset: d.isToday ? '-1.5px' : 0,
                                                         }}
@@ -351,6 +352,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     y={tooltip.y}
                     lang={lang}
                     t={t}
+                    plans={plans ?? []}
                 />
             )}
         </div>
@@ -362,7 +364,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 /** Magenta highlight for "today + future plan-fire" days. Solid colour that
  *  wins over every category palette — the whole point is to make upcoming
  *  scheduled doses pop visually against the past-dose colour bands. */
-const PLAN_FIRE_BG = 'rgb(228, 0, 255)';
+const PLAN_FIRE_BG = 'rgb(245, 164, 255)';
 
 /** Build an SVG data-URI for a 2-category wavy split. The wave runs horizontally
  *  across the cell so the two colours are separated by a sinusoidal boundary
@@ -576,10 +578,17 @@ interface TooltipProps {
     y: number;
     lang: string;
     t: (k: string) => string;
+    plans: Plan[];
 }
 
-const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t }) => {
-    const rows = timeSortedCellRows(cell);
+const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t, plans }) => {
+    // Past / today-with-events shows the actual records (event rows). Today
+    // without events + future plan-fire days show what's scheduled — built
+    // from Plan objects via the same row shape so styling stays uniform.
+    const eventRows = timeSortedCellRows(cell);
+    const plannedRows = eventRows.length === 0 ? upcomingPlanRowsForCell(cell, plans) : [];
+    const rows = eventRows.length > 0 ? eventRows : plannedRows;
+    const isPlannedOnly = rows.length > 0 && eventRows.length === 0 && plannedRows.length > 0;
     const dateStr = formatHeatmapTooltipDate(cell.date, lang);
 
     return (
@@ -599,6 +608,14 @@ const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t }) => {
                         style={{ background: 'var(--accent-300)', color: 'var(--text-inverse, #fff)' }}
                     >
                         {t('heatmap.today') || '今天'}
+                    </span>
+                )}
+                {isPlannedOnly && (
+                    <span
+                        className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded"
+                        style={{ background: 'rgb(245, 164, 255)', color: 'rgb(80, 0, 110)' }}
+                    >
+                        {t('heatmap.planned') || '计划'}
                     </span>
                 )}
             </div>
