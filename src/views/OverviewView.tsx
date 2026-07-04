@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, Info, Camera, Syringe, Pill, Droplet, Sticker } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -69,6 +69,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const { isDark, colors } = useTheme();
   const [shareImageOpen, setShareImageOpen] = useState(false);
   const h = currentTime.getTime() / 3600000;
+
+  // xl 同栏横排断点（≥1280px）：把"宽窄信号"传给 MedicationHeatmap，让
+  // 紧凑态切换到 KPI 列在网格下方的布局，避免在窄列里 3 KPI 横挤把网格挤压。
+  // SSR/首屏用 false 兜底（服务端没 window），useEffect 首跑再校正。
+  const [isXl, setIsXl] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(min-width: 1280px)');
+    const update = () => setIsXl(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, []);
 
   const hasPersonalModel = !!simCI && simCI.e2Adjusted.length > 0;
   const hasDoseHistory = events.length > 0;
@@ -627,22 +640,37 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
       <main className="w-full overflow-x-hidden px-3 md:px-4 py-4 md:py-6 rounded-t-3xl"
         style={{ overscrollBehaviorX: 'none' }}>
-        <ResultChart
-          sim={simulation}
-          events={events}
-          onPointClick={onEditEvent}
-          labResults={labResults}
-          simCI={simCI}
-          baselineE2PGmL={baselineE2PGmL}
-          nowH={h}
-          onShareImage={() => setShareImageOpen(true)}
-        />
+        {/*
+         * 桌面端（xl 断点 ≥1280px）把血药浓度图（2/3 宽）和用药日历热力图
+         * （1/3 宽）排到同一行；窄屏恢复为上下堆叠。
+         * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
+         * KPI 把 1/3 宽的网格挤到不可读。
+         */}
+        <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 md:gap-6">
+          <div className="xl:flex-[2] min-w-0">
+            <ResultChart
+              sim={simulation}
+              events={events}
+              onPointClick={onEditEvent}
+              labResults={labResults}
+              simCI={simCI}
+              baselineE2PGmL={baselineE2PGmL}
+              nowH={h}
+              onShareImage={() => setShareImageOpen(true)}
+            />
+          </div>
 
-        {/* Medication calendar heatmap — rendered after the blood-concentration
-         *  chart so the visual narrative goes "concentration now → history
-         *  of when doses actually landed". Pure client-side, no data fetch. */}
-        <div className="mt-4 md:mt-6">
-          <MedicationHeatmap events={events} plans={plans} today={currentTime} />
+          {/* Medication calendar heatmap — rendered after the blood-concentration
+           *  chart so the visual narrative goes "concentration now → history
+           *  of when doses actually landed". Pure client-side, no data fetch. */}
+          <div className="xl:flex-[1] min-w-0">
+            <MedicationHeatmap
+              events={events}
+              plans={plans}
+              today={currentTime}
+              compact={isXl}
+            />
+          </div>
         </div>
       </main>
 
