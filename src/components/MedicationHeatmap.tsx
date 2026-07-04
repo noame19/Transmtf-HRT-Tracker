@@ -29,8 +29,10 @@ import {
 //   • body = flex row:
 //       left  (md:flex-[4]) — heatmap grid + bottom legend
 //       right (md:flex-[1]) — 3 stacked KPI cards
-//   • grid = 1 label col + N week cols (all weeks equal-flex)
-//   • cells = aspect-square w-full (size follows container, not fixed px)
+//   • grid = 1 sticky weekday-label col + N week cols (fixed-pixel width, so
+//     the whole grid overflows the card horizontally and the user can drag
+//     the scrollbar to see older history — e.g. 2024 records alongside 2026)
+//   • cells = aspect-square at the configured cell size (zoom = 8–32 px)
 //   • month labels absolutely positioned above their first-appearance column
 //
 // Constraints (kept identical to v1):
@@ -39,7 +41,7 @@ import {
 //   • patches propagate apply→remove as one continuous band
 //   • tooltip = day date + per-event rows (HH:MM, route icon, ester, dose)
 //   • today outlined; future cells faded
-//   • zoom 1–26 weeks; default = how many weeks fit in container
+//   • weekday labels are sticky-left so 一-日 stay visible while scrolling
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface MedicationHeatmapProps {
@@ -54,13 +56,16 @@ interface MedicationHeatmapProps {
     futurePadDays?: number;
 }
 
-const MIN_WEEKS = 1;
-const MAX_WEEKS = 26;
-/** Approx target cell size used to derive the default number of weeks to
- *  show on first mount. Once mounted, cells size via `aspect-square w-full`
- *  inside a flex-1 grid, so the actual size scales with container width. */
+/** Cell-size zoom bounds (the grid now renders ALL weeks and uses a fixed
+ *  pixel column width, so the user can drag the scrollbar back to see older
+ *  records — e.g. 2024 entries alongside 2026 ones). */
+const MIN_CELL_PX = 8;
+const MAX_CELL_PX = 32;
 const TARGET_CELL_PX = 14;
 const DEFAULT_GAP_PX = 5;
+/** Width of the sticky weekday-label column on the left. Must match the
+ *  `gridTemplateColumns` first track + the sticky weekday labels. */
+const WEEKDAY_COL_PX = 36;
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
@@ -132,48 +137,27 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
     const totalWeeks = range.weeks.length;
 
-    // Default weeks visible ≈ how many columns fit across the heatmap card
-    // width (assumes ~36px for the weekday label col on the left).
-    const computeDefaultWeeks = () =>
-        Math.max(
-            MIN_WEEKS,
-            Math.min(
-                MAX_WEEKS,
-                Math.floor(window.innerWidth / (TARGET_CELL_PX + DEFAULT_GAP_PX)),
-            ),
-        );
+    // Zoom = pixel size of one cell. We render every week in the range (so
+    // older data like 2024 records stays in the DOM and the user can drag the
+    // horizontal scrollbar back to see them).
+    const [cellSize, setCellSize] = useState<number>(TARGET_CELL_PX);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
 
-    const [weeksShown, setWeeksShown] = useState<number>(computeDefaultWeeks);
-
-    // Clamp on events / props change.
+    // Auto-scroll so "today" is centred on first mount + after every zoom
+    // change. Without this the user lands on the leftmost (oldest) week and
+    // has to drag right to find today.
     useEffect(() => {
-        setWeeksShown((w) => Math.max(MIN_WEEKS, Math.min(MAX_WEEKS, Math.min(w, totalWeeks))));
-    }, [totalWeeks]);
-
-    // Recompute default on resize so the user always sees "as many as fit".
-    useEffect(() => {
-        const onResize = () => {
-            const fit = computeDefaultWeeks();
-            setWeeksShown((prev) => (prev === fit ? prev : fit));
-        };
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Anchor the visible window so "today" stays in view (centre it).
-    const visibleWeeks: HeatmapWeekColumn[] = useMemo(() => {
-        if (weeksShown >= totalWeeks) return range.weeks;
-        const todayIdx = range.weeks.findIndex((w) => w.days.some((d) => d.isToday));
-        const baseAnchor = todayIdx >= 0 ? todayIdx : Math.max(0, totalWeeks - weeksShown);
-        const anchor = Math.max(
-            Math.floor(weeksShown / 2),
-            Math.min(totalWeeks - Math.ceil(weeksShown / 2), baseAnchor),
-        );
-        const start = Math.max(0, anchor - Math.floor(weeksShown / 2));
-        const end = Math.min(totalWeeks, start + weeksShown);
-        return range.weeks.slice(start, end);
-    }, [range.weeks, weeksShown, totalWeeks]);
+        const idx = range.weeks.findIndex((w) => w.days.some((d) => d.isToday));
+        if (idx < 0 || !scrollRef.current) return;
+        const stride = cellSize + DEFAULT_GAP_PX;
+        // Track 0 = weekday label col (36px), then 1 gap before track 1, then
+        // idx strides of (cellSize + gap) to reach today's column.
+        const todayLeft = WEEKDAY_COL_PX + DEFAULT_GAP_PX + idx * stride;
+        const todayCenter = todayLeft + cellSize / 2;
+        const containerW = scrollRef.current.clientWidth;
+        const target = todayCenter - containerW / 2;
+        scrollRef.current.scrollLeft = Math.max(0, target);
+    }, [range.weeks, cellSize]);
 
     // ── KPI stats (right side card stack) ─────────────────────────────────
     const stats = useMemo(() => computeStats(events, todayRef, range), [events, todayRef, range]);
@@ -201,8 +185,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     <button
                         type="button"
                         aria-label="zoom-out"
-                        disabled={weeksShown >= MAX_WEEKS}
-                        onClick={() => setWeeksShown((w) => Math.min(MAX_WEEKS, w + 1))}
+                        disabled={cellSize >= MAX_CELL_PX}
+                        onClick={() => setCellSize((c) => Math.min(MAX_CELL_PX, c + 2))}
                         className="inline-flex items-center justify-center w-7 h-7 rounded-md btn-press-glass transition disabled:opacity-40"
                         style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
                     >
@@ -211,8 +195,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     <button
                         type="button"
                         aria-label="zoom-in"
-                        disabled={weeksShown <= MIN_WEEKS}
-                        onClick={() => setWeeksShown((w) => Math.max(MIN_WEEKS, w - 1))}
+                        disabled={cellSize <= MIN_CELL_PX}
+                        onClick={() => setCellSize((c) => Math.max(MIN_CELL_PX, c - 2))}
                         className="inline-flex items-center justify-center w-7 h-7 rounded-md btn-press-glass transition disabled:opacity-40"
                         style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
                     >
@@ -226,57 +210,68 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                 <div className="w-full md:flex-[4] min-w-0">
                     <div className="h-full flex flex-col justify-between">
                         {/* Heatmap area */}
-                        <div className="w-full overflow-x-auto overflow-y-hidden">
-                            <div className="min-w-[380px]">
+                        <div ref={scrollRef} className="w-full overflow-x-auto overflow-y-hidden">
+                            <div
+                                className="grid"
+                                style={{
+                                    gridTemplateColumns: `${WEEKDAY_COL_PX}px repeat(${totalWeeks}, ${cellSize}px)`,
+                                    gap: `${DEFAULT_GAP_PX}px`,
+                                    width: 'max-content',
+                                }}
+                            >
+                                {/* Top-left empty cell — sticky so the month row's
+                                 *  left edge stays anchored to the weekday column
+                                 *  while the user scrolls. */}
                                 <div
-                                    className="grid w-full"
+                                    className="sticky left-0 z-10"
                                     style={{
-                                        gridTemplateColumns: `auto repeat(${visibleWeeks.length}, minmax(0px, 1fr))`,
-                                        gap: `${DEFAULT_GAP_PX}px`,
+                                        width: `${WEEKDAY_COL_PX}px`,
+                                        minWidth: `${WEEKDAY_COL_PX}px`,
+                                        background: 'var(--bg-card)',
                                     }}
+                                />
+                                {/* Month / year header row — absolute-positioned
+                                 *  labels above their first-appearance column */}
+                                <div
+                                    className="relative h-4"
+                                    style={{ gridColumn: `2 / span ${totalWeeks}` }}
                                 >
-                                    {/* Top-left empty cell (corner of the header row) */}
-                                    <div />
-                                    {/* Month / year header row — absolute-positioned
-                                     *  labels above their first-appearance column */}
-                                    <div
-                                        className="relative h-4"
-                                        style={{ gridColumn: `2 / span ${visibleWeeks.length}` }}
-                                    >
-                                        {visibleWeeks.map((w, idx) =>
-                                            w.monthLabel ? (
-                                                <span
-                                                    key={`mh-${idx}`}
-                                                    className="absolute top-0 text-[11px] whitespace-nowrap pointer-events-none"
-                                                    style={{
-                                                        left: `${(idx / visibleWeeks.length) * 100}%`,
-                                                        color: 'var(--text-tertiary)',
-                                                    }}
-                                                >
-                                                    {monthLabelFor(w.startDate, undefined, lang)}
-                                                    {w.yearLabel ? (
-                                                        <span className="opacity-70 ml-0.5">{w.yearLabel}</span>
-                                                    ) : null}
-                                                </span>
-                                            ) : null,
-                                        )}
-                                    </div>
-
-                                    {/* 7 weekday rows × N columns */}
-                                    {WEEKDAY_KEYS.map((dayKey, dayIdx) => (
-                                        <React.Fragment key={`row-${dayIdx}`}>
-                                            <div
-                                                className="text-[11px] text-right pr-2 flex items-center justify-end leading-none whitespace-nowrap"
+                                    {range.weeks.map((w, idx) =>
+                                        w.monthLabel ? (
+                                            <span
+                                                key={`mh-${idx}`}
+                                                className="absolute top-0 text-[11px] whitespace-nowrap pointer-events-none"
                                                 style={{
-                                                    minWidth: '36px',
+                                                    left: `${(idx / totalWeeks) * 100}%`,
                                                     color: 'var(--text-tertiary)',
                                                 }}
                                             >
-                                                {t(`heatmap.weekday_${dayKey}`) || ''}
-                                            </div>
-                                            {visibleWeeks.map((w, wIdx) => {
-                                                const d = w.days[dayIdx];
-                                                if (!d) return <div key={`${wIdx}-${dayIdx}`} />;
+                                                {monthLabelFor(w.startDate, undefined, lang)}
+                                                {w.yearLabel ? (
+                                                    <span className="opacity-70 ml-0.5">{w.yearLabel}</span>
+                                                ) : null}
+                                            </span>
+                                        ) : null,
+                                    )}
+                                </div>
+
+                                {/* 7 weekday rows × N columns */}
+                                {WEEKDAY_KEYS.map((dayKey, dayIdx) => (
+                                    <React.Fragment key={`row-${dayIdx}`}>
+                                        <div
+                                            className="text-[11px] text-right pr-2 flex items-center justify-end leading-none whitespace-nowrap sticky left-0 z-10"
+                                            style={{
+                                                width: `${WEEKDAY_COL_PX}px`,
+                                                minWidth: `${WEEKDAY_COL_PX}px`,
+                                                color: 'var(--text-tertiary)',
+                                                background: 'var(--bg-card)',
+                                            }}
+                                        >
+                                            {t(`heatmap.weekday_${dayKey}`) || ''}
+                                        </div>
+                                        {range.weeks.map((w, wIdx) => {
+                                            const d = w.days[dayIdx];
+                                            if (!d) return <div key={`${wIdx}-${dayIdx}`} />;
                                                 const cats = categoriesOfCell(d);
                                                 const routes = routesOfCell(d);
                                                 const isPatchOnly =
@@ -325,7 +320,6 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                             </div>
                         </div>
                     </div>
-                </div>
 
                 {/* Right-side KPI card stack */}
                 <div className="grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch">
