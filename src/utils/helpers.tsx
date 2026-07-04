@@ -8,6 +8,23 @@ export const formatDate = (date: Date, lang: Lang) => {
     return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 };
 
+/** Date with year for the history timeline. The year is mandatory — without
+ *  it, "2024年1月4日" and "2026年1月4日" look identical when scrolling. zh /
+ *  zh-TW use the compact 年月日 form; en / ja use locale-native strings. */
+export const formatDateWithYear = (date: Date, lang: Lang): string => {
+    const locale = lang === 'zh' ? 'zh-CN' : (lang === 'zh-TW' ? 'zh-TW' : (lang === 'ja' ? 'ja-JP' : 'en-US'));
+    return date.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+/** Sortable yyyy-mm-dd date key. Used as the timeline group key so 2024-01-04
+ *  and 2026-01-04 form distinct groups (otherwise formatDate collapses them). */
+export const dateKey = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
 export const formatTime = (date: Date) => {
     return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
 };

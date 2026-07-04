@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Activity, Plus, Layers, CalendarClock, Sticker } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { formatDate, formatDateTime, formatTime, getRouteIcon } from '../utils/helpers';
+import { formatDateTime, formatTime, formatDateWithYear, dateKey, getRouteIcon } from '../utils/helpers';
 import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../../logic';
 import { Plan } from '../../types';
 import PlanList from '../components/PlanList';
@@ -50,11 +50,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const groupedEvents = useMemo(() => {
     const sorted = [...events].sort((a, b) => b.timeH - a.timeH);
-    const groups: Record<string, DoseEvent[]> = {};
+    // Group by dateKey (sortable yyyy-mm-dd) so 2024-01-04 and 2026-01-04 form
+    // distinct groups — otherwise `formatDate` collapses them and the timeline
+    // looks identical after a year of scrolling.
+    const groups: Record<string, { display: string; items: DoseEvent[] }> = {};
     sorted.forEach(e => {
-      const d = formatDate(new Date(e.timeH * 3600000), lang);
-      if (!groups[d]) groups[d] = [];
-      groups[d].push(e);
+      const d = new Date(e.timeH * 3600000);
+      const k = dateKey(d);
+      if (!groups[k]) {
+        groups[k] = { display: formatDateWithYear(d, lang), items: [] };
+      }
+      groups[k].items.push(e);
     });
     return groups;
   }, [events, lang]);
@@ -141,15 +147,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             </div>
           )}
 
-          {Object.entries(groupedEvents).map(([date, items]) => (
-            <div key={date} className="relative mx-4 rounded-2xl glass-card overflow-hidden">
+          {Object.entries(groupedEvents).map(([k, group]) => (
+            <div key={k} className="relative mx-4 rounded-2xl glass-card overflow-hidden">
               <div className="sticky top-0 py-3 px-4 z-0 flex items-center gap-2 border-b glass"
                 style={{ borderColor: 'var(--border-secondary)' }}>
                 <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent-300)' }}></div>
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{date}</span>
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{group.display}</span>
               </div>
               <div className="divide-y" style={{ divideColor: 'var(--border-secondary)' }}>
-                {(items as DoseEvent[])
+                {(group.items as DoseEvent[])
                   .filter(ev => !isPatchRemove(ev))
                   .map(ev => {
                   // Patch-apply cards get an inline "贴片移除" button when
