@@ -169,7 +169,16 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         if (typeof window === 'undefined') return '6M';
         return defaultZoomForWidth(window.innerWidth);
     });
-    const cellSize = ZOOM_LEVELS[zoomLevel].cellSize;
+    const cellSize = compact
+        // Compact (e.g. 1/3 width under xl breakpoint) bumps the cell size
+        // up so the grid actually overflows the constrained column and the
+        // drag-to-pan handler has somewhere to go. Without this, 6M (10px ×
+        // 26 weeks ≈ 426px) lands just inside the ~429px column — no overflow
+        // triggers, the hidden scrollbar never appears, and click-drag pan
+        // is effectively dead. 14px is the size of the 3M tier and the
+        // maximum across all current 2M / 3M tiers, so only 6M is affected.
+        ? Math.max(ZOOM_LEVELS[zoomLevel].cellSize, 14)
+        : ZOOM_LEVELS[zoomLevel].cellSize;
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     // Crop the full range to the last N weeks dictated by the current zoom
@@ -351,7 +360,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                     moved: false,
                                 };
                             }}
-                            className="scrollbar-hide w-full overflow-x-auto overflow-y-hidden select-none"
+                            className="scrollbar-hide w-full min-w-0 overflow-x-auto overflow-y-hidden select-none"
                             style={{ cursor: panRef.current.moved ? 'grabbing' : 'grab' }}
                         >
                             <div
