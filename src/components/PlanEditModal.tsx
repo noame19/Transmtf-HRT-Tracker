@@ -666,7 +666,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                         border: '1px dashed var(--border-primary)',
                                     }}
                                 >
-                                    + {t('plan.add_time') || '添加时间'}
+                                    + {t('plan.field.add_time') || '添加时间'}
                                 </button>
                             )}
                         </div>
