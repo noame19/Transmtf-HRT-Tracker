@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import { DoseEvent, Route, Ester } from '../../logic';
 import { useTranslation } from '../contexts/LanguageContext';
-import { formatDate, formatTime } from '../utils/helpers';
+import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import {
     buildHeatmapRange,
@@ -356,6 +356,41 @@ function cellBackground(cats: DrugCategory[], cell: HeatmapDayCell): string {
     ].join(', ');
 }
 
+/** Date format for the heatmap tooltip header.
+ *  zh:  "26年6月2日周二"  (2-digit year, no leading zeros, 周 + weekday digit)
+ *  ja:  "2026年6月2日(火)" (locale native)
+ *  en:  "Tue, Jun 2, 2026"
+ *  No external locale lookup — we hard-format zh to keep the year-2-digit
+ *  style the user asked for. */
+function formatHeatmapTooltipDate(date: Date, lang: string): string {
+    if (lang === 'zh' || lang === 'zh-TW') {
+        const yy = String(date.getFullYear()).slice(-2);
+        const m = date.getMonth() + 1;
+        const d = date.getDate();
+        const wd = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+        return `${yy}年${m}月${d}日周${wd}`;
+    }
+    const locale = lang === 'ja' ? 'ja-JP' : 'en-US';
+    return date.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric', weekday: 'short' });
+}
+
+/** Short route labels for tooltip rows. Compact Chinese / English / Japanese
+ *  single-word forms — distinct from `route.injection` (which includes the
+ *  parenthetical English). e.g. zh "肌肉注射", en "Injection", ja "注射". */
+const ROUTE_SHORT: Record<Route, { zh: string; en: string; ja: string }> = {
+    [Route.injection]: { zh: '肌肉注射', en: 'Injection', ja: '注射' },
+    [Route.oral]: { zh: '口服', en: 'Oral', ja: '経口' },
+    [Route.sublingual]: { zh: '舌下', en: 'Sublingual', ja: '舌下' },
+    [Route.gel]: { zh: '凝胶', en: 'Gel', ja: 'ジェル' },
+    [Route.patchApply]: { zh: '贴片', en: 'Patch', ja: 'パッチ' },
+    [Route.patchRemove]: { zh: '摘下贴片', en: 'Patch off', ja: 'パッチ除去' },
+};
+
+function routeShortLabel(route: Route, lang: string): string {
+    const k = lang === 'ja' ? 'ja' : (lang === 'zh' || lang === 'zh-TW' ? 'zh' : 'en');
+    return ROUTE_SHORT[route]?.[k] ?? String(route);
+}
+
 /** Tiny inline route icons. We can't use `getRouteIcon` because that returns
  *  20px icons — too big for a heatmap cell. */
 function routeIconSmall(route: Route | null) {
@@ -477,7 +512,7 @@ interface TooltipProps {
 
 const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t }) => {
     const rows = timeSortedCellRows(cell);
-    const dateStr = formatDate(cell.date, lang);
+    const dateStr = formatHeatmapTooltipDate(cell.date, lang);
 
     return (
         <div
@@ -519,7 +554,7 @@ const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t }) => {
                                 {String(r.ester)}
                             </span>
                             <span style={{ color: 'var(--text-secondary)' }}>
-                                {t(`route.${route}`)}
+                                {routeShortLabel(route, lang)}
                             </span>
                             {!isPatch && (
                                 <span className="ml-auto font-mono" style={{ color: 'var(--text-secondary)' }}>
