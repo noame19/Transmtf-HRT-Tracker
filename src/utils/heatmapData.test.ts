@@ -40,6 +40,28 @@ function makeEvent(overrides: Partial<DoseEvent> = {}): DoseEvent {
     };
 }
 
+// Mirrors `MedicationHeatmap.tsx → categoriesOfCell` so we can test the dedup
+// contract from a node-friendly location. Keep in sync if either side changes.
+function categoriesOfCellForTest(events: DoseEvent[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const e of events) {
+        // patch-remove bookkeeping events are filtered out at render time too
+        if (e.route === Route.patchRemove) continue;
+        const s = String(e.ester);
+        let cat: string;
+        if (s === 'CPA' || s === 'Bicalutamide' || s === 'Finasteride') cat = 'anti_androgen';
+        else if (s === 'PRL' || s === 'Progesterone') cat = 'progestin';
+        else if (s.startsWith('E')) cat = 'estrogen';
+        else cat = 'other';
+        if (!seen.has(cat)) {
+            seen.add(cat);
+            out.push(cat);
+        }
+    }
+    return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
@@ -68,6 +90,40 @@ describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
             const cat = drugCategoryOf(e);
             expect(HEATMAP_COLOR_BY_CATEGORY[cat]).toBeDefined();
         }
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('category dedup (cell-level colour count)', () => {
+    it('CPA + bicalutamide + EV dedupes to 2 categories, not 3', () => {
+        // Regression: previously the cell coloured by event count, producing
+        // a third "blue" slice that meant nothing to the user. Both CPA and
+        // bicalutamide are anti-androgens so they collapse to one slot.
+        const events = [
+            makeEvent({ id: 'cpa', ester: 'CPA' as Ester, route: Route.oral }),
+            makeEvent({ id: 'bica', ester: 'Bicalutamide' as Ester, route: Route.oral }),
+            makeEvent({ id: 'ev', ester: Ester.EV, route: Route.injection }),
+        ];
+        const cats = categoriesOfCellForTest(events);
+        expect(cats.sort()).toEqual(['anti_androgen', 'estrogen']);
+        expect(cats.length).toBe(2);
+    });
+
+    it('EV + PRL dedupes to 2 distinct categories (estrogen + progestin)', () => {
+        const events = [
+            makeEvent({ id: 'ev', ester: Ester.EV, route: Route.injection }),
+            makeEvent({ id: 'prl', ester: 'PRL' as Ester, route: Route.oral }),
+        ];
+        expect(categoriesOfCellForTest(events).sort()).toEqual(['estrogen', 'progestin']);
+    });
+
+    it('ignores patchRemove bookkeeping events when counting categories', () => {
+        const events = [
+            makeEvent({ id: 'apply', ester: Ester.EV, route: Route.patchApply }),
+            makeEvent({ id: 'remove', ester: Ester.EV, route: Route.patchRemove }),
+        ];
+        expect(categoriesOfCellForTest(events)).toEqual(['estrogen']);
     });
 });
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 import { DoseEvent, Route, Ester } from '../../logic';
 import { useTranslation } from '../contexts/LanguageContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import {
@@ -91,6 +92,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     futurePadDays = 21,
 }) => {
     const { t, lang } = useTranslation();
+    const { isDark } = useTheme();
     const containerRef = useRef<HTMLDivElement | null>(null);
 
     // ── Range + zoom state ────────────────────────────────────────────────
@@ -258,7 +260,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         aria-label={d.dateKey}
                                                         className="relative rounded-[2px] aspect-square w-full cursor-pointer transition-opacity hover:opacity-80 btn-press-glass"
                                                         style={{
-                                                            background: cellBackground(cats, d),
+                                                            background: cellBackground(cats, d, isDark),
                                                             opacity: d.isFuture ? 0.35 : 1,
                                                             outline: d.isToday ? '1.5px solid var(--accent-300)' : 'none',
                                                             outlineOffset: d.isToday ? '-1.5px' : 0,
@@ -273,17 +275,6 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         }}
                                                         onMouseLeave={() => setTooltip(null)}
                                                     >
-                                                        {cats.length > 4 && (
-                                                            <span
-                                                                className="absolute bottom-0 right-0 text-[8px] font-bold leading-none px-[2px] rounded-tl-[2px]"
-                                                                style={{
-                                                                    background: 'rgba(0,0,0,0.55)',
-                                                                    color: '#fff',
-                                                                }}
-                                                            >
-                                                                +{cats.length - 4}
-                                                            </span>
-                                                        )}
                                                     </button>
                                                 );
                                             })}
@@ -328,32 +319,52 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
 // ── Cell background helpers ───────────────────────────────────────────────
 
-/** Map the distinct categories in a day to a CSS background. The category
- *  count drives the layout strategy; falls back to a low-contrast empty bg
- *  for future / no-event days. */
-function cellBackground(cats: DrugCategory[], cell: HeatmapDayCell): string {
+/** Build an SVG data-URI for a 2-category wavy split. The wave runs horizontally
+ *  across the cell so the two colours are separated by a sinusoidal boundary
+ *  (instead of a hard diagonal). `preserveAspectRatio='none'` lets the SVG
+ *  stretch to whatever the cell's pixel size ends up being. */
+function wavySplitSvg(colorA: string, colorB: string): string {
+    // Two sine-wave segments produce a smoother wave than one — the boundary
+    // crosses the vertical centre twice (top-mid + bottom-mid), which reads
+    // as a clean "~" at small cell sizes (~14px) without aliasing artefacts.
+    const wave = 'M0,50 C16.67,25 33.33,75 50,50 C66.67,25 83.33,75 100,50';
+    const top = `${wave} L100,0 L0,0 Z`;
+    const bottom = `${wave} L100,100 L0,100 Z`;
+    const svg =
+        `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>` +
+        `<path d='${top}' fill='${colorA}'/>` +
+        `<path d='${bottom}' fill='${colorB}'/>` +
+        `</svg>`;
+    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+}
+
+/** Map the distinct categories in a day to a CSS background. Layout strategy:
+ *  0 → empty (theme-aware grey), 1 → solid, 2 → wavy split, 3 → 3 vertical
+ *  stripes. 4+ categories fall back to transparent — too rare in practice to
+ *  justify a distinct layout, and the dedup-by-category rule already collapses
+ *  most multi-drug days to ≤ 3. */
+function cellBackground(cats: DrugCategory[], cell: HeatmapDayCell, isDark: boolean): string {
     if (cats.length === 0) {
-        return cell.isFuture ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.10)';
+        // Dark theme: subtle white tint (preserves the original low-contrast
+        // look on near-black backgrounds). Light theme: a real grey so empty
+        // cells stay visible against the white card background.
+        if (isDark) return cell.isFuture ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.10)';
+        return cell.isFuture ? 'rgb(240, 240, 240)' : 'rgb(227, 227, 227)';
     }
     if (cats.length === 1) {
         return HEATMAP_COLOR_BY_CATEGORY[cats[0]];
     }
     if (cats.length === 2) {
         const [a, b] = cats;
-        return `conic-gradient(from -45deg at 50% 50%, ${HEATMAP_COLOR_BY_CATEGORY[a]} 0deg 180deg, ${HEATMAP_COLOR_BY_CATEGORY[b]} 180deg 360deg)`;
+        return `${wavySplitSvg(HEATMAP_COLOR_BY_CATEGORY[a], HEATMAP_COLOR_BY_CATEGORY[b])} 0 0 / 100% 100% no-repeat`;
     }
     if (cats.length === 3) {
         const [a, b, c] = cats;
         return `linear-gradient(90deg, ${HEATMAP_COLOR_BY_CATEGORY[a]} 0 33.33%, ${HEATMAP_COLOR_BY_CATEGORY[b]} 33.33% 66.66%, ${HEATMAP_COLOR_BY_CATEGORY[c]} 66.66% 100%)`;
     }
-    // 4+: 2×2 cross via 4 stacked gradients (TL / TR / BL / BR quadrants).
-    const [tl, tr, bl, br] = cats;
-    return [
-        `linear-gradient(0deg, ${HEATMAP_COLOR_BY_CATEGORY[bl]} 50%, transparent 50%)`,
-        `linear-gradient(0deg, transparent 50%, ${HEATMAP_COLOR_BY_CATEGORY[br]} 50%)`,
-        `linear-gradient(90deg, ${HEATMAP_COLOR_BY_CATEGORY[tl]} 50%, transparent 50%)`,
-        `linear-gradient(90deg, transparent 50%, ${HEATMAP_COLOR_BY_CATEGORY[tr]} 50%)`,
-    ].join(', ');
+    // 4+ categories: collapsed (background-only cell, the per-event detail is
+    // already in the tooltip).
+    return 'transparent';
 }
 
 /** Date format for the heatmap tooltip header.
