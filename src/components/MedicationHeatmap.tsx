@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, ZoomIn, ZoomOut } from 'lucide-react';
 import { DoseEvent, Route, Ester, Plan } from '../../types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -206,13 +206,18 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     if (totalWeeks === 0) return null;
 
     return (
-        <div className="w-full" ref={containerRef}>
-            {/* Title row — plain text, optional zoom buttons on the right */}
-            <div className="flex items-center mb-2 min-h-[28px]">
+        <div className="glass-card rounded-2xl relative overflow-hidden" ref={containerRef}>
+            {/* Title row — icon + title on left, zoom buttons on the right.
+             *  Visually mirrors ResultChart's chart card header so the two
+             *  sections read as a matched pair. */}
+            <div className="flex justify-between items-center px-3 md:px-4 py-2.5 md:py-3 border-b border-[var(--border-secondary)]">
                 <h4
-                    className="text-[14px] font-semibold m-0"
+                    className="text-sm md:text-base font-semibold tracking-tight m-0 flex items-center gap-2"
                     style={{ color: 'var(--text-primary)' }}
                 >
+                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl bg-pink-50 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-800/30">
+                        <CalendarDays size={16} className="text-[#f6c4d7] md:w-5 md:h-5" />
+                    </span>
                     {t('heatmap.title') || '用药日历'}
                 </h4>
                 <div className="ml-auto flex items-center gap-1">
@@ -240,7 +245,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
             </div>
 
             {/* Body row: heatmap (left, flex-4) + KPI stack (right, flex-1) */}
-            <div className="flex flex-col md:flex-row md:items-stretch gap-3">
+            <div className="px-3 md:px-4 py-3 md:py-4">
+                <div className="flex flex-col md:flex-row md:items-stretch gap-3">
                 <div className="w-full md:flex-[4] min-w-0">
                     <div className="h-full flex flex-col justify-between">
                         {/* Heatmap area — scrollbar hidden; user pans by
@@ -387,9 +393,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                         label={t('heatmap.kpi.streak') || '当前连续'}
                     />
                 </div>
+                </div>
             </div>
 
-            {/* Tooltip — fixed-positioned using the cell's bounding box */}
+            {/* Tooltip — fixed-positioned using the cell's bounding box.
+             *  Rendered OUTSIDE the .glass-card so its `overflow-hidden`
+             *  doesn't clip the popover when a cell is near the top edge. */}
             {tooltip && (
                 <HeatmapTooltip
                     cell={tooltip.cell}
@@ -660,7 +669,7 @@ const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t, plans }) 
                         className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded"
                         style={{ background: 'rgb(245, 164, 255)', color: 'rgb(80, 0, 110)' }}
                     >
-                        {t('heatmap.planned') || '计划'}
+                        {t('heatmap.planned') ?? '计划'}
                     </span>
                 )}
             </div>
