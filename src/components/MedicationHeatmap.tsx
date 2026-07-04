@@ -5,7 +5,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
-import { drugCategoryOf } from '../utils/planSchedule';
+import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
 import {
     buildHeatmapRange,
     HEATMAP_COLOR_BY_CATEGORY,
@@ -97,21 +97,37 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         [events, todayRef, futurePadDays],
     );
 
-    // Plan-start lookup: build a Set<dateKey> once per render so each cell can
-    // do an O(1) check. `startDateH` is wall-clock hours since 1970 — we
-    // round down to local midnight (matching how DoseEvent.timeH is grouped
-    // into cells) so the highlight lands on the same day the user entered.
-    const planStartKeys: Set<string> = useMemo(() => {
+    // Plan-fire lookup: collect every local-day ≥ today on which at least one
+    // enabled plan will fire medication, between today and the visible horizon
+    // (so we never waste cycles computing fires the user can't see). Used to
+    // paint the magenta "scheduled" highlight + white day number on cells
+    // whose planned dose is coming up.
+    const planFireKeys: Set<string> = useMemo(() => {
         if (!plans || plans.length === 0) return new Set();
+        const todayMid = new Date(
+            todayRef.getFullYear(),
+            todayRef.getMonth(),
+            todayRef.getDate(),
+        );
+        const horizon = new Date(range.endDate);
+        horizon.setDate(horizon.getDate() + 7); // small safety margin past the rendered end
         const out = new Set<string>();
         for (const p of plans) {
-            if (!Number.isFinite(p.startDateH)) continue;
-            const d = new Date(p.startDateH * 3600000);
-            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            out.add(k);
+            try {
+                const moments = dueMomentsInRange(p, todayMid, horizon);
+                for (const m of moments) {
+                    // dueMomentsInRange is already filtered to ≥ from (= todayMid),
+                    // so everything left is a future (or today) plan-fire Date.
+                    const k = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
+                    out.add(k);
+                }
+            } catch {
+                // Defensive: bad plan data must never crash the heatmap.
+            }
         }
         return out;
-    }, [plans]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [plans, todayRef, range.endDate]);
 
     const totalWeeks = range.weeks.length;
 
@@ -264,8 +280,11 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 const routes = routesOfCell(d);
                                                 const isPatchOnly =
                                                     routes.length > 0 && routes.every((r) => r === Route.patchApply);
-                                                const isPlanStart = planStartKeys.has(d.dateKey);
-                                                const showStartDayNum = isPlanStart && cats.length === 0;
+                                                const isPlanFireFuture = !d.isToday && planFireKeys.has(d.dateKey);
+                                                // White day-number renders ONLY on today or a future
+                                                // plan-fire day — never on past days, never on
+                                                // ordinary future empty days.
+                                                const showDayNum = d.isToday || isPlanFireFuture;
                                                 return (
                                                     <button
                                                         key={`${wIdx}-${dayIdx}`}
@@ -273,7 +292,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         aria-label={d.dateKey}
                                                         className="relative rounded-[2px] aspect-square w-full cursor-pointer transition-opacity hover:opacity-80 btn-press-glass"
                                                         style={{
-                                                            background: cellBackground(cats, d, isDark, isPlanStart),
+                                                            background: cellBackground(cats, d, isDark, isPlanFireFuture),
                                                             opacity: d.isFuture ? 0.35 : 1,
                                                             outline: d.isToday ? '1.5px solid var(--accent-300)' : 'none',
                                                             outlineOffset: d.isToday ? '-1.5px' : 0,
@@ -288,10 +307,10 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         }}
                                                         onMouseLeave={() => setTooltip(null)}
                                                     >
-                                                        {showStartDayNum && (
+                                                        {showDayNum && (
                                                             <span
                                                                 className="absolute inset-0 flex items-center justify-center text-[8px] font-bold leading-none pointer-events-none tabular-nums"
-                                                                style={{ color: 'rgb(146, 64, 14)' }}
+                                                                style={{ color: '#fff' }}
                                                             >
                                                                 {d.date.getDate()}
                                                             </span>
@@ -340,12 +359,10 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
 // ── Cell background helpers ───────────────────────────────────────────────
 
-/** Light-yellow highlight for plan-start dates. Past / future use slightly
- *  different intensities so future plan starts don't compete visually with
- *  "today". Single solid colour (not theme-aware) — yellow reads well on both
- *  light + dark cards. */
-const PLAN_START_BG = 'rgb(253, 230, 138)';      // Tailwind amber-200 (past)
-const PLAN_START_BG_FUTURE = 'rgb(254, 243, 199)'; // Tailwind amber-100 (future)
+/** Magenta highlight for "today + future plan-fire" days. Solid colour that
+ *  wins over every category palette — the whole point is to make upcoming
+ *  scheduled doses pop visually against the past-dose colour bands. */
+const PLAN_FIRE_BG = 'rgb(228, 0, 255)';
 
 /** Build an SVG data-URI for a 2-category wavy split. The wave runs horizontally
  *  across the cell so the two colours are separated by a sinusoidal boundary
@@ -367,20 +384,23 @@ function wavySplitSvg(colorA: string, colorB: string): string {
 }
 
 /** Map the distinct categories in a day to a CSS background. Layout strategy:
- *  0 → empty (theme-aware grey, OR plan-start yellow when the date is one),
- *  1 → solid, 2 → wavy split, 3 → 3 vertical stripes. 4+ categories fall back
- *  to transparent — too rare in practice to justify a distinct layout, and the
- *  dedup-by-category rule already collapses most multi-drug days to ≤ 3. */
+ *  - Plan-fire day (today + future, plan scheduled) → solid magenta highlight
+ *  - 0 → empty (theme-aware grey)
+ *  - 1 → solid category colour
+ *  - 2 → wavy split
+ *  - 3 → 3 vertical stripes
+ *  - 4+ → transparent (rare; the per-event detail is in the tooltip). */
 function cellBackground(
     cats: DrugCategory[],
     cell: HeatmapDayCell,
     isDark: boolean,
-    isPlanStart: boolean,
+    isPlanFireFuture: boolean,
 ): string {
+    // Plan-fire highlight always wins — even on cells with recorded events,
+    // because the magenta indicates "your plan says you'll dose here" which
+    // is the more actionable signal for the user.
+    if (isPlanFireFuture) return PLAN_FIRE_BG;
     if (cats.length === 0) {
-        // Plan-start cells always win over the theme default — the yellow is
-        // the whole point (it's how the user spots plan launches in the grid).
-        if (isPlanStart) return cell.isFuture ? PLAN_START_BG_FUTURE : PLAN_START_BG;
         // Dark theme: subtle white tint (preserves the original low-contrast
         // look on near-black backgrounds). Light theme: a very pale grey so
         // empty cells stay visible against the white card background without
