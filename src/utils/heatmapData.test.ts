@@ -46,14 +46,8 @@ function categoriesOfCellForTest(events: DoseEvent[]): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const e of events) {
-        // patch-remove bookkeeping events are filtered out at render time too
         if (e.route === Route.patchRemove) continue;
-        const s = String(e.ester);
-        let cat: string;
-        if (s === 'CPA' || s === 'Bicalutamide' || s === 'Finasteride') cat = 'anti_androgen';
-        else if (s === 'PRL' || s === 'Progesterone') cat = 'progestin';
-        else if (s.startsWith('E')) cat = 'estrogen';
-        else cat = 'other';
+        const cat = drugCategoryOf(e.ester);
         if (!seen.has(cat)) {
             seen.add(cat);
             out.push(cat);
@@ -67,7 +61,7 @@ function categoriesOfCellForTest(events: DoseEvent[]): string[] {
 describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
     it('maps each drug class to a stable hex colour', () => {
         expect(HEATMAP_COLOR_BY_CATEGORY.estrogen).toBe('#EC4899');
-        expect(HEATMAP_COLOR_BY_CATEGORY.anti_androgen).toBe('#3B82F6');
+        expect(HEATMAP_COLOR_BY_CATEGORY.anti_androgen).toBe('#A855F7');
         expect(HEATMAP_COLOR_BY_CATEGORY.progestin).toBe('#F59E0B');
         expect(HEATMAP_COLOR_BY_CATEGORY.other).toBe('#64748B');
     });
@@ -76,8 +70,9 @@ describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
         // Estradiol family → estrogen → pink
         expect(heatmapColorForEster(Ester.EV)).toBe('#EC4899');
         expect(heatmapColorForEster(Ester.E2)).toBe('#EC4899');
-        // Anti-androgen → blue
-        expect(heatmapColorForEster(Ester.CPA)).toBe('#3B82F6');
+        // Anti-androgen → purple (CPA + BICA, both fall in the same bucket)
+        expect(heatmapColorForEster(Ester.CPA)).toBe('#A855F7');
+        expect(heatmapColorForEster(Ester.BICA)).toBe('#A855F7');
         // Other (anything not in the switch arms — e.g. PRL isn't an Enum
         // value here, but a defensive read confirms the bucket contract).
         const otherEster = 'XYZ' as Ester;
@@ -96,18 +91,36 @@ describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('category dedup (cell-level colour count)', () => {
-    it('CPA + bicalutamide + EV dedupes to 2 categories, not 3', () => {
-        // Regression: previously the cell coloured by event count, producing
-        // a third "blue" slice that meant nothing to the user. Both CPA and
-        // bicalutamide are anti-androgens so they collapse to one slot.
+    it('CPA + BICA + EV dedupes to 2 categories, not 3', () => {
+        // Regression: previously the component's local category mapper had a
+        // string mismatch ('Bicalutamide' vs the actual Ester.BICA value),
+        // so BICA fell through to the 'other' bucket and CPA + BICA + EV
+        // rendered as 3 vertical stripes instead of the intended 2-category
+        // wavy split. This test pins the contract: CPA and BICA both map to
+        // anti_androgen, so the trio collapses to 2.
         const events = [
-            makeEvent({ id: 'cpa', ester: 'CPA' as Ester, route: Route.oral }),
-            makeEvent({ id: 'bica', ester: 'Bicalutamide' as Ester, route: Route.oral }),
+            makeEvent({ id: 'cpa', ester: Ester.CPA, route: Route.oral }),
+            makeEvent({ id: 'bica', ester: Ester.BICA, route: Route.oral }),
             makeEvent({ id: 'ev', ester: Ester.EV, route: Route.injection }),
         ];
         const cats = categoriesOfCellForTest(events);
         expect(cats.sort()).toEqual(['anti_androgen', 'estrogen']);
         expect(cats.length).toBe(2);
+    });
+
+    it('BICA by itself is anti_androgen (regression for the BICA→other bug)', () => {
+        expect(drugCategoryOf(Ester.BICA)).toBe('anti_androgen');
+        expect(heatmapColorForEster(Ester.BICA)).toBe('#A855F7');
+    });
+
+    it('PRL (string-cast legacy value) maps to progestin, not other', () => {
+        // PRL isn't in the Ester enum today, so drugCategoryOf has to fall
+        // through to a string check in the default branch. Without that
+        // fallback, CPA + EV + PRL used to render as 3 stripes (red+blue+grey)
+        // instead of the intended red+blue+amber.
+        expect(drugCategoryOf('PRL' as Ester)).toBe('progestin');
+        expect(drugCategoryOf('Progesterone' as Ester)).toBe('progestin');
+        expect(heatmapColorForEster('PRL' as Ester)).toBe('#F59E0B');
     });
 
     it('EV + PRL dedupes to 2 distinct categories (estrogen + progestin)', () => {

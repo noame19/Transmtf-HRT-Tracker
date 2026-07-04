@@ -8,7 +8,11 @@ import { Ester, Plan, Route } from '../../types';
 
 /**
  * Drug-class derivation from the Ester enum. Used for UI grouping / colours /
- * pre-fill-aware category strings. E2-E2 family → estrogen, CPA / BICA → anti-androgen.
+ * pre-fill-aware category strings. E2 family → estrogen, CPA / BICA →
+ * anti-androgen. PRL (and other legacy string-cast values) → progestin via
+ * the string-equality fallback inside the default branch — they're not in
+ * the enum today but show up in serialized legacy data and must keep their
+ * semantically correct colour in the heatmap.
  */
 export function drugCategoryOf(ester: Ester): 'estrogen' | 'anti_androgen' | 'progestin' | 'other' {
     switch (ester) {
@@ -22,8 +26,14 @@ export function drugCategoryOf(ester: Ester): 'estrogen' | 'anti_androgen' | 'pr
         case Ester.CPA:
         case Ester.BICA:
             return 'anti_androgen';
-        default:
+        default: {
+            // Fallback for string-cast values outside the enum (PRL,
+            // Progesterone, …). Keep this in sync with the palette keys in
+            // `heatmapData.ts → HEATMAP_COLOR_BY_CATEGORY`.
+            const s = String(ester);
+            if (s === 'PRL' || s === 'Progesterone') return 'progestin';
             return 'other';
+        }
     }
 }
 

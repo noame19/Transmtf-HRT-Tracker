@@ -642,7 +642,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          *  chart so the visual narrative goes "concentration now → history
          *  of when doses actually landed". Pure client-side, no data fetch. */}
         <div className="mt-4 md:mt-6">
-          <MedicationHeatmap events={events} today={currentTime} />
+          <MedicationHeatmap events={events} plans={plans} today={currentTime} />
         </div>
       </main>
 
