@@ -159,6 +159,40 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         scrollRef.current.scrollLeft = Math.max(0, target);
     }, [range.weeks, cellSize]);
 
+    // Drag-to-pan: the scrollbar is hidden (`.scrollbar-hide` className) so the
+    // user has no native handle to grab. This listener lets them click + drag
+    // anywhere on the heatmap to pan horizontally. We don't pan on every move
+    // — only after the cursor has moved > 4px from the mousedown point, so a
+    // quick click on a cell still fires its onClick / tooltip.
+    const panRef = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            const p = panRef.current;
+            if (!p.active || !scrollRef.current) {
+                // Not in a pan — but the first idle mousemove after a pan
+                // ends is also where we clear the `moved` flag, so the next
+                // cell hover can show the tooltip again. (We can't reset on
+                // mouseup alone, because the cursor is still over whatever
+                // cell the pan ended on and its onMouseEnter won't re-fire.)
+                if (p.moved) p.moved = false;
+                return;
+            }
+            const dx = e.clientX - p.startX;
+            if (!p.moved && Math.abs(dx) < 4) return;
+            p.moved = true;
+            scrollRef.current.scrollLeft = p.startScroll - dx;
+        };
+        const onUp = () => {
+            panRef.current.active = false;
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, []);
+
     // ── KPI stats (right side card stack) ─────────────────────────────────
     const stats = useMemo(() => computeStats(events, todayRef, range), [events, todayRef, range]);
 
@@ -209,8 +243,22 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
             <div className="flex flex-col md:flex-row md:items-stretch gap-3">
                 <div className="w-full md:flex-[4] min-w-0">
                     <div className="h-full flex flex-col justify-between">
-                        {/* Heatmap area */}
-                        <div ref={scrollRef} className="w-full overflow-x-auto overflow-y-hidden">
+                        {/* Heatmap area — scrollbar hidden; user pans by
+                         *  click-drag (handled by panRef in the useEffect above). */}
+                        <div
+                            ref={scrollRef}
+                            onMouseDown={(e) => {
+                                if (e.button !== 0) return;
+                                panRef.current = {
+                                    active: true,
+                                    startX: e.clientX,
+                                    startScroll: scrollRef.current?.scrollLeft ?? 0,
+                                    moved: false,
+                                };
+                            }}
+                            className="scrollbar-hide w-full overflow-x-auto overflow-y-hidden select-none"
+                            style={{ cursor: panRef.current.moved ? 'grabbing' : 'grab' }}
+                        >
                             <div
                                 className="grid"
                                 style={{
@@ -294,6 +342,9 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                             outlineOffset: d.isToday ? '-1.5px' : 0,
                                                         }}
                                                         onMouseEnter={(e) => {
+                                                            // Skip tooltip while the user is panning — the
+                                                            // mouseenter fires as the cursor sweeps across cells.
+                                                            if (panRef.current.moved) return;
                                                             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                                                             setTooltip({
                                                                 cell: d,
