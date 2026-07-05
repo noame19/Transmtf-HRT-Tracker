@@ -35,6 +35,12 @@ interface HistoryViewProps {
   matchedPendingPlan: Plan | null;
   onConfirmPendingReminder: (scheduledAt: Date) => void;
   onDismissPendingReminder: () => void;
+  /** Phase-4 stubs: shift `plan.startDateH` and clear pending. Wired to
+   *  MainLayout's stub handler until the Kotlin incremental reschedule
+   *  lands. Optional — if absent the corresponding button is hidden. */
+  onDelay1d?: (planId: string) => void;
+  onDelay2d?: (planId: string) => void;
+  onDelayNext?: (planId: string) => void;
   permissionDenied: boolean;
   onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
@@ -47,6 +53,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   onRemovePatch,
   pendingReminder, matchedPendingPlan,
   onConfirmPendingReminder, onDismissPendingReminder,
+  onDelay1d, onDelay2d, onDelayNext,
   permissionDenied, onOpenNotificationSettings,
   complianceMismatches,
 }) => {
@@ -79,6 +86,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         matchedPlan={matchedPendingPlan}
         onConfirm={onConfirmPendingReminder}
         onDismiss={onDismissPendingReminder}
+        onDelay1d={onDelay1d}
+        onDelay2d={onDelay2d}
+        onDelayNext={onDelayNext}
         permissionDenied={permissionDenied}
         onOpenPermissionSettings={onOpenNotificationSettings}
       />

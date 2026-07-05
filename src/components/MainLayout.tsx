@@ -8,6 +8,7 @@ import { formatDate, formatTime } from '../utils/helpers';
 import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
+import { classifyDueState, findDueReminders, isDueReminderStale } from '../utils/planReminder';
 import { isPatchApply } from '../utils/patch';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
@@ -82,40 +83,38 @@ const MainLayout: React.FC = () => {
     }, [showDialog, t]);
 
     /**
-     * Poll the Kotlin `get_pending_reminders` bridge every 1.5s so a
-     * notification that fires while the app is foregrounded surfaces as a
-     * green "one-tap confirm" banner almost immediately. Web preview (no
-     * `__TAURI_INTERNALS__`) is a no-op.
+     * Compute the in-app "due reminder" from `plans + events + currentTime`
+     * rather than from the Android notification's pending SharedPreferences.
+     * This is the **plan-driven** data source — the notification is purely
+     * advisory and the banner will show correctly regardless of whether the
+     * user got here via a notification tap or by opening the app cold.
+     *
+     * `get_pending_reminders` is no longer called from JS. The Kotlin
+     * function still exists (Kotlin code unchanged) so we don't break
+     * older versions, but it's effectively dead code on the JS side and
+     * the alarm still fires notifications — they're just reminders, not
+     * the banner's source of truth.
+     *
+     * Auto-dismiss: due moments more than 6h in the past stop showing so
+     * the banner doesn't nag. See `PLAN_REMINDER_AUTO_DISMISS_HOURS`.
      */
     useEffect(() => {
-        const invoke = (typeof window !== 'undefined'
-            ? (window as any).__TAURI_INTERNALS__?.invoke
-            : null);
-        if (typeof invoke !== 'function') return;
-        let cancelled = false;
-        const tick = async () => {
-            if (cancelled) return;
-            try {
-                const json = await invoke('get_pending_reminders');
-                if (cancelled) return;
-                if (typeof json === 'string' && json.length > 0) {
-                    try {
-                        const obj = JSON.parse(json);
-                        if (obj && typeof obj.planId === 'string' && typeof obj.scheduledAtMs === 'number') {
-                            setPendingReminder({
-                                planId: obj.planId,
-                                scheduledAtMs: obj.scheduledAtMs,
-                                firedAtMs: obj.firedAtMs ?? Date.now(),
-                            });
-                        }
-                    } catch { /* malformed JSON, ignore */ }
-                }
-            } catch { /* command not wired yet on web preview */ }
-        };
-        tick();
-        const id = setInterval(tick, 1500);
-        return () => { cancelled = true; clearInterval(id); };
-    }, []);
+        const dueReminders = findDueReminders(plans, events, currentTime);
+        if (dueReminders.length === 0) {
+            setPendingReminder(null);
+            return;
+        }
+        const { plan, due } = dueReminders[0];
+        if (isDueReminderStale(due, currentTime)) {
+            setPendingReminder(null);
+            return;
+        }
+        setPendingReminder({
+            planId: plan.id,
+            scheduledAtMs: due.getTime(),
+            state: classifyDueState(due, currentTime),
+        });
+    }, [plans, events, currentTime]);
 
     /**
      * Whenever the reminder permission becomes denied, flip the banner
@@ -159,7 +158,7 @@ const MainLayout: React.FC = () => {
         const plan = matchedPendingPlan;
         setPendingReminder(null);
         if (!plan) {
-            // Plan was deleted since the notification fired — fall back to
+            // Plan was deleted since the banner surfaced — fall back to
             // plain smart-add so the user can still log something.
             handleSmartAddEvent(scheduledAt);
             return;
@@ -171,6 +170,29 @@ const MainLayout: React.FC = () => {
         setPrefillFromPlan(plan);
         setPrefillTimeOverride(scheduledAt);
         setIsFormOpen(true);
+    };
+
+    /**
+     * "推迟 N 天" handler (on-time state only). Phase-4 stub: clears the
+     * pending banner and shifts `plan.startDateH` by N days. The Kotlin
+     * NotificationScheduler is NOT yet wired to incremental reschedule, so
+     * the next alarm will still fire at the original time until the JS-side
+     * reschedule effect lands in #95. Tracking that work in the plan.
+     */
+    const handleDelayPlan = (planId: string, days: number) => {
+        setPendingReminder(null);
+        setPlans(prev => prev.map(p => p.id === planId
+            ? {
+                ...p,
+                startDateH: p.startDateH + days * 24,
+                updatedAtH: Date.now() / 3600000,
+            }
+            : p));
+    };
+    /** "推迟到下次" handler (late state only). Same stub semantics as
+     *  `handleDelayPlan` but days = 1 (we round overdue < 24h up to 1d). */
+    const handleDelayNext = (planId: string) => {
+        handleDelayPlan(planId, 1);
     };
 
     useEffect(() => {
@@ -444,6 +466,9 @@ const MainLayout: React.FC = () => {
                         matchedPendingPlan,
                         onConfirmPendingReminder: handleConfirmPendingReminder,
                         onDismissPendingReminder: () => setPendingReminder(null),
+                        onDelay1d: (planId: string) => handleDelayPlan(planId, 1),
+                        onDelay2d: (planId: string) => handleDelayPlan(planId, 2),
+                        onDelayNext: handleDelayNext,
                         permissionDenied,
                         onOpenNotificationSettings: async () => {
                             const invoke = (window as any).__TAURI_INTERNALS__?.invoke;

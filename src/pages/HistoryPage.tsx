@@ -20,6 +20,9 @@ interface OutletContext {
     matchedPendingPlan: Plan | null;
     onConfirmPendingReminder: (scheduledAt: Date) => void;
     onDismissPendingReminder: () => void;
+    onDelay1d?: (planId: string) => void;
+    onDelay2d?: (planId: string) => void;
+    onDelayNext?: (planId: string) => void;
     permissionDenied: boolean;
     onOpenNotificationSettings?: () => void;
 }
@@ -31,6 +34,7 @@ const HistoryPage: React.FC = () => {
         onRemovePatch,
         pendingReminder, matchedPendingPlan,
         onConfirmPendingReminder, onDismissPendingReminder,
+        onDelay1d, onDelay2d, onDelayNext,
         permissionDenied, onOpenNotificationSettings,
     } = useOutletContext<OutletContext>();
     const { events, plans, currentTime } = useAppData();
@@ -60,6 +64,9 @@ const HistoryPage: React.FC = () => {
             matchedPendingPlan={matchedPendingPlan}
             onConfirmPendingReminder={onConfirmPendingReminder}
             onDismissPendingReminder={onDismissPendingReminder}
+            onDelay1d={onDelay1d}
+            onDelay2d={onDelay2d}
+            onDelayNext={onDelayNext}
             permissionDenied={permissionDenied}
             onOpenNotificationSettings={onOpenNotificationSettings}
             complianceMismatches={complianceMismatches}
