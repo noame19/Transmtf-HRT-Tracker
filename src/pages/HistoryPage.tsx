@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAppData } from '../contexts/AppDataContext';
 import { DoseEvent } from '../../logic';
 import { Plan } from '../../types';
 import HistoryView from '../views/HistoryView';
 import type { PendingReminder } from '../components/ReminderBanner';
+import { analyzePlanCompliance } from '../utils/planCompliance';
 
 interface OutletContext {
     onAddEvent: () => void;
@@ -32,7 +33,16 @@ const HistoryPage: React.FC = () => {
         onConfirmPendingReminder, onDismissPendingReminder,
         permissionDenied, onOpenNotificationSettings,
     } = useOutletContext<OutletContext>();
-    const { events, plans } = useAppData();
+    const { events, plans, currentTime } = useAppData();
+
+    // Plan-vs-history compliance check. Re-runs whenever events / plans / the
+    // minute-tick currentTime change so the banner reacts to new doses, plan
+    // edits, and the day-rollover window. `mismatches` only — the banner
+    // re-reads localStorage for its own dismiss state.
+    const complianceMismatches = useMemo(
+        () => analyzePlanCompliance(events, plans, currentTime).mismatches,
+        [events, plans, currentTime],
+    );
 
     return (
         <HistoryView
@@ -52,6 +62,7 @@ const HistoryPage: React.FC = () => {
             onDismissPendingReminder={onDismissPendingReminder}
             permissionDenied={permissionDenied}
             onOpenNotificationSettings={onOpenNotificationSettings}
+            complianceMismatches={complianceMismatches}
         />
     );
 };

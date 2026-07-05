@@ -6,6 +6,8 @@ import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntian
 import { Plan } from '../../types';
 import PlanList from '../components/PlanList';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
+import ComplianceBanner from '../components/ComplianceBanner';
+import type { ComplianceMismatch } from '../utils/planCompliance';
 import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from '../utils/patch';
 
 type HistoryTab = 'records' | 'plans';
@@ -35,6 +37,8 @@ interface HistoryViewProps {
   onDismissPendingReminder: () => void;
   permissionDenied: boolean;
   onOpenNotificationSettings?: () => void;
+  /** Plan-vs-history mismatches; the banner renders nothing when empty. */
+  complianceMismatches: ComplianceMismatch[];
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({
@@ -44,6 +48,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   pendingReminder, matchedPendingPlan,
   onConfirmPendingReminder, onDismissPendingReminder,
   permissionDenied, onOpenNotificationSettings,
+  complianceMismatches,
 }) => {
   const { t, lang } = useTranslation();
   const [activeTab, setActiveTab] = useState<HistoryTab>('records');
@@ -77,6 +82,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         permissionDenied={permissionDenied}
         onOpenPermissionSettings={onOpenNotificationSettings}
       />
+      {/* Compliance banner — appears below the reminder banner and only when
+       *  the user has enough history to spot a pattern. Sibling layout
+       *  (mx-4 + space-y-5 in the parent) keeps the same visual cadence as
+       *  the rest of /history. */}
+      <ComplianceBanner mismatches={complianceMismatches} />
       <div className="px-4">
         <div className="w-full p-4 rounded-2xl glass-card glass-highlight relative overflow-hidden flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
