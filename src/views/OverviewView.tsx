@@ -638,7 +638,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
       </header>
 
-      <main className="w-full overflow-x-hidden px-3 md:px-4 pt-0 pb-4 md:pb-6 rounded-t-3xl"
+      <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
         style={{ overscrollBehaviorX: 'none' }}>
         {/*
          * 桌面端（xl 断点 ≥1280px）把血药浓度图（2/3 宽）和用药日历热力图
