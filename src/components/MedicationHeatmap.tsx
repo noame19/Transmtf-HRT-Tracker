@@ -131,11 +131,16 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
     // Plan-fire lookup: collect every local-day ≥ today on which at least one
     // enabled plan will fire medication, between today and the visible horizon
-    // (so we never waste cycles computing fires the user can't see). Used to
-    // paint the magenta "scheduled" highlight + white day number on cells
-    // whose planned dose is coming up.
-    const planFireKeys: Set<string> = useMemo(() => {
-        if (!plans || plans.length === 0) return new Set();
+    // (so we never waste cycles computing fires the user can't see). The map
+    // value is the LIST of distinct drug categories firing that day (deduped
+    // by category — two E2 plans on the same day still count as one entry).
+    // Used to paint the CATEGORY-AWARE highlight + white day number on plan
+    // -fire cells: estradiol → magenta, anti-androgen → light blue, both on
+    // the same day → wavy-split (same shape as the historical 2-category
+    // cells).
+    const planFireCategoriesByDate: Map<string, DrugCategory[]> = useMemo(() => {
+        const out = new Map<string, DrugCategory[]>();
+        if (!plans || plans.length === 0) return out;
         const todayMid = new Date(
             todayRef.getFullYear(),
             todayRef.getMonth(),
@@ -143,15 +148,21 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         );
         const horizon = new Date(range.endDate);
         horizon.setDate(horizon.getDate() + 7); // small safety margin past the rendered end
-        const out = new Set<string>();
         for (const p of plans) {
             try {
                 const moments = dueMomentsInRange(p, todayMid, horizon);
+                if (moments.length === 0) continue;
+                const cat = drugCategoryOf(p.ester);
                 for (const m of moments) {
                     // dueMomentsInRange is already filtered to ≥ from (= todayMid),
-                    // so everything left is a future (or today) plan-fire Date.
+                    // so every emitted Date is today or future.
                     const k = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
-                    out.add(k);
+                    const existing = out.get(k);
+                    if (existing) {
+                        if (!existing.includes(cat)) existing.push(cat);
+                    } else {
+                        out.set(k, [cat]);
+                    }
                 }
             } catch {
                 // Defensive: bad plan data must never crash the heatmap.
@@ -424,7 +435,17 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 const routes = routesOfCell(d);
                                                 const isPatchOnly =
                                                     routes.length > 0 && routes.every((r) => r === Route.patchApply);
-                                                const isPlanFireFuture = !d.isToday && planFireKeys.has(d.dateKey);
+                                                // Plan-fire state per day: today deliberately falls
+                                                // through to the historical branch so the user's
+                                                // real (already-logged) colour band wins for the
+                                                // day they care about most; future days with at
+                                                // least one enabled plan firing take the
+                                                // category-aware highlight (estradiol → magenta,
+                                                // anti-androgen → light blue, both → wavy split).
+                                                const planFireCats = d.isToday
+                                                    ? null
+                                                    : (planFireCategoriesByDate.get(d.dateKey) ?? null);
+                                                const isPlanFireFuture = planFireCats !== null;
                                                 // White day-number renders on any "signal" day:
                                                 // a real admin event landed, today, or a future
                                                 // plan-fire day. Past empty days stay blank so
@@ -438,7 +459,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         aria-label={d.dateKey}
                                                         className="relative rounded-[2px] aspect-square w-full cursor-pointer transition-opacity hover:opacity-80 btn-press-glass"
                                                         style={{
-                                                            background: cellBackground(cats, d, isDark, isPlanFireFuture),
+                                                            background: cellBackground(cats, d, isDark, planFireCats),
                                                             opacity: 1,
                                                             outline: d.isToday ? '1.5px solid var(--accent-300)' : 'none',
                                                             outlineOffset: d.isToday ? '-1.5px' : 0,
@@ -516,10 +537,39 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
 // ── Cell background helpers ───────────────────────────────────────────────
 
-/** Magenta highlight for "today + future plan-fire" days. Solid colour that
- *  wins over every category palette — the whole point is to make upcoming
- *  scheduled doses pop visually against the past-dose colour bands. */
-const PLAN_FIRE_BG = 'rgb(245, 164, 255)';
+// Future plan-fire days render with CATEGORY-AWARE colours instead of one
+// catch-all magenta. The conflict rule (planSchedule.findConflicts +
+// sanitizePlansForConflict) guarantees at most one enabled plan per drug
+// category, so the three cases below cover every realistic state:
+//   - estradiol / E2 family              → magenta  (same hue the historical
+//                                          estrogen band already uses, so the
+//                                          schedule reads as a visual
+//                                          continuation of the user's history)
+//   - anti-androgen (CPA / BICA)         → light blue (user-requested hue;
+//                                          visually distinct from the
+//                                          historical anti-androgen purple
+//                                          so a future dose doesn't get
+//                                          mistaken for a past dose)
+//   - E2 + anti-androgen firing same day → the SAME wavy-split shape used
+//                                          by the historical 2-category
+//                                          cells, just with the two future
+//                                          colours above instead of the
+//                                          historical pink + purple
+const PLAN_FIRE_ESTRADIOL    = 'rgb(245, 164, 255)';
+const PLAN_FIRE_ANTIANDROGEN = '#d3eeff';
+
+/** Resolve the on-screen colour for a single plan-fire category. Today (and
+ *  anything past / not-a-plan-fire-day) should fall through to the historical
+ *  branches below — callers must not pass invalid categories here. */
+function planFireColor(cat: DrugCategory): string {
+    return cat === 'estrogen'      ? PLAN_FIRE_ESTRADIOL
+         : cat === 'anti_androgen' ? PLAN_FIRE_ANTIANDROGEN
+         // The conflict rule keeps this branch unreachable in practice
+         // (one enabled plan per category), but keeping fall-through colours
+         // here means a future schema migration to multi-category plans
+         // won't render blank cells.
+         : HEATMAP_COLOR_BY_CATEGORY[cat];
+}
 
 /** Build an SVG data-URI for a 2-category wavy split. The wave runs horizontally
  *  across the cell so the two colours are separated by a sinusoidal boundary
@@ -541,8 +591,10 @@ function wavySplitSvg(colorA: string, colorB: string): string {
 }
 
 /** Map the distinct categories in a day to a CSS background. Layout strategy:
- *  - Plan-fire day (today + future, plan scheduled) → solid magenta highlight
- *  - 0 → empty (theme-aware grey)
+ *  - Plan-fire day with 1 plan firing → category-aware solid colour
+ *    (estradiol = magenta, anti-androgen = light blue)
+ *  - Plan-fire day with 2 plans firing → wavy split of the two future hues
+ *  - 0 (non-plan-fire) → empty (theme-aware grey)
  *  - 1 → solid category colour
  *  - 2 → wavy split
  *  - 3 → 3 vertical stripes
@@ -551,12 +603,23 @@ function cellBackground(
     cats: DrugCategory[],
     cell: HeatmapDayCell,
     isDark: boolean,
-    isPlanFireFuture: boolean,
+    planFireCats: DrugCategory[] | null,
 ): string {
-    // Plan-fire highlight always wins — even on cells with recorded events,
-    // because the magenta indicates "your plan says you'll dose here" which
-    // is the more actionable signal for the user.
-    if (isPlanFireFuture) return PLAN_FIRE_BG;
+    // Plan-fire day: render by enabled-plan category, not by recorded events.
+    // (Today is filtered to null at the call site so the user's real logged
+    // colour band on today stays visible.)
+    if (planFireCats && planFireCats.length > 0) {
+        if (planFireCats.length === 1) {
+            // Single plan firing that day → solid colour matching its category.
+            return planFireColor(planFireCats[0]);
+        }
+        // 2+ categories firing the same day. In practice this caps at
+        // "estradiol + anti-androgen" (the conflict rule keeps enabled plans
+        // to one per category). Render with the SAME wavy-split shape the
+        // historical 2-category cells use so the visual language stays
+        // consistent across past and future doses.
+        return `${wavySplitSvg(PLAN_FIRE_ESTRADIOL, PLAN_FIRE_ANTIANDROGEN)} 0 0 / 100% 100% no-repeat`;
+    }
     if (cats.length === 0) {
         // Dark theme: subtle white tint (preserves the original low-contrast
         // look on near-black backgrounds). Light theme: a very pale grey so
