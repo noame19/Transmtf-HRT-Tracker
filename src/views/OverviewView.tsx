@@ -646,8 +646,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
          * KPI 把 1/3 宽的网格挤到不可读。
          */}
-        <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 md:gap-6">
-          <div className="xl:flex-[2] min-w-0">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 min-w-0">
             <ResultChart
               sim={simulation}
               events={events}
@@ -663,7 +663,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           {/* Medication calendar heatmap — rendered after the blood-concentration
            *  chart so the visual narrative goes "concentration now → history
            *  of when doses actually landed". Pure client-side, no data fetch. */}
-          <div className="xl:flex-[1] min-w-0">
+          <div className="xl:col-span-1 min-w-0">
             <MedicationHeatmap
               events={events}
               plans={plans}
