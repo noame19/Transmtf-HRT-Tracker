@@ -149,6 +149,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         const horizon = new Date(range.endDate);
         horizon.setDate(horizon.getDate() + 7); // small safety margin past the rendered end
         for (const p of plans) {
+            // Defensive belt-and-suspenders: dueMomentsInRange already returns
+            // [] for disabled plans (`if (!plan.enabled) return []` is its very
+            // first line), but a future refactor of that helper must NEVER
+            // silently re-introduce disabled plans into the heatmap. Failing
+            // closed at the call site keeps this invariant local to the view.
+            if (!p.enabled) continue;
             try {
                 const moments = dueMomentsInRange(p, todayMid, horizon);
                 if (moments.length === 0) continue;
