@@ -556,7 +556,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 //                                          colours above instead of the
 //                                          historical pink + purple
 const PLAN_FIRE_ESTRADIOL    = 'rgb(245, 164, 255)';
-const PLAN_FIRE_ANTIANDROGEN = '#d3eeff';
+const PLAN_FIRE_ANTIANDROGEN = 'rgb(149, 208, 246)';
 
 /** Resolve the on-screen colour for a single plan-fire category. Today (and
  *  anything past / not-a-plan-fire-day) should fall through to the historical
