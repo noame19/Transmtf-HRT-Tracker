@@ -646,7 +646,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
          * KPI 把 1/3 宽的网格挤到不可读。
          */}
-        <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 md:gap-6">
+        <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 md:gap-4">
           <div className="xl:flex-[2] min-w-0">
             <ResultChart
               sim={simulation}
