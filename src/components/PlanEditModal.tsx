@@ -47,7 +47,7 @@ const DEFAULT_SCHEDULE: PlanSchedule = { kind: 'every_n_days', intervalDays: 5, 
 const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEdit, onSave, onDelete }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
-    const { plans, gelProducts } = useAppData();
+    const { plans, gelProducts, events } = useAppData();
 
     // Form state
     const [route, setRoute] = useState<Route>(Route.injection);
