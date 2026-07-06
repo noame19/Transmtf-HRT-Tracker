@@ -31,7 +31,7 @@ export const TRANSLATIONS_BASE = {
         "overview.last_cpa": "上次醋酸环丙孕酮",
         "overview.last_antiandrogen": "上次抗雄药物",
         "overview.last_e2": "上次雌二醇",
-        "overview.next_due": "下次计划",
+        "overview.next_due": "下次",
         "overview.due.today": "今天",
         "overview.due.tomorrow": "明天",
         "overview.due.day_after": "后天",
@@ -143,7 +143,7 @@ export const TRANSLATIONS_BASE = {
         "compliance.banner.detail_match": "一致",
         "compliance.banner.detail_mismatch": "不一致",
         "compliance.banner.detail_history_split": "未达 75% 主流",
-        "compliance.banner.delay_warning": "用药方式与计划不一致，会影响通知的「推迟 1 天 / 2 天」功能 — 系统会基于与实际不符的计划预测下次用药时刻，可能造成提醒和真实用药的偏差。建议先核对计划（修改药物 / 给药方式），或忽略此提示。",
+        "compliance.banner.delay_warning": "当前不一致会造成系统记录严重偏差，换药情况/特殊情况可忽视此警告。",
         "compliance.banner.dismiss": "忽略",
 
         "settings.group.reminders": "用药提醒",
@@ -911,7 +911,7 @@ export const TRANSLATIONS_BASE = {
         "overview.last_cpa": "Last CPA",
         "overview.last_antiandrogen": "Last anti-androgen",
         "overview.last_e2": "Last Estradiol",
-        "overview.next_due": "Next scheduled",
+        "overview.next_due": "Next",
         "overview.due.today": "Today",
         "overview.due.tomorrow": "Tomorrow",
         "overview.due.day_after": "Day after",
@@ -1023,7 +1023,7 @@ export const TRANSLATIONS_BASE = {
         "compliance.banner.detail_match": "match",
         "compliance.banner.detail_mismatch": "mismatch",
         "compliance.banner.detail_history_split": "No dominant pattern (≥75%)",
-        "compliance.banner.delay_warning": "If your actual doses don't match the plan, the 'delay 1d / 2d' feature will use the mismatched plan to predict the next dose — which may produce reminders that don't reflect when you actually take your medication. Review the plan (change the drug / route) or dismiss this notice.",
+        "compliance.banner.delay_warning": "Current mismatch will cause significant deviation in logged records. Ignore this warning only if you're switching medication or have a special case.",
         "compliance.banner.dismiss": "Dismiss",
 
         "settings.group.reminders": "Reminders",
@@ -2377,7 +2377,7 @@ export const TRANSLATIONS = {
         "compliance.banner.detail_match": "一致",
         "compliance.banner.detail_mismatch": "不一致",
         "compliance.banner.detail_history_split": "75% 以上の主流なし",
-        "compliance.banner.delay_warning": "実際の服薬方法が計画と一致していない場合、「1 日 / 2 日延期」機能が一致していない計画を使って次の服薬タイミングを予測するため、実際の服薬時刻とリマインダーがずれる可能性があります。計画を確認（薬剤 / 経路の変更）するか、この通知を無視してください。",
+        "compliance.banner.delay_warning": "現在の不一致は記録に大きな偏差を生みます。薬剤変更や特別な事情がある場合のみ無視してください。",
         "compliance.banner.dismiss": "無視",
 
         "settings.group.reminders": "リマインダー",
@@ -2710,7 +2710,7 @@ export const TRANSLATIONS = {
         "share.error": "画像の生成に失敗しました。もう一度お試しください。",
         "share.savedTo": "{path} に保存しました",
 
-        "overview.next_due": "次の予定",
+        "overview.next_due": "次回",
         "overview.due.today": "今日",
         "overview.due.tomorrow": "明日",
         "overview.due.day_after": "明後日",

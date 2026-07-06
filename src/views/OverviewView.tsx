@@ -579,7 +579,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     {lastE2Dose && (
                       <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
                         style={{ background: 'var(--accent-50)', color: 'var(--accent-500)' }}>
-                        {t(`route.${lastE2Dose.route}`)}
+                        {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
                       </span>
                     )}
                   </div>
