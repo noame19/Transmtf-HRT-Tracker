@@ -5,6 +5,7 @@ import { getRouteIcon } from '../utils/helpers';
 import { Ester, Route as RouteEnum } from '../../types';
 import { Plan } from '../../types';
 import { planSubtitle, findConflicts } from '../utils/planSchedule';
+import { ComplianceMismatch } from '../utils/planCompliance';
 import { CalendarClock, Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 
 interface PlanListProps {
@@ -13,9 +14,16 @@ interface PlanListProps {
     onEditPlan: (p: Plan) => void;
     onDeletePlan: (id: string) => void;
     onTogglePlan: (id: string, enabled: boolean) => void;
+    /**
+     * Per-plan compliance mismatches from `analyzePlanCompliance`. Each plan
+     * whose id appears here gets a red "与最近用药历史不符" tag beneath its
+     * enable toggle. Same data source as the top-level ComplianceBanner so the
+     * two stay in sync without re-running the analysis.
+     */
+    mismatches?: ComplianceMismatch[];
 }
 
-const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan }) => {
+const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan, mismatches = [] }) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
 
@@ -48,6 +56,10 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
         };
     };
 
+    // O(1) planId → mismatch lookup built once per render so the card loop
+    // doesn't have to scan the mismatches array for every row.
+    const mismatchedPlanIds = new Set(mismatches.map((m) => m.plan.id));
+
     return (
         <div className="space-y-4">
             {plans.length === 0 && (
@@ -69,6 +81,10 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
 
             {plans.map((plan) => {
                 const replacement = replacedByLabel(plan);
+                const isMismatch = mismatchedPlanIds.has(plan.id);
+                // 路线单独走中文-only key（plan.route.*），跟详情卡片 / 弹窗
+                // 里的双语 route.* 区分开 —— 用户要求卡片标题只显示中文。
+                const routeLabel = t(`plan.route.${plan.route}`) || t(`route.${plan.route}`) || plan.route;
                 return (
                     <div key={plan.id} className="mx-4 rounded-2xl glass-card overflow-hidden transition-all"
                         style={{ opacity: plan.enabled ? 1 : 0.7 }}>
@@ -83,7 +99,7 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                                        {t(`ester.${plan.ester}`)} · {plan.doseMG} mg · {t(`route.${plan.route}`)}
+                                        {`${t(`ester.${plan.ester}`)} · ${routeLabel}`}
                                     </span>
                                     {/* Enable toggle */}
                                     <label className="inline-flex items-center cursor-pointer shrink-0 ml-2">
@@ -103,10 +119,35 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                                         </div>
                                     </label>
                                 </div>
+                                {/* Compliance mismatch tag — sits directly under the
+                                 * toggle, right-aligned. Hidden when the plan is in
+                                 * compliance OR was dismissed-but-not-yet-expired. */}
+                                {isMismatch && (
+                                    <div className="flex justify-end -mt-1 mb-1">
+                                        <span
+                                            className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border"
+                                            style={{
+                                                color: '#dc2626',
+                                                background: 'var(--bg-card-hover)',
+                                                borderColor: 'var(--border-secondary)',
+                                            }}
+                                            title={t('plan.compliance_mismatch') || '与最近用药历史不符'}
+                                        >
+                                            <AlertTriangle size={11} />
+                                            <span>{t('plan.compliance_mismatch') || '与最近用药历史不符'}</span>
+                                        </span>
+                                    </div>
+                                )}
                                 <div className="text-xs font-medium space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                                    <div>{planSubtitle(plan, (k, fb) => t(k as any) || fb || k)}</div>
+                                    <div>
+                                        <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border mr-2"
+                                            style={{ color: 'var(--text-primary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                            {`${t('plan.card.dose_unit') || '剂量'} ${plan.doseMG} mg`}
+                                        </span>
+                                        <span>{planSubtitle(plan, (k, fb) => t(k as any) || fb || k)}</span>
+                                    </div>
                                     <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                                        {t('plan.field.lead_minutes') || '提前提醒'} {plan.leadMinutes} {t('plan.minutes') || '分钟'}
+                                        {`${t('plan.card.lead_label') || '提前提醒'} ${plan.leadMinutes} ${t('plan.minutes') || '分钟'}`}
                                     </div>
                                 </div>
                                 {replacement && (

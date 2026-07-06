@@ -287,6 +287,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onEditPlan={onEditPlan}
           onDeletePlan={onDeletePlan}
           onTogglePlan={onTogglePlan}
+          mismatches={complianceMismatches}
         />
       )}
     </div>
