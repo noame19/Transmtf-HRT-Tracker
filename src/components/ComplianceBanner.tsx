@@ -13,9 +13,23 @@ interface ComplianceBannerProps {
 
 const DISMISS_KEY_PREFIX = 'hrt-compliance-dismissed:';
 
-function isDismissed(category: string): boolean {
+/**
+ * Dismiss TTL — after a user clicks "忽略" the banner hides for this long,
+ * then reappears on the next app visit so the warning gets another chance to
+ * land. Two days balances "not nagging daily" with "real intervention if the
+ * mismatch persists". Storage value is the `Date.now()` timestamp of the
+ * dismiss, not a flag — an expired value looks like an unseen key to
+ * `isDismissed`.
+ */
+const DISMISS_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+
+function isDismissed(category: string, now: number = Date.now()): boolean {
     try {
-        return localStorage.getItem(DISMISS_KEY_PREFIX + category) === '1';
+        const raw = localStorage.getItem(DISMISS_KEY_PREFIX + category);
+        if (raw === null) return false;
+        const ts = Number(raw);
+        if (!Number.isFinite(ts)) return false;
+        return now - ts < DISMISS_TTL_MS;
     } catch {
         return false;
     }
@@ -23,7 +37,7 @@ function isDismissed(category: string): boolean {
 
 function setDismissed(category: string): void {
     try {
-        localStorage.setItem(DISMISS_KEY_PREFIX + category, '1');
+        localStorage.setItem(DISMISS_KEY_PREFIX + category, String(Date.now()));
     } catch {
         /* ignore — private mode / quota exceeded, banner stays */
     }
