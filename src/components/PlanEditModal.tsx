@@ -16,7 +16,8 @@ import {
     resolveGelCoverageArea,
 } from '../../logic';
 import { findConflicts, validatePlan } from '../utils/planSchedule';
-import { X, Save, Trash2, Calendar, Droplet } from 'lucide-react';
+import { analyzePlanCompliance } from '../utils/planCompliance';
+import { X, Save, Trash2, Calendar, Droplet, AlertTriangle } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -219,9 +220,10 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         }
     };
 
-    /** Try to save; if the user enables a plan that conflicts with an existing
-     *  enabled one, pop a confirm dialog before persisting. */
-    const handleSave = async () => {
+    /** Build a Plan object from the current form state. Pure w.r.t. component
+     *  state — used both by the compliance-preview useMemo and by handleSave.
+     *  Centralising avoids drift between what we *preview* and what we *save*. */
+    const buildDraft = (): Plan => {
         const dose = parseFloat(doseStr);
         const lead = parseInt(leadMinutes, 10);
 
@@ -274,7 +276,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         }
 
         const nowH = Date.now() / 3600000;
-        const draft: Plan = {
+        return {
             id: planToEdit?.id ?? `plan-${uuidv4()}`,
             ester,
             route,
@@ -288,6 +290,46 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             createdAtH: planToEdit?.createdAtH ?? nowH,
             updatedAtH: nowH,
         };
+    };
+
+    /** Compliance preview: substitute the current draft into `plans` and ask
+     *  `analyzePlanCompliance` whether it would surface a mismatch. Renders a
+     *  non-blocking amber hint at the top of the modal — we deliberately do
+     *  NOT pop a confirm dialog here (the existing conflict confirm already
+     *  handles "you're about to disable another plan", and stacking two
+     *  dialogs on save is just noise). Only checks enabled drafts: a disabled
+     *  plan doesn't participate in compliance, and the warning copy
+     *  ("不建议启用") only makes sense when the toggle is on. */
+    const complianceMismatch = useMemo(() => {
+        if (!isOpen) return null;
+        if (!enabled) return null;
+        if (!startDate) return null;
+        try {
+            const draft = buildDraft();
+            const replaced = plans.some(p => p.id === draft.id)
+                ? plans.map(p => p.id === draft.id ? draft : p)
+                : [...plans, draft];
+            const report = analyzePlanCompliance(events, replaced, new Date());
+            return report.mismatches.find(m => m.plan.id === draft.id) ?? null;
+        } catch {
+            return null;  // form has invalid inputs; let handleSave's validate show the proper error
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        isOpen, enabled, startDate,
+        ester, route, doseStr,
+        scheduleKind, intervalDays, weekdays, times,
+        endDate, leadMinutes,
+        patchMode, patchRate,
+        gelSite, gelProductId, gelArea, gelCoverage, gelCoApplied, gelWash,
+        planToEdit?.id, planToEdit?.createdAtH,
+        plans, events, gelProducts,
+    ]);
+
+    /** Try to save; if the user enables a plan that conflicts with an existing
+     *  enabled one, pop a confirm dialog before persisting. */
+    const handleSave = async () => {
+        const draft = buildDraft();
 
         // Validate first — reject early so we don't prompt the user about a
         // conflict for an obviously broken form.
@@ -353,6 +395,28 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
 
                 {/* Body */}
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                    {/* Compliance preview hint — fires when the current draft
+                     *  would surface a ComplianceBanner on /history once
+                     *  saved. Non-blocking (no confirm dialog) so we don't
+                     *  stack two dialogs on top of the existing
+                     *  conflict-disable confirm. Hidden for disabled drafts
+                     *  since compliance only checks enabled plans and the
+                     *  "不建议启用" copy only applies when enabled. */}
+                    {complianceMismatch && (
+                        <div className="rounded-2xl p-3 flex items-start gap-2 -mb-2"
+                            style={{
+                                background: 'var(--accent-50)',
+                                border: '1px solid var(--accent-200)',
+                            }}
+                            role="status"
+                            aria-live="polite">
+                            <AlertTriangle size={16} style={{ color: 'var(--accent-700, #92400e)', marginTop: 2, flexShrink: 0 }} />
+                            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                                {t('plan.compliance_warning') || '该计划与最近的用药历史不符，非换药/其他特殊情况不建议启用此计划'}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Drug */}
                     <div className="space-y-3">
                         <label className="block text-xs font-semibold uppercase tracking-wider"
