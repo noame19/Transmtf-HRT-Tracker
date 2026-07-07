@@ -577,8 +577,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                       {t('overview.last_e2')}
                     </p>
                     {lastE2Dose && (
-                      <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                        style={{ background: 'var(--accent-50)', color: 'var(--accent-500)' }}>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
                         {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
                       </span>
                     )}
