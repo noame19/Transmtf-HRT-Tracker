@@ -58,17 +58,30 @@ const parseLocalDate = (s: string): Date | null => {
 type DoseLevelKey = 'low' | 'medium' | 'high' | 'very_high' | 'above';
 
 type DoseGuideConfig = {
-    unitKey: 'mg_day' | 'ug_day' | 'mg_week';
+    unitKey: 'mg_day' | 'ug_day' | 'mg_week' | 'mg_dose';
     thresholds: [number, number, number, number];
     requiresRate?: boolean;
 };
 
-const DOSE_GUIDE_CONFIG: Partial<Record<Route, DoseGuideConfig>> = {
-    [Route.oral]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
-    [Route.sublingual]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
-    [Route.patchApply]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
-    [Route.gel]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
-    [Route.injection]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+/**
+ * 剂量参考档位 — 按 (给药方式, 药物) 复合键索引。
+ * 抗雄 (CPA/BICA) 不在这里写阈值：useMemo 里 `isAntiandrogen(safeEster)` 会先 return null。
+ * `mg_dose` 用于「不分昼夜、单次剂量」的黄体酮（直肠 / 肌注）。
+ */
+const DOSE_GUIDE_CONFIG: Partial<Record<`${Route}:${Ester}`, DoseGuideConfig>> = {
+    [`${Route.oral}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    [`${Route.oral}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    [`${Route.sublingual}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    [`${Route.sublingual}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    [`${Route.patchApply}:${Ester.E2}`]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
+    [`${Route.gel}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
+    [`${Route.injection}:${Ester.EB}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EV}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EU}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EC}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EN}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.rectal}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [50, 100, 150, 200] },
+    [`${Route.injection}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [12.5, 25, 50, 75] },
 };
 
 const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
@@ -292,7 +305,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         const next = !useCustomDose;
         if (!next) {
             const current = parseFloat(activeEster === Ester.E2 ? e2Dose : rawDose);
-            if (!isPresetDose(activeEster, current)) {
+            if (!isPresetDose(route, activeEster, current)) {
                 setRawDose('');
                 setE2Dose('');
             }
@@ -535,7 +548,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
 
     const doseGuide = useMemo(() => {
         if (isAntiandrogen(safeEster)) return null;
-        const cfg = DOSE_GUIDE_CONFIG[route];
+        const cfg = DOSE_GUIDE_CONFIG[drugKeyOf(route, safeEster)];
         if (!cfg) return null;
         if (route === Route.patchApply && patchMode === 'dose' && cfg.requiresRate) {
             return { config: cfg, level: null, value: null, showRateHint: true as const };
@@ -827,6 +840,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                 {showDoseSection && (route !== Route.patchApply || patchMode === 'dose') && (
                                     hasQuickDosePanel(route, safeEster) ? (
                                         <QuickDosePanel
+                                            route={route}
                                             ester={safeEster}
                                             rawDose={rawDose}
                                             e2Dose={e2Dose}

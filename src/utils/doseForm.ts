@@ -24,12 +24,18 @@ import {
  * engine still pairs apply↔remove by scanning the time axis, so legacy data
  * with two un-grouped events continues to work.
  */
+
+/** 给药方式 + 药物 复合 key — 用于「上次用药」「档位」「剂量参考」等所有 per-(route,ester) 索引 */
+export const drugKeyOf = (route: Route, ester: Ester) => `${route}:${ester}`;
+
 export const ROUTE_DISPLAY_ORDER: Route[] = [
     Route.sublingual,
     Route.oral,
     Route.injection,
     Route.patchApply,
     Route.gel,
+    // 直肠 (rectal) — 黄体酮的典型睡前给药途径。放在末尾：使用频率最低。
+    Route.rectal,
 ];
 
 /**
@@ -40,38 +46,52 @@ export const getAvailableEsters = (route: Route): Ester[] => {
     switch (route) {
         // EU (estradiol undecylate) sits next to EV (valerate) so the two
         // similarly-named depot esters are easy to tell apart at selection time.
+        // 黄体酮 (PROG) 放在肌注的最后 — 临床上肌注黄体酮用得少，主要靠直肠。
         case Route.injection:
-            return [Ester.EB, Ester.EV, Ester.EU, Ester.EC, Ester.EN];
+            return [Ester.EB, Ester.EV, Ester.EU, Ester.EC, Ester.EN, Ester.PROG];
         case Route.oral:
             return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
         case Route.sublingual:
             return [Ester.EV, Ester.E2];
+        // 直肠只支持黄体酮 — 这是它的「主流」给药方式（睡前栓剂）。
+        case Route.rectal:
+            return [Ester.PROG];
         default:
             return [Ester.E2];
     }
 };
 
 /**
- * Quick-select dose tiers per compound, expressed in mg of the compound itself
- * (the tablet/dose taken), NOT the estradiol-equivalent. Only surfaced for the
- * oral / sublingual routes.
+ * 快速选剂量档位按键值 (route, ester) 索引 — 不同 (给药方式, 药物) 组合可以
+ * 有完全不同的预设档位（黄体酮直肠 50/100/150/200、肌注 25/50/75 等）。
+ *
+ * 单位：药物本身的 mg（口服药片 mg/片、肌注 mg/支），不是 E2 当量。
+ * 仅在「有档位的 route+药物」组合下显示档位按钮；其他组合走普通输入框。
  */
-export const DOSE_QUICK_PRESETS: Partial<Record<Ester, number[]>> = {
-    [Ester.E2]: [1, 2, 3, 4],
-    [Ester.EV]: [1, 2, 3, 4],
-    [Ester.CPA]: [6.25, 12.5, 25],
-    [Ester.BICA]: [20, 25, 50],
+export const DOSE_QUICK_PRESETS: Partial<Record<`${Route}:${Ester}`, number[]>> = {
+    // 舌下：E2 / EV 共用 1/2/3/4 mg
+    [`${Route.sublingual}:${Ester.E2}`]: [1, 2, 3, 4],
+    [`${Route.sublingual}:${Ester.EV}`]: [1, 2, 3, 4],
+    // 口服：E2 / EV 共用 1/2/3/4 mg；CPA 6.25/12.5/25；BICA 20/25/50
+    [`${Route.oral}:${Ester.E2}`]: [1, 2, 3, 4],
+    [`${Route.oral}:${Ester.EV}`]: [1, 2, 3, 4],
+    [`${Route.oral}:${Ester.CPA}`]: [6.25, 12.5, 25],
+    [`${Route.oral}:${Ester.BICA}`]: [20, 25, 50],
+    // 直肠：黄体酮典型档位（睡前栓剂）
+    [`${Route.rectal}:${Ester.PROG}`]: [50, 100, 150, 200],
+    // 肌注黄体酮：少见但仍支持
+    [`${Route.injection}:${Ester.PROG}`]: [25, 50, 75],
 };
 
 /** True when `mg` matches one of the compound's quick-select presets. */
-export const isPresetDose = (ester: Ester, mg: number): boolean => {
-    const presets = DOSE_QUICK_PRESETS[ester];
+export const isPresetDose = (route: Route, ester: Ester, mg: number): boolean => {
+    const presets = DOSE_QUICK_PRESETS[drugKeyOf(route, ester)];
     return !!presets && Number.isFinite(mg) && presets.some(p => Math.abs(p - mg) < 1e-6);
 };
 
 /** Whether the quick-dose panel applies to this route+compound combination. */
 export const hasQuickDosePanel = (route: Route, ester: Ester): boolean =>
-    (route === Route.sublingual || route === Route.oral) && !!DOSE_QUICK_PRESETS[ester];
+    !!DOSE_QUICK_PRESETS[drugKeyOf(route, ester)];
 
 /**
  * Per-drug remembered dose, keyed by `${route}:${ester}` so one compound's last
@@ -94,8 +114,6 @@ export interface DrugMemo {
 // source of truth, so a per-device "last dose" preference is acceptable drift.
 const DOSE_BY_DRUG_KEY = 'hrt-dose-by-drug';
 const DOSE_LAST_DRUG_KEY = 'hrt-dose-last-drug';
-
-export const drugKeyOf = (route: Route, ester: Ester) => `${route}:${ester}`;
 
 // --- Validation helpers so corrupt / stale localStorage can never poison state ---
 const isRecord = (v: unknown): v is Record<string, unknown> =>

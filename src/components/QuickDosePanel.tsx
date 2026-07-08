@@ -1,11 +1,13 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { Ester } from '../../logic';
-import { DOSE_QUICK_PRESETS } from '../utils/doseForm';
+import { Ester, Route } from '../../logic';
+import { DOSE_QUICK_PRESETS, drugKeyOf } from '../utils/doseForm';
 
 interface QuickDosePanelProps {
     /** Compound whose presets/units drive the panel. */
     ester: Ester;
+    /** 给药方式 — 和 ester 一起查档位预设（不同 route 同一药物档位不同，例如黄体酮直肠 50/100/150/200 vs 肌注 25/50/75） */
+    route: Route;
     /** Compound (raw) dose string — used for EV / CPA / BICA. */
     rawDose: string;
     /** Estradiol-equivalent dose string — the displayed value for plain E2. */
@@ -28,10 +30,10 @@ interface QuickDosePanelProps {
  * E2-equivalent field (which equals the compound mg).
  */
 const QuickDosePanel: React.FC<QuickDosePanelProps> = ({
-    ester, rawDose, e2Dose, useCustomDose, onToggleCustom, onSelectPreset, onCustomChange,
+    ester, route, rawDose, e2Dose, useCustomDose, onToggleCustom, onSelectPreset, onCustomChange,
 }) => {
     const { t } = useTranslation();
-    const presets = DOSE_QUICK_PRESETS[ester];
+    const presets = DOSE_QUICK_PRESETS[drugKeyOf(route, ester)];
     if (!presets) return null;
 
     const currentStr = ester === Ester.E2 ? e2Dose : rawDose;

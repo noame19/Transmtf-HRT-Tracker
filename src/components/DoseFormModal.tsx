@@ -45,17 +45,36 @@ interface DoseTemplate {
 type DoseLevelKey = 'low' | 'medium' | 'high' | 'very_high' | 'above';
 
 type DoseGuideConfig = {
-    unitKey: 'mg_day' | 'ug_day' | 'mg_week';
+    unitKey: 'mg_day' | 'ug_day' | 'mg_week' | 'mg_dose';
     thresholds: [number, number, number, number];
     requiresRate?: boolean;
 };
 
-const DOSE_GUIDE_CONFIG: Partial<Record<Route, DoseGuideConfig>> = {
-    [Route.oral]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
-    [Route.sublingual]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
-    [Route.patchApply]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
-    [Route.gel]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
-    [Route.injection]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+/**
+ * 剂量参考档位 — 按 (给药方式, 药物) 复合键索引。
+ * 抗雄 (CPA/BICA) 不在这里写阈值：useMemo 里 `isAntiandrogen(safeEster)` 会先 return null。
+ * `mg_dose` 用于「不分昼夜、单次剂量」的黄体酮（直肠 / 肌注），所以不需要 day/week 后缀。
+ */
+const DOSE_GUIDE_CONFIG: Partial<Record<`${Route}:${Ester}`, DoseGuideConfig>> = {
+    // 口服 E2/EV 共用 2/4/8/12 mg_day
+    [`${Route.oral}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    [`${Route.oral}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    // 舌下 E2/EV 共用 1/2/4/6 mg_day（舌下吸收快，参考剂量比口服低）
+    [`${Route.sublingual}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    [`${Route.sublingual}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    // 贴片：ug_day，需要先填释放速率
+    [`${Route.patchApply}:${Ester.E2}`]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
+    // 凝胶：mg_day
+    [`${Route.gel}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
+    // 肌注：5 种 E2 酯共用 mg_week
+    [`${Route.injection}:${Ester.EB}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EV}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EU}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EC}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EN}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    // 黄体酮：mg_dose（不分昼夜，按单次剂量）
+    [`${Route.rectal}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [50, 100, 150, 200] },
+    [`${Route.injection}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [12.5, 25, 50, 75] },
 };
 
 const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
@@ -184,7 +203,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 // one of the presets, so a non-preset dose stays visible/editable.
                 setUseCustomDose(
                     hasQuickDosePanel(eventToEdit.route, eventToEdit.ester) &&
-                    !isPresetDose(eventToEdit.ester, eventToEdit.doseMG)
+                    !isPresetDose(eventToEdit.route, eventToEdit.ester, eventToEdit.doseMG)
                 );
 
                 if (eventToEdit.route === Route.patchApply && eventToEdit.extras[ExtraKey.releaseRateUGPerDay]) {
@@ -300,7 +319,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     // a preset, mirroring the edit-record branch above.
                     setUseCustomDose(
                         hasQuickDosePanel(p.route, p.ester) &&
-                        !isPresetDose(p.ester, p.doseMG)
+                        !isPresetDose(p.route, p.ester, p.doseMG)
                     );
                     if (p.route === Route.sublingual) {
                         const tier = p.extras[ExtraKey.sublingualTier];
@@ -421,7 +440,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         const next = !useCustomDose;
         if (!next) {
             const current = parseFloat(activeEster === Ester.E2 ? e2Dose : rawDose);
-            if (!isPresetDose(activeEster, current)) {
+            if (!isPresetDose(route, activeEster, current)) {
                 setRawDose("");
                 setE2Dose("");
             }
@@ -572,7 +591,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         setCustomTheta(tpl.customTheta);
         // Match the quick-panel mode to the template dose (custom if it isn't a tier).
         const tplDose = parseFloat(tpl.ester === Ester.E2 ? tpl.e2Dose : tpl.rawDose);
-        setUseCustomDose(hasQuickDosePanel(tpl.route, tpl.ester) && !isPresetDose(tpl.ester, tplDose));
+        setUseCustomDose(hasQuickDosePanel(tpl.route, tpl.ester) && !isPresetDose(tpl.route, tpl.ester, tplDose));
         setLastEditedField('raw');
         setShowPanel(false);
     };
@@ -812,7 +831,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
         // 抗雄药物 (CPA / BICA) 没有剂量提示，因为参考范围不同
         if (isAntiandrogen(safeEster)) return null;
 
-        const cfg = DOSE_GUIDE_CONFIG[route];
+        const cfg = DOSE_GUIDE_CONFIG[drugKeyOf(route, safeEster)];
         if (!cfg) return null;
         if (route === Route.patchApply && patchMode === "dose" && cfg.requiresRate) {
             return { config: cfg, level: null, value: null, showRateHint: true as const };
@@ -1092,6 +1111,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                             {(route !== Route.patchApply || patchMode === "dose") && (
                                 hasQuickDosePanel(route, safeEster) ? (
                                     <QuickDosePanel
+                                        route={route}
                                         ester={safeEster}
                                         rawDose={rawDose}
                                         e2Dose={e2Dose}
