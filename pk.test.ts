@@ -815,3 +815,24 @@ describe('dose-causality: a dose logged after all labs never moves the past', ()
 
 // Silence unused-import noise for HOUR in case future tests use it.
 void HOUR;
+
+describe('getToE2Factor — non-E2-ester fallback', () => {
+    // Regression for the 黄体酮 (PROG) preset-click bug: the modal's
+    // handleRawChange calls getToE2Factor(Ester.PROG); since PROG isn't in
+    // the EsterInfo table (no PK model), the unguarded helper would throw
+    // `Cannot read property 'mw' of undefined`. Returning 1 makes the
+    // compound ↔ E2-equivalent field handshake symmetric (PROG is its own
+    // drug with no molar-mass equivalence to E2, so identity is correct).
+    it('returns 1 for PROG (no PK model, no molar-mass conversion)', () => {
+        expect(getToE2Factor(Ester.PROG)).toBe(1);
+    });
+
+    it('returns 1 for any future / unknown ester value rather than throwing', () => {
+        // Cast through Ester to simulate a stale enum value coming from
+        // serialized legacy data; the helper must not blow up.
+        const ghost = 'NOT_A_REAL_ESTER' as unknown as Ester;
+        expect(() => getToE2Factor(ghost)).not.toThrow();
+        expect(getToE2Factor(ghost)).toBe(1);
+    });
+});
+

@@ -615,10 +615,24 @@ const EsterInfo = {
 
 /**
  * Convert a compound / ester dose into estradiol-equivalent molar mass scaling.
+ *
+ * The conversion only meaningfully applies to estradiol esters (E2 / EB / EV /
+ * EC / EN / EU) — they're prodrugs that hydrolyse into E2, so storing "E2 mg
+ * equivalent" makes dose comparisons across esters intuitive. Non-E2 esters
+ * (黄体酮 PROG, anti-androgens CPA / BICA, or any future ad-hoc enum value)
+ * are their own drug with no molar-mass equivalence to E2 — return 1 so the
+ * UI path can stay symmetric (compound ↔ E2-equiv field handshake) without
+ * calling us out for a missing branch.
+ *
+ * Defensive: PROG isn't in the EsterInfo table (no PK model), and a future
+ * enum value might outpace the table for a release. Returning 1 in those cases
+ * is the contract callers already expect via `|| 1` rescue, made explicit here.
  */
 export function getToE2Factor(ester: Ester): number {
     if (ester === Ester.E2) return 1.0;
-    return EsterInfo[Ester.E2].mw / EsterInfo[ester].mw;
+    const info = EsterInfo[ester];
+    if (!info) return 1.0;
+    return EsterInfo[Ester.E2].mw / info.mw;
 }
 
 // EU is a single slow depot (Frac_fast = 0 → only the `k1_slow` source contributes),
