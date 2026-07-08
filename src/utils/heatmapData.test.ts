@@ -76,6 +76,8 @@ describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
         // Anti-androgen → purple (CPA + BICA, both fall in the same bucket)
         expect(heatmapColorForEster(Ester.CPA)).toBe('#5a7eff');
         expect(heatmapColorForEster(Ester.BICA)).toBe('#5a7eff');
+        // Progestin → amber (PROG / 黄体酮 — 之前一直靠 'PRL' 字符串 fallback 占位)
+        expect(heatmapColorForEster(Ester.PROG)).toBe('#F59E0B');
         // Other (anything not in the switch arms — e.g. PRL isn't an Enum
         // value here, but a defensive read confirms the bucket contract).
         const otherEster = 'XYZ' as Ester;
