@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, RotateCcw } from 'lucide-react';
+import { CalendarDays, RotateCcw, Brain } from 'lucide-react';
 import { DoseEvent, Route, Ester, Plan } from '../../types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -722,6 +722,9 @@ function routeIconSmall(route: Route | null) {
                     <path d="M4 4 L12 12 M12 4 L4 12" />
                 </svg>
             );
+        // 直肠：lucide 的 Brain 图标（缩到 10px 适配热力图格）
+        case Route.rectal:
+            return <Brain className={common} />;
     }
 }
 

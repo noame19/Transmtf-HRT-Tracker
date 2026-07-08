@@ -1,5 +1,5 @@
 import React from 'react';
-import { Syringe, Pill, Droplet, Sticker, X } from 'lucide-react';
+import { Syringe, Pill, Droplet, Sticker, X, Brain } from 'lucide-react';
 import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, ExtraKey } from '../../logic';
 import { Lang } from '../i18n/translations';
 
@@ -49,6 +49,8 @@ export const getRouteIcon = (route: Route) => {
         case Route.gel: return <Droplet className="w-5 h-5 text-cyan-500" />;
         case Route.patchApply: return <Sticker className="w-5 h-5 text-orange-500" />;
         case Route.patchRemove: return <X className="w-5 h-5 text-gray-400" />;
+        // 直肠：lucide 的 Brain 图标；amber 色和孕激素热力图一致
+        case Route.rectal: return <Brain className="w-5 h-5 text-amber-500" />;
     }
 };
 
