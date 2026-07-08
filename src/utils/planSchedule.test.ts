@@ -76,6 +76,12 @@ describe('drugCategoryOf', () => {
         expect(drugCategoryOf(Ester.CPA)).toBe('anti_androgen');
         expect(drugCategoryOf(Ester.BICA)).toBe('anti_androgen');
     });
+    it('classifies PROG as progestin', () => {
+        // Progesterone (黄体酮) — new addition; takes the amber
+        // progestin heatmap bucket that was previously reserved via the
+        // string-equality fallback for legacy 'PRL' / 'Progesterone' values.
+        expect(drugCategoryOf(Ester.PROG)).toBe('progestin');
+    });
 });
 
 describe('planKey', () => {

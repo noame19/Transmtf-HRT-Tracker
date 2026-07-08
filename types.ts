@@ -21,7 +21,11 @@ export enum Route {
     patchRemove = "patchRemove",
     gel = "gel",
     oral = "oral",
-    sublingual = "sublingual"
+    sublingual = "sublingual",
+    // Progesterone (黄体酮) rectal — typically administered as a bedtime
+    // suppository. Added at the end of the enum so existing serialized JSON
+    // (which embeds the string form) stays backward-compatible.
+    rectal = "rectal",
 }
 
 /**
@@ -41,7 +45,12 @@ export enum Ester {
     // action is an absorption (flip-flop) effect, not slow clearance. See EU_DEPOT_PK.
     EU = "EU",
     CPA = "CPA",
-    BICA = "BICA"
+    BICA = "BICA",
+    // Progesterone (黄体酮). No PK model — surfaces in DoseFormModal /
+    // PlanEditModal as a record/plan option but doesn't show up on the blood-
+    // concentration chart. Categorised as 'progestin' in drugCategoryOf so the
+    // existing third heatmap bucket (amber #F59E0B) lights up automatically.
+    PROG = "PROG",
 }
 
 /**

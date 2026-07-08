@@ -26,6 +26,12 @@ export function drugCategoryOf(ester: Ester): 'estrogen' | 'anti_androgen' | 'pr
         case Ester.CPA:
         case Ester.BICA:
             return 'anti_androgen';
+        case Ester.PROG:
+            // Progesterone (黄体酮) — owns the 'progestin' heatmap bucket
+            // (#F59E0B amber, predefined). Listed explicitly so the enum
+            // member takes precedence over the string-equality fallback below
+            // (which only exists for legacy / non-enum values).
+            return 'progestin';
         default: {
             // Fallback for string-cast values outside the enum (PRL,
             // Progesterone, …). Keep this in sync with the palette keys in
