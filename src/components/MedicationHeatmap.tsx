@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, RotateCcw, Brain } from 'lucide-react';
+import { CalendarDays, RotateCcw } from 'lucide-react';
 import { DoseEvent, Route, Ester, Plan } from '../../types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -692,48 +692,6 @@ function routeShortLabel(route: Route, lang: string): string {
     return ROUTE_SHORT[route]?.[k] ?? String(route);
 }
 
-/** Tiny inline route icons. We can't use `getRouteIcon` because that returns
- *  20px icons — too big for a heatmap cell. */
-function routeIconSmall(route: Route | null) {
-    if (!route) return null;
-    const common = 'w-[10px] h-[10px]';
-    switch (route) {
-        case Route.injection:
-            return (
-                <svg viewBox="0 0 16 16" className={common} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10 2 L14 6 L11 9 L7 5 Z" /><path d="M7 5 L3 9" /><path d="M3 9 L2 12 L5 11 Z" />
-                </svg>
-            );
-        case Route.oral:
-        case Route.sublingual:
-            return (
-                <svg viewBox="0 0 16 16" className={common} fill="currentColor">
-                    <rect x="3" y="5" width="10" height="6" rx="3" />
-                </svg>
-            );
-        case Route.gel:
-            return (
-                <svg viewBox="0 0 16 16" className={common} fill="currentColor">
-                    <path d="M8 2 C 5 5 5 9 8 14 C 11 9 11 5 8 2 Z" />
-                </svg>
-            );
-        case Route.patchApply:
-            return (
-                <svg viewBox="0 0 16 16" className={common} fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <rect x="3" y="3" width="10" height="10" rx="2" />
-                </svg>
-            );
-        case Route.patchRemove:
-            return (
-                <svg viewBox="0 0 16 16" className={common} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M4 4 L12 12 M12 4 L4 12" />
-                </svg>
-            );
-        // 直肠：lucide 的 Brain 图标（缩到 10px 适配热力图格）
-        case Route.rectal:
-            return <Brain className={common} />;
-    }
-}
 
 // ── KPI card (right-side stack) ──────────────────────────────────────────
 
@@ -865,9 +823,20 @@ const HeatmapTooltip: React.FC<TooltipProps> = ({ cell, x, y, lang, t, plans }) 
                     const isPatch = route === Route.patchApply;
                     return (
                         <div key={idx} className="flex items-center gap-1.5 leading-tight whitespace-nowrap">
-                            <span style={{ color: heatmapColorForEster(r.ester) }}>
-                                {routeIconSmall(route)}
-                            </span>
+                            {/* Drug-category coloured dot — replaces the
+                             *  per-route SVG icon set (syringe / pill /
+                             *  brain / sticker / …) so the visual signal is
+                             *  "which drug class" instead of "which route".
+                             *  Patch / gel are still estradiol family at
+                             *  colour-resolution time; progesterone is
+                             *  amber; anti-androgen is light-blue. The route
+                             *  is still readable from `routeShortLabel` on
+                             *  the same row. */}
+                            <span
+                                aria-hidden="true"
+                                className="inline-block w-2 h-2 rounded-full shrink-0"
+                                style={{ background: heatmapColorForEster(r.ester) }}
+                            />
                             <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>
                                 {formatTime(new Date(r.timeH * 3600000))}
                             </span>
