@@ -505,7 +505,7 @@ const SettingsPage: React.FC = () => {
                             onClick={handleClearAllEvents}
                             disabled={!events.length}
                             className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
-                                events.length ? 'btn-press-glass hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed opacity-60'
+                                events.length ? 'btn-press-glass hover:bg-[var(--hover-bg-red)]' : 'cursor-not-allowed opacity-60'
                             }`}
                             style={{ color: 'var(--text-primary)' }}
                         >

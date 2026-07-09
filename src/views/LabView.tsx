@@ -125,7 +125,7 @@ const LearningPanel: React.FC<{
               {lastDiagnostics?.isOutlier && (
                 <div className="flex items-start gap-2 rounded-xl px-3 py-2 mb-2" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
                   <AlertTriangle size={13} className="text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{t('lab.learning_outlier')}</p>
+                  <p className="text-[10px] font-medium text-[var(--text-icon-amber)]">{t('lab.learning_outlier')}</p>
                 </div>
               )}
 
@@ -388,7 +388,7 @@ const LabView: React.FC<LabViewProps> = ({
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
               applyE2LearningToCPA
                 ? ''
-                : 'bg-gray-200 dark:bg-gray-600 border-gray-200 dark:border-gray-600'
+                : 'bg-[var(--bg-gray-strong)] border-[var(--border-gray-strong)]'
             }`}
             style={applyE2LearningToCPA ? { background: 'var(--accent-500)', borderColor: 'var(--accent-500)' } : undefined}
           >
@@ -421,7 +421,7 @@ const LabView: React.FC<LabViewProps> = ({
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
               applyCPAInhibitionToE2
                 ? ''
-                : 'bg-gray-200 dark:bg-gray-600 border-gray-200 dark:border-gray-600'
+                : 'bg-[var(--bg-gray-strong)] border-[var(--border-gray-strong)]'
             }`}
             style={applyCPAInhibitionToE2 ? { background: 'var(--accent-500)', borderColor: 'var(--accent-500)' } : undefined}
           >
@@ -484,7 +484,7 @@ const LabView: React.FC<LabViewProps> = ({
           onClick={onClearLabResults}
           disabled={!labResults.length}
           className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
-            labResults.length ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30' : 'cursor-not-allowed'
+            labResults.length ? 'text-red-500 hover:bg-[var(--hover-bg-red)]' : 'cursor-not-allowed'
           }`}
           style={!labResults.length ? { color: 'var(--text-tertiary)' } : undefined}
         >

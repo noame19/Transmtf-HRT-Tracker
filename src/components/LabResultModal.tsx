@@ -173,7 +173,7 @@ const LabResultModal = ({ isOpen, onClose, onSave, onDelete, resultToEdit }: Lab
                         <button
                             onClick={handleDelete}
                             aria-label={t('btn.delete')}
-                            className="p-4 text-red-500 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-xl transition-colors"
+                            className="p-4 text-red-500 bg-[var(--bg-soft-red)] hover:bg-[var(--hover-bg-red-bold)] rounded-xl transition-colors"
                         >
                             <Trash2 size={20} />
                         </button>

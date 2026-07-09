@@ -302,7 +302,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     className="text-sm md:text-base font-semibold tracking-tight m-0 flex items-center gap-2"
                     style={{ color: 'var(--text-primary)' }}
                 >
-                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-pink-100 dark:border-pink-800/30">
+                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-[var(--border-icon-pink)]">
                         <CalendarDays size={16} className="text-[#f6c4d7] md:w-5 md:h-5" />
                     </span>
                     {t('heatmap.title') || '用药日历'}

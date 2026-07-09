@@ -25,7 +25,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[70vh]">
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-pink-50 dark:bg-pink-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-pink)] flex items-center justify-center">
                                 <FlaskConical size={14} className="text-pink-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.e2.title')}</p>
@@ -35,7 +35,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-purple)] flex items-center justify-center">
                                 <Pill size={14} className="text-purple-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.cpa.title')}</p>
@@ -45,7 +45,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-amber)] flex items-center justify-center">
                                 <Pill size={14} className="text-amber-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.bica.title')}</p>
@@ -55,7 +55,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-blue)] flex items-center justify-center">
                                 <BrainCircuit size={14} className="text-blue-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.ekf.title')}</p>
@@ -65,7 +65,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-rose)] flex items-center justify-center">
                                 <TrendingUp size={14} className="text-rose-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.ou.title')}</p>
@@ -75,7 +75,7 @@ const ModelInfoModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
 
                     <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center">
+                            <div className="w-7 h-7 rounded-lg bg-[var(--bg-soft-teal)] flex items-center justify-center">
                                 <Sparkles size={14} className="text-teal-500" />
                             </div>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('model.mipd.title')}</p>

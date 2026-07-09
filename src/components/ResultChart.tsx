@@ -159,7 +159,7 @@ const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUni
         if (payload[0].payload.isLabResult) {
             const data = payload[0].payload;
             return (
-                <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-teal-100/50 dark:border-teal-800/50 shadow-sm">
+                <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-[var(--border-tip-teal)] shadow-sm">
                     <p className="text-[10px] font-medium mb-0.5 flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
                         <FlaskConical size={10} />
                         {formatDate(new Date(label), lang)} {formatTime(new Date(label))}
@@ -192,7 +192,7 @@ const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUni
         const cpaCiHigh = dataPoint.cpaCi95High;
 
         return (
-            <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-pink-100/50 dark:border-pink-800/50 shadow-sm">
+            <div className="bg-[var(--bg-card)]/90 backdrop-blur-sm px-3 py-2 rounded-xl border border-[var(--border-tip-pink)] shadow-sm">
                 <p className="text-[10px] font-medium mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
                     {formatDate(new Date(label), lang)} {formatTime(new Date(label))}
                 </p>
@@ -746,7 +746,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
             <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-secondary)]">
                 <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif', color: 'var(--text-primary)' }}>
-                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-pink-100 dark:border-pink-800/30">
+                    <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-[var(--border-icon-pink)]">
                         <Activity size={16} className="text-[#f6c4d7] md:w-5 md:h-5" />
                     </span>
                     {t('chart.title')}

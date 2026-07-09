@@ -74,7 +74,7 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
       style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
       <div className="rounded-3xl w-full max-w-lg p-6 md:p-8 modal-spring-glass glass-modal">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-3">
+          <div className="w-12 h-12 rounded-full bg-[var(--bg-soft-blue)] flex items-center justify-center mb-3">
             <BarChart2 className="text-blue-500" size={24} />
           </div>
           <h3 className="text-xl font-bold text-center" style={{ color: 'var(--text-primary)' }}>{t('statistics.title')}</h3>
@@ -90,7 +90,7 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
         {error && !loading && (
           <div className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="text-red-500 mb-3" size={32} />
-            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+            <p className="text-sm text-[var(--text-icon-red)] text-center">{error}</p>
             <button
               onClick={loadStatistics}
               className="mt-4 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-xl hover:bg-blue-600 transition"
@@ -102,9 +102,9 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
 
         {stats && !loading && !error && (
           <div className="space-y-4 mb-8">
-            <div className="flex items-center gap-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl">
-              <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center flex-shrink-0">
-                <Users className="text-purple-600 dark:text-purple-400" size={20} />
+            <div className="flex items-center gap-4 p-4 bg-[var(--bg-soft-purple)] rounded-2xl">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-bold-purple)] flex items-center justify-center flex-shrink-0">
+                <Users className="text-[var(--text-icon-purple)]" size={20} />
               </div>
               <div className="flex-1">
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('statistics.total_users')}</p>
@@ -112,9 +112,9 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-2xl">
-              <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
-                <Activity className="text-green-600 dark:text-green-400" size={20} />
+            <div className="flex items-center gap-4 p-4 bg-[var(--bg-soft-green)] rounded-2xl">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-bold-green)] flex items-center justify-center flex-shrink-0">
+                <Activity className="text-[var(--text-icon-green)]" size={20} />
               </div>
               <div className="flex-1">
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('statistics.syncs_last_7_days')}</p>
@@ -122,9 +122,9 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
-                <Database className="text-blue-600 dark:text-blue-400" size={20} />
+            <div className="flex items-center gap-4 p-4 bg-[var(--bg-soft-blue)] rounded-2xl">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-bold-blue)] flex items-center justify-center flex-shrink-0">
+                <Database className="text-[var(--text-icon-blue)]" size={20} />
               </div>
               <div className="flex-1">
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('statistics.database_size')}</p>
@@ -132,9 +132,9 @@ const StatisticsModal: React.FC<StatisticsModalProps> = ({ isOpen, onClose }) =>
               </div>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-2xl">
-              <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0">
-                <Calendar className="text-amber-600 dark:text-amber-400" size={20} />
+            <div className="flex items-center gap-4 p-4 bg-[var(--bg-soft-amber)] rounded-2xl">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-bold-amber)] flex items-center justify-center flex-shrink-0">
+                <Calendar className="text-[var(--text-icon-amber)]" size={20} />
               </div>
               <div className="flex-1">
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{t('statistics.last_updated')}</p>

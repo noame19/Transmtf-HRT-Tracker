@@ -24,7 +24,7 @@ const Toggle: React.FC<ToggleProps> = ({ checked, onChange, disabled = false, la
       focus:outline-none focus:ring-2 focus:ring-offset-2
       ${checked
         ? 'bg-[var(--accent-500)] focus:ring-[var(--accent-300)]'
-        : 'bg-[var(--border-primary)] dark:bg-gray-600 focus:ring-gray-300 dark:focus:ring-gray-500'
+        : 'bg-[var(--toggle-track-off)] focus:ring-[var(--focus-ring-toggle)]'
       }
       ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
     `}

@@ -48,7 +48,7 @@ const QuickDosePanel: React.FC<QuickDosePanelProps> = ({
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>{t('dose.quick.custom')}</span>
                     <div
-                        className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomDose ? 'bg-pink-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                        className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomDose ? 'bg-pink-500' : 'bg-[var(--toggle-track-off)]'}`}
                         onClick={onToggleCustom}
                     >
                         <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomDose ? 'translate-x-4' : ''}`} />

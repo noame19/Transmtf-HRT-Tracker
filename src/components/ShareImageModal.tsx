@@ -441,7 +441,7 @@ const ShareImageModal: React.FC<Props> = ({
                 )}
 
                 {savedPath && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    <div className="rounded-xl border border-[var(--border-emerald-share)] bg-[var(--bg-emerald-share)] px-4 py-2 text-sm text-[var(--text-emerald-share)]">
                         {t('share.savedTo').replace('{path}', savedPath)}
                     </div>
                 )}

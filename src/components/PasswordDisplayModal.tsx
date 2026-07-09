@@ -30,7 +30,7 @@ const PasswordDisplayModal = ({ isOpen, onClose, password }: { isOpen: boolean, 
                     style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)' }}>
                     <span className="font-mono text-lg font-bold tracking-wider" style={{ color: 'var(--text-primary)' }}>{password}</span>
                     <button onClick={handleCopy} className="p-2 rounded-lg transition" style={{ color: 'var(--text-secondary)' }}>
-                        {copied ? <span className="text-xs font-bold text-green-600 dark:text-green-400">{t('qr.copied')}</span> : <Copy size={20} />}
+                        {copied ? <span className="text-xs font-bold text-[var(--text-icon-green)]">{t('qr.copied')}</span> : <Copy size={20} />}
                     </button>
                 </div>
 

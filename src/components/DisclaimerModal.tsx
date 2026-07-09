@@ -12,7 +12,7 @@ const DisclaimerModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
             style={{ background: 'var(--bg-overlay)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
             <div className="rounded-3xl w-full max-w-lg p-6 md:p-8 modal-spring-glass glass-modal">
                 <div className="flex flex-col items-center mb-4">
-                    <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center mb-3">
+                    <div className="w-12 h-12 rounded-full bg-[var(--bg-soft-amber)] flex items-center justify-center mb-3">
                         <AlertTriangle className="text-amber-500" size={24} />
                     </div>
                     <h3 className="text-xl font-bold text-center" style={{ color: 'var(--text-primary)' }}>{t('disclaimer.title')}</h3>
