@@ -40,7 +40,9 @@ import {
 //   • 1=mono, 2=diagonal, 3=L+M+R, 4=2×2 cross, 5+=cross + "+N" badge
 //   • patches propagate apply→remove as one continuous band
 //   • tooltip = day date + per-event rows (HH:MM, route icon, ester, dose)
-//   • today outlined; future cells faded
+//   • today has NO special chrome (no outline, no forced day number) — fully
+//     data-driven: same colour rules as any past / future cell, only the
+//     events / plan-fire contents decide what it looks like
 //   • weekday labels are sticky-left so 一-日 stay visible while scrolling
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -445,12 +447,11 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 // every other day — if the enabled-plan schedule
                                                 // fires today the cell takes the future-fire
                                                 // colour, otherwise it falls through to the
-                                                // historical branch. Previously today was
-                                                // force-pinned to the historical branch with a
-                                                // 1.5px accent-300 outline and a forced white
-                                                // day number, which made the cell read as a
-                                                // fixed magenta "today" indicator that no other
-                                                // signal could override.
+                                                // historical branch. Today has NO special chrome
+                                                // (no outline, no forced day number) so it reads
+                                                // exactly like any other day: a plan-fire day
+                                                // takes the future hue, an admin-event day takes
+                                                // the historical hue, an empty day is grey.
                                                 const planFireCats = planFireCategoriesByDate.get(d.dateKey) ?? null;
                                                 const isPlanFireFuture = planFireCats !== null;
                                                 // Day-number renders on any "signal" day: a real
@@ -469,13 +470,15 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         style={{
                                                             background: cellBackground(cats, d, isDark, planFireCats),
                                                             opacity: 1,
-                                                            // "This is today" cue: thin muted outline
-                                                            // (1px accent-200) so the cell still finds
-                                                            // its place in the grid without screaming
-                                                            // for attention next to the colour bands.
-                                                            // Past / future days keep no outline.
-                                                            outline: d.isToday ? '1px solid var(--accent-200)' : 'none',
-                                                            outlineOffset: d.isToday ? '-1px' : 0,
+                                                            // Today gets NO outline — it is rendered by
+                                                            // exactly the same rules as any other day
+                                                            // (plan-fire → future hue; events → historical
+                                                            // hue; empty → grey). The day number only
+                                                            // renders on signal days (see showDayNum
+                                                            // below). Today without events reads identical
+                                                            // to an empty past day.
+                                                            outline: 'none',
+                                                            outlineOffset: 0,
                                                         }}
                                                         onMouseEnter={(e) => {
                                                             // Skip tooltip while the user is panning — the
