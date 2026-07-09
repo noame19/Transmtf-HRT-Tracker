@@ -53,9 +53,12 @@ export const getAvailableEsters = (route: Route): Ester[] => {
             return [Ester.E2, Ester.EV, Ester.CPA, Ester.BICA];
         case Route.sublingual:
             return [Ester.EV, Ester.E2];
-        // 直肠只支持黄体酮 — 这是它的「主流」给药方式（睡前栓剂）。
+        // 直肠 (rectal) — 当前最常见的是黄体酮栓剂，但同一 UI 入口未来
+        // 可能要给 E2/EB/EV 雌激素栓剂/CPA 抗雄栓剂使用。PROG 留第一位是
+        // 保留老数据兼容 + 默认选中行为；非 PROG 没有预设档位（DOSE_QUICK_PRESETS），
+        // 会自动落到手动输入框而不是抛错。
         case Route.rectal:
-            return [Ester.PROG];
+            return [Ester.PROG, Ester.E2, Ester.EB, Ester.EV, Ester.EC, Ester.EU];
         default:
             return [Ester.E2];
     }
