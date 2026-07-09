@@ -91,8 +91,8 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                         <div className="p-4 flex items-start gap-4">
                             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
                                 style={{
-                                    background: plan.route === RouteEnum.injection ? 'var(--accent-50)' : 'var(--bg-card-hover)',
-                                    borderColor: plan.route === RouteEnum.injection ? 'var(--accent-200)' : 'var(--border-primary)',
+                                    background: plan.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
+                                    borderColor: plan.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
                                 }}>
                                 {getRouteIcon(plan.route)}
                             </div>
@@ -153,9 +153,9 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                                 {replacement && (
                                     <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md border"
                                         style={{
-                                            color: 'var(--accent-700, #92400e)',
-                                            background: 'var(--accent-50)',
-                                            borderColor: 'var(--accent-200, #fcd34d)',
+                                            color: 'var(--text-soft-amber)',
+                                            background: 'var(--bg-soft-amber)',
+                                            borderColor: 'var(--border-soft-amber)',
                                         }}>
                                         <AlertTriangle size={12} />
                                         <span>

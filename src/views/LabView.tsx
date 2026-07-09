@@ -74,7 +74,7 @@ const LearningPanel: React.FC<{
 
   return (
     <div className="mx-4 glass-card overflow-hidden"
-      style={{ borderColor: 'var(--accent-200)' }}>
+      style={{ borderColor: 'var(--border-soft-rose)' }}>
       {/* Header – always visible */}
       <button
         className="w-full flex items-center justify-between px-4 py-3 transition-colors"
@@ -84,7 +84,7 @@ const LearningPanel: React.FC<{
         onClick={() => setExpanded(v => !v)}
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-100)' }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)' }}>
             <Brain size={15} style={{ color: 'var(--accent-400)' }} />
           </div>
           <div className="text-left">
@@ -217,22 +217,22 @@ const ModelOption: React.FC<{
       onClick={onSelect}
       className={`w-full text-left p-3 rounded-xl border transition-all ${
         selected
-          ? 'border-[var(--accent-300)] bg-[var(--accent-50)]'
+          ? 'border-[var(--border-soft-rose)] bg-[var(--bg-soft-rose)]'
           : 'border-[var(--border-secondary)] hover:border-[var(--border-primary)]'
       }`}
       style={!selected ? { background: 'var(--bg-secondary)' } : undefined}
     >
       <div className="flex items-start gap-2.5">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border ${
-          selected ? 'bg-[var(--accent-100)] border-[var(--accent-200)]' : 'bg-[var(--bg-card)] border-[var(--border-primary)]'
+          selected ? 'bg-[var(--bg-soft-rose)] border-[var(--border-soft-rose)]' : 'bg-[var(--bg-card)] border-[var(--border-primary)]'
         }`}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className={`text-[13px] font-bold ${selected ? 'text-[var(--accent-600)]' : ''}`} style={!selected ? { color: 'var(--text-primary)' } : undefined}>{label}</span>
+            <span className={`text-[13px] font-bold ${selected ? 'text-[var(--text-icon-rose)]' : ''}`} style={!selected ? { color: 'var(--text-primary)' } : undefined}>{label}</span>
             {selected && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--accent-100)] text-[var(--accent-600)] text-[9px] font-bold">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[var(--bg-soft-rose)] text-[var(--text-icon-rose)] text-[9px] font-bold">
                 <CheckCircle2 size={9} />
                 {t('lab.model_active')}
               </span>
@@ -457,7 +457,7 @@ const LabView: React.FC<LabViewProps> = ({
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   onClick={() => onEditLabResult(res)}
                 >
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-100)' }}>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)' }}>
                     <FlaskConical style={{ color: 'var(--accent-500)' }} size={18} />
                   </div>
                   <div className="flex-1 min-w-0">

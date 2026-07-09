@@ -10,7 +10,10 @@ interface BadgeProps {
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
-  accent: 'bg-[var(--accent-50)] text-[var(--accent-600)] border-[var(--accent-200)]',
+  // accent uses the rose semantic tokens (bg-soft/border-soft/text-icon)
+  // which have correct dark overrides in index.html — the raw --accent-*
+  // palette has no .dark block, so it would stay bright in dark mode.
+  accent: 'bg-[var(--bg-soft-rose)] text-[var(--text-icon-rose)] border-[var(--border-soft-rose)]',
   // Light/dark variants are driven by the alert-* CSS variables in
   // index.html (:root + .dark). This keeps the dark palette under app
   // toggle control, not the OS `prefers-color-scheme` media query.

@@ -286,7 +286,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   };
 
   const getLevelStatus = (conc: number) => {
-    if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--accent-50)', border: 'var(--accent-200)' };
+    if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--bg-soft-rose)', border: 'var(--border-soft-rose)' };
     if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(5,150,105,0.15)' : '#ecfdf5', border: isDark ? 'rgba(5,150,105,0.3)' : '#a7f3d0' };
     if (conc >= 70 && conc <= 300) return { label: 'status.level.luteal', color: isDark ? '#60a5fa' : '#2563eb', bg: isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff', border: isDark ? 'rgba(37,99,235,0.3)' : '#bfdbfe' };
     if (conc >= 30 && conc < 70) return { label: 'status.level.follicular', color: isDark ? '#818cf8' : '#4f46e5', bg: isDark ? 'rgba(79,70,229,0.15)' : '#eef2ff', border: isDark ? 'rgba(79,70,229,0.3)' : '#c7d2fe' };
@@ -331,9 +331,9 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 {hasPersonalModel && (
                   <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                     style={{
-                      background: 'var(--accent-50)',
+                      background: 'var(--bg-soft-rose)',
                       color: 'var(--accent-500)',
-                      border: `1px solid var(--accent-200)`,
+                      border: `1px solid var(--border-soft-rose)`,
                     }}>
                     {t('chart.personal_model')}
                   </span>

@@ -49,7 +49,7 @@ const AnnouncementModal: React.FC<Props> = ({ isOpen, onClose }) => {
             >
                 {/* Header */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b"
-                    style={{ background: `linear-gradient(135deg, var(--accent-50), var(--bg-card))`, borderColor: 'var(--border-secondary)' }}>
+                    style={{ background: `linear-gradient(135deg, var(--bg-soft-rose), var(--bg-card))`, borderColor: 'var(--border-secondary)' }}>
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 accent-bg-gradient">
                         <Megaphone size={18} className="text-white" strokeWidth={2} />
                     </div>

@@ -195,8 +195,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   >
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border`}
                       style={{
-                        background: ev.route === RouteEnum.injection ? 'var(--accent-50)' : 'var(--bg-card-hover)',
-                        borderColor: ev.route === RouteEnum.injection ? 'var(--accent-200)' : 'var(--border-primary)',
+                        background: ev.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
+                        borderColor: ev.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
                       }}>
                       {getRouteIcon(ev.route)}
                     </div>

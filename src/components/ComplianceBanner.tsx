@@ -51,7 +51,8 @@ function describe(ester: Ester, route: Route, t: (k: string) => string): string 
  * /history 顶部告警：用药记录与用药计划不一致时弹出。
  *
  * 视觉风格照 ReminderBanner 那一套：`mx-4 rounded-2xl p-4` 外壳 +
- * `var(--accent-50)` 浅底 + `var(--accent-200)` 边 + 警示图标。
+ * `var(--bg-soft-rose)` 浅底 + `var(--border-soft-rose)` 边 + 警示图标
+ * （rose 语义 token，`.dark` 块里都有覆盖）。
  * 单击展开看见最近 4 条样本对比 + "推迟 1d/2d" 影响警告段 +
  * 忽略按钮（localStorage 记录，避免反复打扰）。
  */
@@ -84,15 +85,15 @@ const ComplianceBanner: React.FC<ComplianceBannerProps> = ({ mismatches, onDismi
         <div
             className="mx-4 rounded-2xl p-4 flex flex-col gap-3"
             style={{
-                background: 'var(--accent-50)',
-                border: '1px solid var(--accent-200)',
+                background: 'var(--bg-soft-rose)',
+                border: '1px solid var(--border-soft-rose)',
             }}
             role="status"
             aria-live="polite"
         >
             {/* Header row — always visible. */}
             <div className="flex items-center gap-3">
-                <Pill size={20} style={{ color: 'var(--accent-700, #92400e)' }} />
+                <Pill size={20} style={{ color: 'var(--text-soft-rose)' }} />
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                         {t('compliance.banner.title') || '用药方式与计划不符'}
@@ -193,9 +194,9 @@ const ComplianceBanner: React.FC<ComplianceBannerProps> = ({ mismatches, onDismi
                     <div
                         className="rounded-xl p-3 text-xs leading-relaxed"
                         style={{
-                            background: 'rgba(254, 243, 199, 0.45)',
+                            background: 'var(--bg-soft-amber)',
                             color: 'var(--text-primary)',
-                            border: '1px solid rgba(245, 158, 11, 0.25)',
+                            border: '1px solid var(--border-soft-amber)',
                         }}
                     >
                         {t('compliance.banner.delay_warning') ||

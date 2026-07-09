@@ -67,7 +67,7 @@ const QuickDosePanel: React.FC<QuickDosePanelProps> = ({
                                 onClick={() => onSelectPreset(mg)}
                                 className="py-3 rounded-xl text-sm font-bold font-mono transition-all border"
                                 style={selected
-                                    ? { background: 'var(--accent-50)', borderColor: 'var(--accent-300)', color: 'var(--accent-500)', boxShadow: 'var(--shadow-sm)' }
+                                    ? { background: 'var(--bg-soft-rose)', borderColor: 'var(--border-soft-rose)', color: 'var(--accent-500)', boxShadow: 'var(--shadow-sm)' }
                                     : { background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-primary)' }}
                             >
                                 {mg} mg

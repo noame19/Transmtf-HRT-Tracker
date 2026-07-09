@@ -150,10 +150,10 @@ const CustomSelect = ({ value, onChange, options, label }: CustomSelectProps) =>
                                 onMouseEnter={() => setFocusedIndex(index)}
                                 className={`w-full p-3 text-left flex items-center gap-2 cursor-pointer transition-colors outline-none
                                     focus:ring-2 focus:ring-inset
-                                    ${opt.value === value ? 'font-bold' : 'hover:bg-[var(--accent-50)]'}`}
+                                    ${opt.value === value ? 'font-bold' : 'hover:bg-[var(--bg-soft-rose)]'}`}
                                 style={{
                                     color: opt.value === value ? 'var(--accent-500)' : 'var(--text-primary)',
-                                    background: opt.value === value ? 'var(--accent-50)' : undefined,
+                                    background: opt.value === value ? 'var(--bg-soft-rose)' : undefined,
                                 }}
                             >
                                 {opt.icon}

@@ -877,7 +877,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                         type="number" inputMode="decimal" min="0" step="0.001"
                                                         value={e2Dose} onChange={e => handleE2Change(e.target.value)}
                                                         className="w-full p-4 rounded-xl focus:ring-2 outline-none font-bold font-mono"
-                                                        style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)', color: 'var(--accent-500)' }}
+                                                        style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)', color: 'var(--accent-500)' }}
                                                         placeholder="0.0"
                                                     />
                                                 </div>
@@ -1071,7 +1071,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                 {/* Tap-to-edit hint */}
                                 {previewEvents.length > 0 && (
                                     <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"
-                                        style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)' }}>
+                                        style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)' }}>
                                         <MousePointerClick size={15} className="shrink-0" style={{ color: 'var(--accent-500)' }} />
                                         <p className="text-xs leading-snug font-medium" style={{ color: 'var(--accent-500)' }}>
                                             {t('batch.tap_to_edit')}
@@ -1085,7 +1085,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </span>
                                     {previewSummary && (
                                         <span className="text-xs px-2.5 py-1 rounded-full font-bold shrink-0"
-                                            style={{ background: 'var(--accent-50)', color: 'var(--accent-500)', border: '1px solid var(--accent-200)' }}>
+                                            style={{ background: 'var(--bg-soft-rose)', color: 'var(--accent-500)', border: '1px solid var(--border-soft-rose)' }}>
                                             {previewSummary.mixed
                                                 ? t('batch.mixed')
                                                 : `${t(`route.${previewSummary.route}`)}${previewSummary.ester && previewSummary.route !== Route.patchRemove && previewSummary.route !== Route.gel && previewSummary.route !== Route.patchApply ? ` · ${t(`ester.${previewSummary.ester}`)}` : ''}`}

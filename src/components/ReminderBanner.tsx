@@ -65,10 +65,10 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
         return (
             <div className="mx-4 rounded-2xl p-4 flex items-center gap-3"
                 style={{
-                    background: 'var(--accent-50)',
-                    border: '1px solid var(--accent-200)',
+                    background: 'var(--bg-soft-rose)',
+                    border: '1px solid var(--border-soft-rose)',
                 }}>
-                <AlertTriangle size={20} style={{ color: 'var(--accent-700, #92400e)' }} />
+                <AlertTriangle size={20} style={{ color: 'var(--text-soft-rose)' }} />
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                         {t('reminder.banner.permission_denied') || '通知权限未开启'}
@@ -115,14 +115,14 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
         <div className="mx-4 rounded-2xl p-4 flex flex-col gap-3"
             style={{
                 background: isLate
-                    ? 'var(--accent-50)'
-                    : 'linear-gradient(135deg, var(--accent-50) 0%, var(--bg-card-hover) 100%)',
-                border: '1px solid var(--accent-200)',
+                    ? 'var(--bg-soft-rose)'
+                    : 'linear-gradient(135deg, var(--bg-soft-rose) 0%, var(--bg-card-hover) 100%)',
+                border: '1px solid var(--border-soft-rose)',
             }}>
             {/* Header row */}
             <div className="flex items-center gap-3">
                 {isLate
-                    ? <Clock size={20} style={{ color: 'var(--accent-700, #92400e)' }} />
+                    ? <Clock size={20} style={{ color: 'var(--text-soft-rose)' }} />
                     : <Bell size={20} style={{ color: 'var(--accent-500)' }} />}
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>

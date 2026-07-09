@@ -405,12 +405,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                     {complianceMismatch && (
                         <div className="rounded-2xl p-3 flex items-start gap-2 -mb-2"
                             style={{
-                                background: 'var(--accent-50)',
-                                border: '1px solid var(--accent-200)',
+                                background: 'var(--bg-soft-rose)',
+                                border: '1px solid var(--border-soft-rose)',
                             }}
                             role="status"
                             aria-live="polite">
-                            <AlertTriangle size={16} style={{ color: 'var(--accent-700, #92400e)', marginTop: 2, flexShrink: 0 }} />
+                            <AlertTriangle size={16} style={{ color: 'var(--text-soft-rose)', marginTop: 2, flexShrink: 0 }} />
                             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-primary)' }}>
                                 {t('plan.compliance_warning') || '该计划与最近的用药历史不符，非换药/其他特殊情况不建议启用此计划'}
                             </p>

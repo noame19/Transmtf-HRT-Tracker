@@ -1160,7 +1160,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                                     step="0.001"
                                                     value={e2Dose} onChange={e => handleE2Change(e.target.value)}
                                                     className="w-full p-4 rounded-xl focus:ring-2 outline-none font-bold font-mono"
-                                                    style={{ background: 'var(--accent-50)', border: '1px solid var(--accent-200)', color: 'var(--accent-500)' }}
+                                                    style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)', color: 'var(--accent-500)' }}
                                                     placeholder="0.0"
                                                 />
                                             </div>
@@ -1350,7 +1350,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                             }
                                         }}
                                         className="flex-1 text-sm px-2 py-1 rounded-lg focus:outline-none focus:ring-2"
-                                        style={{ border: '1px solid var(--accent-200)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                                        style={{ border: '1px solid var(--border-soft-rose)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
                                     />
                                     <button
                                         onClick={() => {
@@ -1444,7 +1444,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                             aria-expanded={showPanel}
                             className="w-14 h-14 flex items-center justify-center rounded-xl border transition-colors shrink-0"
                             style={showPanel
-                                ? { background: 'var(--accent-50)', borderColor: 'var(--accent-200)', color: 'var(--accent-400)' }
+                                ? { background: 'var(--bg-soft-rose)', borderColor: 'var(--border-soft-rose)', color: 'var(--accent-400)' }
                                 : { background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)', color: 'var(--text-tertiary)' }
                             }
                         >

@@ -463,7 +463,7 @@ const SettingsPage: React.FC = () => {
                             onClick={() => setIsImportModalOpen(true)}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-soft-rose)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <Upload className="text-teal-500" size={20} />
@@ -477,7 +477,7 @@ const SettingsPage: React.FC = () => {
                             onClick={handleExport}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-soft-rose)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <Download style={{ color: 'var(--accent-500)' }} size={20} />
@@ -528,7 +528,7 @@ const SettingsPage: React.FC = () => {
                             onClick={() => navigate('/profile')}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-50)'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-soft-rose)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                             <div className="h-12 w-12 rounded-full border-2 overflow-hidden flex-shrink-0"

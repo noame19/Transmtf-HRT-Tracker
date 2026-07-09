@@ -352,8 +352,8 @@ const SyncConflictModal: React.FC<SyncConflictModalProps> = ({ isOpen, conflict,
         <div
           className="flex items-start gap-3 p-3 rounded-xl"
           style={{
-            background: 'color-mix(in srgb, var(--accent-50) 60%, transparent)',
-            border: '1px solid var(--accent-200)',
+            background: 'color-mix(in srgb, var(--bg-soft-rose) 60%, transparent)',
+            border: '1px solid var(--border-soft-rose)',
           }}
         >
           <AlertTriangle size={20} className="shrink-0 mt-0.5" style={{ color: 'var(--accent-500)' }} />

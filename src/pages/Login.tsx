@@ -164,7 +164,7 @@ const Login: React.FC = () => {
 
   return (
     <div className="w-full min-h-full flex items-center justify-center p-3 sm:p-4"
-      style={{ background: `linear-gradient(135deg, var(--accent-50) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%)` }}>
+      style={{ background: `linear-gradient(135deg, var(--bg-soft-rose) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%)` }}>
       <div className="w-full max-w-sm">
         <div className="rounded-2xl sm:rounded-3xl glass-card p-5 sm:p-6">
           <div className="text-center mb-5 sm:mb-6">

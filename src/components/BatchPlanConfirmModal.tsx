@@ -79,7 +79,7 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
                             style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)' }}>
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                                 style={{
-                                    background: plan.route === RouteEnum.injection ? 'var(--accent-50)' : 'var(--bg-card)',
+                                    background: plan.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card)',
                                     border: '1px solid var(--border-primary)',
                                 }}>
                                 {getRouteIcon(plan.route)}
