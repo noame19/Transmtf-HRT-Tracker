@@ -441,23 +441,25 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 const routes = routesOfCell(d);
                                                 const isPatchOnly =
                                                     routes.length > 0 && routes.every((r) => r === Route.patchApply);
-                                                // Plan-fire state per day: today deliberately falls
-                                                // through to the historical branch so the user's
-                                                // real (already-logged) colour band wins for the
-                                                // day they care about most; future days with at
-                                                // least one enabled plan firing take the
-                                                // category-aware highlight (estradiol → magenta,
-                                                // anti-androgen → light blue, both → wavy split).
-                                                const planFireCats = d.isToday
-                                                    ? null
-                                                    : (planFireCategoriesByDate.get(d.dateKey) ?? null);
+                                                // Plan-fire state per day: today is treated like
+                                                // every other day — if the enabled-plan schedule
+                                                // fires today the cell takes the future-fire
+                                                // colour, otherwise it falls through to the
+                                                // historical branch. Previously today was
+                                                // force-pinned to the historical branch with a
+                                                // 1.5px accent-300 outline and a forced white
+                                                // day number, which made the cell read as a
+                                                // fixed magenta "today" indicator that no other
+                                                // signal could override.
+                                                const planFireCats = planFireCategoriesByDate.get(d.dateKey) ?? null;
                                                 const isPlanFireFuture = planFireCats !== null;
-                                                // White day-number renders on any "signal" day:
-                                                // a real admin event landed, today, or a future
-                                                // plan-fire day. Past empty days stay blank so
-                                                // the colour bands read as the primary signal.
+                                                // Day-number renders on any "signal" day: a real
+                                                // admin event landed, OR a plan-fire day. Today
+                                                // is no longer in the list — an empty today reads
+                                                // the same as an empty past day so the colour band
+                                                // is visually consistent across the row.
                                                 const hasEvents = d.events.some((e) => !isPatchRemove(e));
-                                                const showDayNum = d.isToday || isPlanFireFuture || hasEvents;
+                                                const showDayNum = hasEvents || isPlanFireFuture;
                                                 return (
                                                     <button
                                                         key={`${wIdx}-${dayIdx}`}
@@ -467,8 +469,13 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         style={{
                                                             background: cellBackground(cats, d, isDark, planFireCats),
                                                             opacity: 1,
-                                                            outline: d.isToday ? '1.5px solid var(--accent-300)' : 'none',
-                                                            outlineOffset: d.isToday ? '-1.5px' : 0,
+                                                            // "This is today" cue: thin muted outline
+                                                            // (1px accent-200) so the cell still finds
+                                                            // its place in the grid without screaming
+                                                            // for attention next to the colour bands.
+                                                            // Past / future days keep no outline.
+                                                            outline: d.isToday ? '1px solid var(--accent-200)' : 'none',
+                                                            outlineOffset: d.isToday ? '-1px' : 0,
                                                         }}
                                                         onMouseEnter={(e) => {
                                                             // Skip tooltip while the user is panning — the
