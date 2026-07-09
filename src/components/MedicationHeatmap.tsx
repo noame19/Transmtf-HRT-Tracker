@@ -40,7 +40,7 @@ import {
 //   • 1=mono, 2=diagonal, 3=L+M+R, 4=2×2 cross, 5+=cross + "+N" badge
 //   • patches propagate apply→remove as one continuous band
 //   • tooltip = day date + per-event rows (HH:MM, route icon, ester, dose)
-//   • today is ALWAYS a fixed purple fill (accent-300) that overrides every
+//   • today is ALWAYS a fixed purple fill (#cb64ff) that overrides every
 //     other rule — events, plan-fire, empty, dark/light. The day-of-month
 //     number is always rendered (white on purple) so the user can read the
 //     date at a glance. Past / future cells fade to whatever the data says.
@@ -617,7 +617,7 @@ function cellBackground(
     // Today ALWAYS wins — solid purple fill that overrides plan-fire,
     // events, empty, dark/light. The user wants today to be visually
     // unmistakable regardless of what data is on it.
-    if (cell.isToday) return 'var(--accent-300)';
+    if (cell.isToday) return '#cb64ff';
     // Plan-fire day: render by enabled-plan category, not by recorded events.
     // (Today is short-circuited above so this branch never fires for today.)
     if (planFireCats && planFireCats.length > 0) {
