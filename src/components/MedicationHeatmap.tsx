@@ -40,9 +40,10 @@ import {
 //   • 1=mono, 2=diagonal, 3=L+M+R, 4=2×2 cross, 5+=cross + "+N" badge
 //   • patches propagate apply→remove as one continuous band
 //   • tooltip = day date + per-event rows (HH:MM, route icon, ester, dose)
-//   • today has NO special chrome (no outline, no forced day number) — fully
-//     data-driven: same colour rules as any past / future cell, only the
-//     events / plan-fire contents decide what it looks like
+//   • today is ALWAYS a fixed purple fill (accent-300) that overrides every
+//     other rule — events, plan-fire, empty, dark/light. The day-of-month
+//     number is always rendered (white on purple) so the user can read the
+//     date at a glance. Past / future cells fade to whatever the data says.
 //   • weekday labels are sticky-left so 一-日 stay visible while scrolling
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -443,24 +444,18 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                 const routes = routesOfCell(d);
                                                 const isPatchOnly =
                                                     routes.length > 0 && routes.every((r) => r === Route.patchApply);
-                                                // Plan-fire state per day: today is treated like
-                                                // every other day — if the enabled-plan schedule
-                                                // fires today the cell takes the future-fire
-                                                // colour, otherwise it falls through to the
-                                                // historical branch. Today has NO special chrome
-                                                // (no outline, no forced day number) so it reads
-                                                // exactly like any other day: a plan-fire day
-                                                // takes the future hue, an admin-event day takes
-                                                // the historical hue, an empty day is grey.
+                                                // Plan-fire state per day. Today ALWAYS wins —
+                                                // it forces the fixed purple background and day
+                                                // number regardless of plan-fire / events / empty.
+                                                // Past / future cells follow the normal rules.
                                                 const planFireCats = planFireCategoriesByDate.get(d.dateKey) ?? null;
                                                 const isPlanFireFuture = planFireCats !== null;
-                                                // Day-number renders on any "signal" day: a real
-                                                // admin event landed, OR a plan-fire day. Today
-                                                // is no longer in the list — an empty today reads
-                                                // the same as an empty past day so the colour band
-                                                // is visually consistent across the row.
+                                                // Day-number always renders on today (fixed purple
+                                                // fill needs a label so the date is readable at a
+                                                // glance); on past / future cells it renders only
+                                                // on signal days (events or plan-fire).
                                                 const hasEvents = d.events.some((e) => !isPatchRemove(e));
-                                                const showDayNum = hasEvents || isPlanFireFuture;
+                                                const showDayNum = d.isToday || hasEvents || isPlanFireFuture;
                                                 return (
                                                     <button
                                                         key={`${wIdx}-${dayIdx}`}
@@ -470,13 +465,11 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                                                         style={{
                                                             background: cellBackground(cats, d, isDark, planFireCats),
                                                             opacity: 1,
-                                                            // Today gets NO outline — it is rendered by
-                                                            // exactly the same rules as any other day
-                                                            // (plan-fire → future hue; events → historical
-                                                            // hue; empty → grey). The day number only
-                                                            // renders on signal days (see showDayNum
-                                                            // below). Today without events reads identical
-                                                            // to an empty past day.
+                                                            // Today gets a fixed purple fill that
+                                                            // overrides every other colour rule —
+                                                            // events, plan-fire, empty, light/dark all
+                                                            // yield the same purple cell so the user
+                                                            // can always spot today at a glance.
                                                             outline: 'none',
                                                             outlineOffset: 0,
                                                         }}
@@ -621,9 +614,12 @@ function cellBackground(
     isDark: boolean,
     planFireCats: DrugCategory[] | null,
 ): string {
+    // Today ALWAYS wins — solid purple fill that overrides plan-fire,
+    // events, empty, dark/light. The user wants today to be visually
+    // unmistakable regardless of what data is on it.
+    if (cell.isToday) return 'var(--accent-300)';
     // Plan-fire day: render by enabled-plan category, not by recorded events.
-    // (Today is filtered to null at the call site so the user's real logged
-    // colour band on today stays visible.)
+    // (Today is short-circuited above so this branch never fires for today.)
     if (planFireCats && planFireCats.length > 0) {
         if (planFireCats.length === 1) {
             // Single plan firing that day → solid colour matching its category.
