@@ -6,7 +6,7 @@ import ResultChart from '../components/ResultChart';
 import MedicationHeatmap from '../components/MedicationHeatmap';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
-import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
 import { Plan } from '../../types';
 import { drugCategoryOf, formatNextDue, nextDueAfter, pickPrimaryEnabledPlan } from '../utils/planSchedule';
 
@@ -196,7 +196,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const lastE2Dose = useMemo<DoseEvent | null>(() => {
     let latest: DoseEvent | null = null;
     for (const ev of events) {
-      if (isAntiandrogen(ev.ester)) continue;
+      // PROG (and any future non-E2 non-anti-androgen) MUST be excluded: a
+      // progesterone dose via injection or rectal route is its own drug and
+      // does not contribute to the "上一次雌二醇" headline. isE2Family is the
+      // allow-list (E2 / EB / EV / EC / EN / EU); the anti-androgen check is
+      // kept for symmetry / readability but is subsumed by the inverse.
+      if (!isE2Family(ev.ester)) continue;
       if (ev.route === Route.oral) continue;
       if (ev.route === Route.patchRemove) continue;
       if (ev.timeH > h) continue;

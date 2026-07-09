@@ -13,6 +13,8 @@ export {
     interpolateConcentration_CPA,
     interpolateCompoundConcentration,
     isAntiandrogen,
+    isE2Family,
+    E2_FAMILY,
     pickPrimaryAntiandrogen,
     formatAntiandrogenConc,
     bicalutamideConcNgML,

@@ -561,6 +561,32 @@ export function isAntiandrogen(ester: Ester): boolean {
 }
 
 /**
+ * True when the ester is an estradiol-family prodrug (E2 itself or one of its
+ * slow esters that hydrolyse into E2: EB / EV / EC / EN / EU). The PK model
+ * has a molecular-weight entry for every such ester, and `getToE2Factor` only
+ * produces a meaningful scale factor in this case.
+ *
+ * Symmetric companion to `isAntiandrogen`. Used by the home screen's
+ * "上一次雌二醇" card to keep PROG / anti-androgens / any future unknown
+ * ester out of the count — a progesterone or anti-androgen dose is not "the
+ * last estradiol dose" just because the same route select happens to render
+ * it. Implemented as an explicit allow-list rather than "has an EsterInfo
+ * entry" because EsterInfo also rows out CPA / BICA for bioavailability
+ * conversion (their mw is needed by some helpers, even though it has no
+ * meaningful E2-equivalence).
+ */
+export function isE2Family(ester: Ester): boolean {
+    return E2_FAMILY.has(ester);
+}
+
+/** All estrogens / estradiol esters tracked by the PK model. Allow-list used
+ *  by `isE2Family`. Add a new entry here whenever a new estradiol prodrug
+ *  (depot variant, ester conjugate, etc.) is added to the Ester enum. */
+export const E2_FAMILY: ReadonlySet<Ester> = new Set([
+    Ester.E2, Ester.EB, Ester.EV, Ester.EC, Ester.EN, Ester.EU,
+]);
+
+/**
  * Pick which anti-androgen "owns" the shared right axis / headline: the most
  * recently dosed anti-androgen. CPA and bicalutamide are clinical alternatives
  * with ~1000× different scales, so only one is shown at a time — whichever the

@@ -4,6 +4,7 @@ import {
     bicalutamideConcNgML,
     runSimulation,
     isAntiandrogen,
+    isE2Family,
     pickPrimaryAntiandrogen,
     ANTIANDROGENS,
     EU_DEPOT_PK,
@@ -833,6 +834,41 @@ describe('getToE2Factor — non-E2-ester fallback', () => {
         const ghost = 'NOT_A_REAL_ESTER' as unknown as Ester;
         expect(() => getToE2Factor(ghost)).not.toThrow();
         expect(getToE2Factor(ghost)).toBe(1);
+    });
+});
+
+describe('isE2Family', () => {
+    // The home screen's "上一次雌二醇" card and any future "E2 dose log"
+    // must use the same allow-list — otherwise a progesterone or
+    // anti-androgen entry (which share the same UI route/ester selects)
+    // would silently leak into an "E2 last dose" display. Regression
+    // for the 黄体酮 preset-save bug: previously lastE2Dose only filtered
+    // anti-androgens, so IM / rectal PROG was counted as the user's last
+    // estradiol dose.
+
+    it('returns true for E2 and every published estradiol ester', () => {
+        for (const e of [Ester.E2, Ester.EB, Ester.EV, Ester.EC, Ester.EN, Ester.EU]) {
+            expect(isE2Family(e), `expected ${e} to be E2 family`).toBe(true);
+        }
+    });
+
+    it('returns false for progesterone (PROG has no PK model entry)', () => {
+        expect(isE2Family(Ester.PROG)).toBe(false);
+    });
+
+    it('returns false for tracked anti-androgens (CPA, BICA) — EsterInfo has mw but E2_FAMILY still excludes them', () => {
+        // CPA / BICA both live in EsterInfo (their mw is needed by other
+        // helpers even though no E2-equivalence exists), so the previous
+        // "hasOwnProperty in EsterInfo" implementation accidentally counted
+        // them as E2 family. The allow-list makes the boundary explicit.
+        expect(isE2Family(Ester.CPA)).toBe(false);
+        expect(isE2Family(Ester.BICA)).toBe(false);
+    });
+
+    it('returns false for an unknown / future ester value', () => {
+        const ghost = 'NOT_A_REAL_ESTER' as unknown as Ester;
+        expect(() => isE2Family(ghost)).not.toThrow();
+        expect(isE2Family(ghost)).toBe(false);
     });
 });
 
