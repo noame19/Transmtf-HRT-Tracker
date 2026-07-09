@@ -1,6 +1,6 @@
 import React from 'react';
 import { Syringe, Pill, Droplet, Sticker, X, Brain } from 'lucide-react';
-import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, ExtraKey } from '../../logic';
+import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, isE2Family, ExtraKey } from '../../logic';
 import { Lang } from '../i18n/translations';
 
 export const formatDate = (date: Date, lang: Lang) => {
@@ -62,6 +62,11 @@ export const getBioDoseMG = (event: DoseEvent) => {
 export const getRawDoseMG = (event: DoseEvent) => {
     if (event.route === Route.patchRemove) return null;
     if (event.extras[ExtraKey.releaseRateUGPerDay]) return null;
+    // Non-E2 esters (PROG, CPA, BICA) have no validated E2-equivalence. The
+    // contract is "display the recorded mg" — not "convert to E2 mg". For
+    // E2-family esters the population factor is applied to produce the E2-
+    // equivalent dose that the user has been trained to read.
+    if (!isE2Family(event.ester)) return event.doseMG;
     const factor = getToE2Factor(event.ester);
     if (!factor) return event.doseMG;
     return event.doseMG / factor;
