@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
 import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
@@ -461,7 +461,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     // Build dose event scatter points for marking on the chart
     const dosePoints = useMemo(() => {
         if (!sim || !events || events.length === 0) return [];
-        return events.map(e => {
+        // Only E2-family doses are plotted on the E2 concentration curve.
+        // Anti-androgens (CPA / BICA) carry their own byCompound track and a
+        // dedicated primaryAA series; plotting them as pink E2 dots would
+        // mislead. PROG has no validated E2 mapping — it must not be drawn
+        // here at all.
+        return events.filter(e => isE2Family(e.ester)).map(e => {
             const timeMs = e.timeH * 3600000;
             // Interpolate E2 at dose time for y-position
             const concE2Raw = interpolateConcentration_E2(sim, e.timeH);

@@ -8,7 +8,7 @@ import {
     XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot,
     Area, AreaChart, ComposedChart, Scatter
 } from 'recharts';
-import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
 import { formatDate } from '../utils/helpers';
 
 interface SimCI {
@@ -180,7 +180,9 @@ const ResultChartStatic: React.FC<Props> = ({ sim, events, labResults, simCI, ba
     const dosePoints = useMemo(() => {
         if (!sim || !events.length) return [];
         const baseShift = (!hasPersonalModel && baselineE2PGmL && baselineE2PGmL > 0) ? baselineE2PGmL : 0;
-        return events.map(e => {
+        // Only E2-family doses belong on the E2 concentration curve; anti-
+        // androgens have their own byCompound track, PROG has no E2 mapping.
+        return events.filter(e => isE2Family(e.ester)).map(e => {
             const concE2Raw = interpolateConcentration_E2(sim, e.timeH);
             const concE2 = concE2Raw !== null && !isNaN(concE2Raw) ? concE2Raw + baseShift : 0;
             return { time: e.timeH * 3600000, concE2, ester: e.ester };
