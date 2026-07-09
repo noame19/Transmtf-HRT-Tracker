@@ -77,21 +77,25 @@ const DOSE_GUIDE_CONFIG: Partial<Record<`${Route}:${Ester}`, DoseGuideConfig>> =
     [`${Route.injection}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [12.5, 25, 50, 75] },
 };
 
+/* Colors drive from --bg-bold-* / --text-bold-* / --bg-soft-* / --border-soft-*
+ * tokens in index.html. Keeping these inline as plain class strings would
+ * re-introduce the Tailwind `dark:` media-query which fights with the
+ * ThemeContext's class-based .dark toggle. */
 const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
-    low: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-    medium: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
-    high: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-    very_high: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
-    above: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+    low: 'bg-[var(--bg-bold-emerald)] text-[var(--text-bold-emerald)]',
+    medium: 'bg-[var(--bg-bold-sky)] text-[var(--text-bold-sky)]',
+    high: 'bg-[var(--bg-bold-amber)] text-[var(--text-bold-amber)]',
+    very_high: 'bg-[var(--bg-bold-rose)] text-[var(--text-bold-rose)]',
+    above: 'bg-[var(--bg-bold-red)] text-[var(--text-bold-red)]'
 };
 
 const LEVEL_CONTAINER_STYLES: Record<DoseLevelKey | 'neutral', string> = {
-    low: 'bg-emerald-50 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800/40',
-    medium: 'bg-sky-50 border-sky-100 dark:bg-sky-900/20 dark:border-sky-800/40',
-    high: 'bg-amber-50 border-amber-100 dark:bg-amber-900/20 dark:border-amber-800/40',
-    very_high: 'bg-rose-50 border-rose-100 dark:bg-rose-900/20 dark:border-rose-800/40',
-    above: 'bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-800/40',
-    neutral: 'bg-gray-50 border-gray-200 dark:bg-gray-800/40 dark:border-gray-700'
+    low: 'bg-[var(--bg-soft-emerald)] border-[var(--border-soft-emerald)]',
+    medium: 'bg-[var(--bg-soft-sky)] border-[var(--border-soft-sky)]',
+    high: 'bg-[var(--bg-soft-amber)] border-[var(--border-soft-amber)]',
+    very_high: 'bg-[var(--bg-soft-rose)] border-[var(--border-soft-rose)]',
+    above: 'bg-[var(--bg-soft-red)] border-[var(--border-soft-red)]',
+    neutral: 'bg-[var(--bg-soft-gray)] border-[var(--border-med-gray)]'
 };
 
 const formatGuideNumber = (val: number) => {
@@ -992,7 +996,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                             {/* Estradiol undecylate is easily confused with valerate and rests on
                                 sparse public PK; surface that caveat at selection time. */}
                             {route === Route.injection && ester === Ester.EU && (
-                                <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
+                                <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
                                     {t('ester.EU_note')}
                                 </div>
                             )}
@@ -1015,7 +1019,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         ]}
                                     />
                                     {!allGelProducts.some(p => p.id === gelProductId) && (
-                                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-2 rounded-lg">
+                                        <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-2 rounded-lg">
                                             {t('gel.product.missing_note')}
                                         </div>
                                     )}
@@ -1031,7 +1035,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         }))}
                                     />
                                     {GEL_SITE_ORDER[gelSite] === GelSite.scrotal && (
-                                        <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-2 rounded-lg">
+                                        <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-2 rounded-lg">
                                             {t('gel.site.scrotal_note')}
                                         </div>
                                     )}
@@ -1084,7 +1088,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                         <input value={gelWash} onChange={e => setGelWash(e.target.value)} inputMode="decimal" placeholder={t('gel.wash_none')} className="w-full p-3 rounded-xl glass-input outline-none" />
                                     </div>
 
-                                    <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
+                                    <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
                                         {t('beta.gel')}
                                     </div>
                                 </div>
@@ -1109,7 +1113,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                             {t('field.patch_rate')}
                                         </button>
                                     </div>
-                                    <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/40 p-3 rounded-xl">
+                                    <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
                                         {t('beta.patch')}
                                     </div>
                                 </div>
@@ -1251,7 +1255,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                             </p>
                                         )}
                                         {doseGuide.showRateHint && (
-                                            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                                            <p className="text-xs text-[var(--text-soft-amber)] leading-relaxed">
                                                 {t('dose.guide.patch_rate_hint')}
                                             </p>
                                         )}
@@ -1261,14 +1265,14 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
                             {/* Sublingual Specifics */}
                             {route === Route.sublingual && (
-                                <div className="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-2xl border border-teal-100 dark:border-teal-800/40 space-y-4">
+                                <div className="bg-[var(--bg-soft-teal)] p-4 rounded-2xl border border-[var(--border-soft-teal)] space-y-4">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-sm font-bold text-teal-800 dark:text-teal-300 flex items-center gap-2">
+                                        <label className="text-sm font-bold text-[var(--text-bold-teal)] flex items-center gap-2">
                                             <Clock size={16} /> {t('field.sl_duration')}
                                         </label>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-teal-600 dark:text-teal-400">{t('field.sl_custom')}</span>
-                                            <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
+                                            <span className="text-xs font-medium text-[var(--text-icon-teal)]">{t('field.sl_custom')}</span>
+                                            <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-[var(--toggle-track-off)]'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
                                                 <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomTheta ? 'translate-x-4' : ''}`} />
                                             </div>
                                         </div>
@@ -1279,30 +1283,30 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                             <input
                                                 type="range" min="0" max="3" step="1"
                                                 value={slTier} onChange={e => setSlTier(parseInt(e.target.value))}
-                                                className="w-full h-2 bg-teal-200 dark:bg-teal-700 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                                className="w-full h-2 bg-[var(--track-teal)] rounded-lg appearance-none cursor-pointer accent-teal-600"
                                             />
-                                            <div className="flex justify-between text-xs font-medium text-teal-700 dark:text-teal-400">
+                                            <div className="flex justify-between text-xs font-medium text-[var(--text-icon-teal)]">
                                                 <span>{t('sl.mode.quick')}</span>
                                                 <span>{t('sl.mode.casual')}</span>
                                                 <span>{t('sl.mode.standard')}</span>
                                                 <span>{t('sl.mode.strict')}</span>
                                             </div>
-                                            <div className="text-xs text-teal-600 dark:text-teal-400 bg-white/50 dark:bg-teal-900/30 p-2 rounded-lg flex justify-between items-center">
+                                            <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
                                                 <span>Absorption θ ≈ {currentTheta.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="space-y-2">
-                                            <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-teal-200 dark:border-teal-700 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }} placeholder="0.0 - 1.0" />
-                                            <div className="text-xs text-teal-600 dark:text-teal-400 bg-white/50 dark:bg-teal-900/30 p-2 rounded-lg flex justify-between items-center">
+                                            <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-[var(--border-med-teal)] rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }} placeholder="0.0 - 1.0" />
+                                            <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
                                                 <span>Absorption θ ≈ {activeTheta.toFixed(2)}</span>
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="flex gap-3 items-start p-3 bg-white dark:bg-teal-900/30 rounded-xl border border-teal-100 dark:border-teal-800/40">
+                                    <div className="flex gap-3 items-start p-3 bg-[var(--bg-tip-card)] rounded-xl border border-[var(--border-soft-teal)]">
                                         <Info className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
-                                        <p className="text-xs text-teal-700 dark:text-teal-300 leading-relaxed text-justify">
+                                        <p className="text-xs text-[var(--text-soft-teal)] leading-relaxed text-justify">
                                             {t('sl.instructions')}
                                         </p>
                                     </div>
