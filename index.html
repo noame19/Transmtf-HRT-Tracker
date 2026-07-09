@@ -35,6 +35,26 @@
             --text-tertiary: #94a3b8;
             --border-primary: #e2e8f0;
             --border-secondary: #f1f5f9;
+
+            /* Alert palette — soft-fill badges, hints, warnings. Light values
+             * mirror Tailwind's 50/200/700 scale; dark overrides switch to
+             * 900/700/300 with a 30% alpha on the fill so the badge sits
+             * softly on a dark card without screaming. */
+            --alert-bg-info:     #eff6ff;   /* blue-50 */
+            --alert-text-info:   #1d4ed8;   /* blue-700 */
+            --alert-border-info: #bfdbfe;   /* blue-200 */
+            --alert-bg-success:    #ecfdf5;   /* emerald-50 */
+            --alert-text-success:  #047857;   /* emerald-700 */
+            --alert-border-success: #a7f3d0;   /* emerald-200 */
+            --alert-bg-warning:    #fffbeb;   /* amber-50 */
+            --alert-text-warning:  #b45309;   /* amber-700 */
+            --alert-border-warning: #fde68a;   /* amber-200 */
+            --alert-bg-danger:     #fef2f2;   /* red-50 */
+            --alert-text-danger:   #b91c1c;   /* red-700 */
+            --alert-border-danger: #fecaca;   /* red-200 */
+            --alert-bg-neutral:    #f9fafb;   /* gray-50 */
+            --alert-text-neutral:  #374151;   /* gray-700 */
+            --alert-border-neutral: #e5e7eb;   /* gray-200 */
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
             --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
             --shadow-lg: 0 12px 32px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
@@ -71,6 +91,25 @@
             --text-tertiary: #64748b;
             --border-primary: #334155;
             --border-secondary: #1e293b;
+
+            /* Alert palette dark overrides — the badge fill picks up a
+             * semi-transparent deep shade so it reads softly on the dark
+             * card; text + border stay solid for legibility. */
+            --alert-bg-info:     rgba(30, 58, 138, 0.30);   /* blue-900/30 */
+            --alert-text-info:   #93c5fd;   /* blue-300 */
+            --alert-border-info: #1d4ed8;   /* blue-700 */
+            --alert-bg-success:    rgba(6, 78, 59, 0.30);    /* emerald-900/30 */
+            --alert-text-success:  #6ee7b7;   /* emerald-300 */
+            --alert-border-success: #047857;   /* emerald-700 */
+            --alert-bg-warning:    rgba(120, 53, 15, 0.30);  /* amber-900/30 */
+            --alert-text-warning:  #fcd34d;   /* amber-300 */
+            --alert-border-warning: #b45309;   /* amber-700 */
+            --alert-bg-danger:     rgba(127, 29, 29, 0.30);  /* red-900/30 */
+            --alert-text-danger:   #fca5a5;   /* red-300 */
+            --alert-border-danger: #b91c1c;   /* red-700 */
+            --alert-bg-neutral:    #1f2937;   /* gray-800 */
+            --alert-text-neutral:  #d1d5db;   /* gray-300 */
+            --alert-border-neutral: #4b5563;   /* gray-600 */
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.22), 0 1px 2px rgba(0,0,0,0.16);
             --shadow-md: 0 4px 12px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.22);
             --shadow-lg: 0 12px 32px rgba(0,0,0,0.38), 0 4px 8px rgba(0,0,0,0.22);

@@ -11,11 +11,14 @@ interface BadgeProps {
 
 const variantClasses: Record<BadgeVariant, string> = {
   accent: 'bg-[var(--accent-50)] text-[var(--accent-600)] border-[var(--accent-200)]',
-  info: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
-  success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700',
-  warning: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
-  danger: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
-  neutral: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600',
+  // Light/dark variants are driven by the alert-* CSS variables in
+  // index.html (:root + .dark). This keeps the dark palette under app
+  // toggle control, not the OS `prefers-color-scheme` media query.
+  info: 'bg-[var(--alert-bg-info)] text-[var(--alert-text-info)] border-[var(--alert-border-info)]',
+  success: 'bg-[var(--alert-bg-success)] text-[var(--alert-text-success)] border-[var(--alert-border-success)]',
+  warning: 'bg-[var(--alert-bg-warning)] text-[var(--alert-text-warning)] border-[var(--alert-border-warning)]',
+  danger: 'bg-[var(--alert-bg-danger)] text-[var(--alert-text-danger)] border-[var(--alert-border-danger)]',
+  neutral: 'bg-[var(--alert-bg-neutral)] text-[var(--alert-text-neutral)] border-[var(--alert-border-neutral)]',
 };
 
 const Badge: React.FC<BadgeProps> = ({
