@@ -401,6 +401,11 @@ export function gel3CompCentralAmount(
  */
 export function gelEventCentralAmount(event: DoseEvent, tau: number, ke: number): number {
     if (tau <= 0 || event.doseMG <= 0) return 0;
+    // Gel kinetics are only defined for the E2 family. A progesterone (or any
+    // non-E2) gel record must NOT enter the 3-compartment gel model — there is
+    // no validated E2 mapping, and the registry's default product would
+    // otherwise apply an estradiol-shaped curve to a progesterone dose.
+    if (!isE2Family(event.ester)) return 0;
     const ex = event.extras ?? {};
     const product = getGelProductById(ex[ExtraKey.gelProductId]);
     const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(ex[ExtraKey.gelSite] ?? 0)));
@@ -1084,6 +1089,12 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
     if (events.length === 0) return null;
 
     const sortedEvents = [...events].sort((a, b) => a.timeH - b.timeH);
+    // precomputed feeds THREE downstream classifications inside the time-step
+    // loop: E2-family esters → E2 total curve; anti-androgens → byCompound map;
+    // patchRemove → already excluded by PrecomputedEventModel itself. PROG (and
+    // any future "other" compound) must NOT reach the model — see the inner
+    // loop's explicit skip, which is the single point of enforcement so a
+    // future PrecomputedEventModel change can't silently re-inject PROG.
     const precomputed = sortedEvents
         .filter(e => e.route !== Route.patchRemove)
         .map(e => ({ model: new PrecomputedEventModel(e, sortedEvents), ester: e.ester }));
@@ -1127,9 +1138,13 @@ export function runSimulation(events: DoseEvent[]): SimulationResult | null {
             const amount = model.amount(t);
             if (isAntiandrogen(ester)) {
                 amountByCompound[ester] = (amountByCompound[ester] ?? 0) + amount;
-            } else {
+            } else if (isE2Family(ester)) {
                 totalAmountMG_E2 += amount;
             }
+            // PROG and any other "non-E2, non-antiandrogen" ester is dropped on
+            // the floor — its kinetics have no validated E2 mapping and the
+            // population fallbacks (defaultK3 etc.) would otherwise inject
+            // false pg/mL into the E2 total curve.
         }
 
         const bodyWeightKG = weightAtTimeH(sortedEvents, t);
