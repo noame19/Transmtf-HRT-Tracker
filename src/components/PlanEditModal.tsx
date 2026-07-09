@@ -433,7 +433,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                 icon: getRouteIcon(r),
                             }))}
                         />
-                        {route !== Route.patchRemove && availableEsters.length > 1 && (
+                        {route !== Route.patchRemove && availableEsters.length >= 1 && (
                             <CustomSelect
                                 label={t('field.ester')}
                                 value={ester}

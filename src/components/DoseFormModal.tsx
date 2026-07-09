@@ -968,8 +968,16 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
 
                     {route !== Route.patchRemove && (
                         <>
-                            {/* Ester Selection */}
-                            {availableEsters.length > 1 && (
+                            {/* Ester Selection — ALWAYS rendered (even when
+                             *  the route has only one valid compound, e.g.
+                             *  Route.rectal → [PROG]) so the user can SEE that
+                             *  "药物类型" is a deliberate, fixed choice and not
+                             *  a missing form control. The CustomSelect renders
+                             *  fine with a single option; on the few routes
+                             *  where the list could legitimately be empty we
+                             *  still fall through (length >= 1 only — never 0).
+                             */}
+                            {availableEsters.length >= 1 && (
                                 <CustomSelect
                                     label={t('field.ester')}
                                     value={ester}
