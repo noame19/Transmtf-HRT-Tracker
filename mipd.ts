@@ -47,6 +47,7 @@ import {
     gelEventCentralAmount,
     weightAtTimeH,
     isAntiandrogen,
+    isE2Family,
 } from './pk';
 import { convertToPgMl } from './calibration';
 
@@ -140,7 +141,10 @@ function eventDrugAmountScaled(
 ): number {
     if (tau < 0) return 0;
     if (event.route === Route.patchRemove) return 0;
-    if (isAntiandrogen(event.ester)) return 0;
+    // Only E2-family esters feed the E2 forward model. PROG (and any future
+    // "other" compound) has no validated E2 mapping — letting it fall through
+    // would inject false pg/mL via the analytic 3-compartment fallback.
+    if (!isE2Family(event.ester)) return 0;
 
     const params = resolveParams(event);
     const k3 = params.k3 * kScale;
@@ -351,7 +355,10 @@ function mipdObjective(
 function firstDrugDoseTimeH(events: DoseEvent[]): number {
     let t = Infinity;
     for (const ev of events) {
-        if (ev.route === Route.patchRemove || isAntiandrogen(ev.ester)) continue;
+        if (ev.route === Route.patchRemove) continue;
+        // Mirror eventDrugAmountScaled: only E2-family events count as an
+        // E2 dose. PROG / anti-androgens do not advance the E2 timeline.
+        if (!isE2Family(ev.ester)) continue;
         if (ev.timeH < t) t = ev.timeH;
     }
     return t;
