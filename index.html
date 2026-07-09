@@ -55,6 +55,84 @@
             --alert-bg-neutral:    #f9fafb;   /* gray-50 */
             --alert-text-neutral:  #374151;   /* gray-700 */
             --alert-border-neutral: #e5e7eb;   /* gray-200 */
+
+            /* ── Semantic color tokens ──
+             * These replace Tailwind's `dark:` utility pairs so the dark
+             * palette is driven by the in-app toggle (.dark on <html>),
+             * not the OS prefers-color-scheme media query.
+             *
+             *   -soft    bg 50 / border 100 / text 700 (light)
+             *   -bold    bg 100 / text 800 (light)
+             *   -icon    text 600 (light)
+             * Dark equivalents use 900-α40 for fills, 800-α40 for borders,
+             * 300/400 for text — same contrast budget as Tailwind defaults.
+             */
+            /* Soft backgrounds (50 → 900/20) */
+            --bg-soft-emerald: #ecfdf5;   --bg-soft-sky: #f0f9ff;
+            --bg-soft-amber:   #fffbeb;   --bg-soft-rose: #fff1f2;
+            --bg-soft-red:     #fef2f2;   --bg-soft-teal: #f0fdfa;
+            --bg-soft-purple:  #faf5ff;   --bg-soft-pink: #fdf2f8;
+            --bg-soft-blue:    #eff6ff;   --bg-soft-green: #f0fdf4;
+            --bg-soft-gray:    #f9fafb;   /* gray-50, neutral section bg */
+            /* Bold backgrounds (100 → 900/40) */
+            --bg-bold-emerald: #d1fae5;   --bg-bold-sky: #e0f2fe;
+            --bg-bold-amber:   #fef3c7;   --bg-bold-rose: #ffe4e6;
+            --bg-bold-red:     #fecaca;   --bg-bold-teal: #ccfbf1;
+            --bg-bold-purple:  #f3e8ff;   --bg-bold-pink: #fce7f3;
+            --bg-bold-blue:    #dbeafe;   --bg-bold-green: #dcfce7;
+            /* Soft borders (100 → 800/40) */
+            --border-soft-emerald: #d1fae5;   --border-soft-sky: #bae6fd;
+            --border-soft-amber:   #fef3c7;   --border-soft-rose: #ffe4e6;
+            --border-soft-red:     #fecaca;   --border-soft-teal: #ccfbf1;
+            --border-soft-purple:  #e9d5ff;   --border-soft-pink: #fbcfe8;
+            --border-soft-blue:    #bfdbfe;   --border-soft-green: #bbf7d0;
+            --border-soft-gray:    #f3f4f6;
+            /* Medium borders (200 → 700) */
+            --border-med-gray: #e5e7eb;   --border-med-teal: #99f6e4;
+            /* Container borders (100 → 800/30) */
+            --border-icon-pink: #fce7f3;
+            /* Tooltip borders (100/50 → 800/50, half-alpha) */
+            --border-tip-teal: rgb(204 251 241 / 0.5);
+            --border-tip-pink: rgb(252 231 243 / 0.5);
+            /* Soft body text (700 → 300) */
+            --text-soft-amber:   #b45309;   --text-soft-teal:   #0f766e;
+            --text-soft-emerald: #047857;   --text-soft-sky:    #0369a1;
+            --text-soft-rose:    #be123c;   --text-soft-red:    #b91c1c;
+            --text-soft-purple:  #6b21a8;   --text-soft-pink:   #be185d;
+            --text-soft-blue:    #1d4ed8;   --text-soft-green:  #15803d;
+            /* Bold text (800 → 300) */
+            --text-bold-emerald: #065f46;   --text-bold-sky:    #075985;
+            --text-bold-amber:   #92400e;   --text-bold-rose:   #9f1239;
+            --text-bold-red:     #991b1b;   --text-bold-teal:   #115e59;
+            --text-bold-purple:  #6b21a8;   --text-bold-pink:   #9d174d;
+            --text-bold-blue:    #1e40af;   --text-bold-green:  #166534;
+            /* Icon text (600 → 400) */
+            --text-icon-amber:   #d97706;   --text-icon-teal:    #0d9488;
+            --text-icon-purple:  #9333ea;   --text-icon-blue:    #2563eb;
+            --text-icon-pink:    #db2777;   --text-icon-rose:    #e11d48;
+            --text-icon-green:   #16a34a;   --text-icon-red:     #dc2626;
+            --text-icon-gray:    #4b5563;   --text-icon-emerald: #059669;
+            --text-icon-sky:     #0284c7;
+            /* Range / toggle tracks */
+            --track-teal: #99f6e4;
+            --toggle-track-off: #d1d5db;     /* gray-300 */
+            /* Focus ring for the off-state toggle (gray-300 light → gray-500 dark) */
+            --focus-ring-toggle: #d1d5db;
+            /* Gray-200 light → gray-600 dark for thicker disabled / off
+             * toggle tracks (LabView's E2↔CPA propagation toggles). */
+            --bg-gray-strong:   #e5e7eb;
+            --border-gray-strong: #e5e7eb;
+            /* Info-box bg inside teal SL panel (white/50 light → teal-900/30 dark) */
+            --bg-info-box: rgba(255, 255, 255, 0.5);
+            --bg-tip-card: #ffffff;
+            /* Share-image success banner uses emerald-950 in dark, not 900/20 */
+            --bg-emerald-share:     #ecfdf5;
+            --border-emerald-share: #a7f3d0;
+            --text-emerald-share:   #047857;
+            /* Red hover surfaces (50 light → 950/30 dark for destructive buttons) */
+            --hover-bg-red:      #fef2f2;          /* red-50 */
+            --hover-bg-red-bold: #fee2e2;          /* red-100 */
+
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
             --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
             --shadow-lg: 0 12px 32px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
@@ -110,6 +188,61 @@
             --alert-bg-neutral:    #1f2937;   /* gray-800 */
             --alert-text-neutral:  #d1d5db;   /* gray-300 */
             --alert-border-neutral: #4b5563;   /* gray-600 */
+
+            /* Semantic token dark overrides — see :root comment for the
+             * contract. The dark fill is the matching 900 step at 30% alpha
+             * (so the badge/banner sits softly on a dark card), and text
+             * steps down to 300/400 for legibility against the deep bg. */
+            --bg-soft-emerald: rgba(6, 78, 59, 0.30);    --bg-soft-sky: rgba(12, 74, 110, 0.30);
+            --bg-soft-amber:   rgba(120, 53, 15, 0.30);   --bg-soft-rose: rgba(136, 19, 55, 0.30);
+            --bg-soft-red:     rgba(127, 29, 29, 0.30);   --bg-soft-teal: rgba(17, 94, 89, 0.30);
+            --bg-soft-purple:  rgba(88, 28, 135, 0.30);   --bg-soft-pink: rgba(157, 23, 77, 0.30);
+            --bg-soft-blue:    rgba(30, 58, 138, 0.30);   --bg-soft-green: rgba(20, 83, 45, 0.30);
+            --bg-soft-gray:    rgba(31, 41, 55, 0.40);    /* gray-800/40 */
+            --bg-bold-emerald: rgba(6, 95, 70, 0.40);     --bg-bold-sky: rgba(7, 89, 133, 0.40);
+            --bg-bold-amber:   rgba(146, 64, 14, 0.40);   --bg-bold-rose: rgba(159, 18, 57, 0.40);
+            --bg-bold-red:     rgba(153, 27, 27, 0.40);   --bg-bold-teal: rgba(17, 94, 89, 0.40);
+            --bg-bold-purple:  rgba(107, 33, 168, 0.40);  --bg-bold-pink: rgba(157, 23, 77, 0.40);
+            --bg-bold-blue:    rgba(30, 64, 175, 0.40);   --bg-bold-green: rgba(20, 83, 45, 0.40);
+            --border-soft-emerald: rgba(6, 95, 70, 0.40);   --border-soft-sky: rgba(7, 89, 133, 0.40);
+            --border-soft-amber:   rgba(146, 64, 14, 0.40); --border-soft-rose: rgba(159, 18, 57, 0.40);
+            --border-soft-red:     rgba(153, 27, 27, 0.40); --border-soft-teal: rgba(17, 94, 89, 0.40);
+            --border-soft-purple:  rgba(107, 33, 168, 0.40); --border-soft-pink: rgba(157, 23, 77, 0.40);
+            --border-soft-blue:    rgba(30, 64, 175, 0.40);  --border-soft-green: rgba(22, 101, 52, 0.40);
+            --border-soft-gray:    rgba(75, 85, 99, 0.40);
+            --border-med-gray: #4b5563;   --border-med-teal: #0f766e;
+            --border-icon-pink: rgba(157, 23, 77, 0.30);
+            --border-tip-teal: rgb(17 94 89 / 0.5);
+            --border-tip-pink: rgb(157 23 77 / 0.5);
+            --text-soft-amber:   #fcd34d;   --text-soft-teal:   #5eead4;
+            --text-soft-emerald: #6ee7b7;   --text-soft-sky:    #7dd3fc;
+            --text-soft-rose:    #fda4af;   --text-soft-red:    #fca5a5;
+            --text-soft-purple:  #d8b4fe;   --text-soft-pink:   #f9a8d4;
+            --text-soft-blue:    #93c5fd;   --text-soft-green:  #86efac;
+            --text-bold-emerald: #6ee7b7;   --text-bold-sky:    #7dd3fc;
+            --text-bold-amber:   #fcd34d;   --text-bold-rose:   #fda4af;
+            --text-bold-red:     #fca5a5;   --text-bold-teal:   #5eead4;
+            --text-bold-purple:  #d8b4fe;   --text-bold-pink:   #f9a8d4;
+            --text-bold-blue:    #93c5fd;   --text-bold-green:  #86efac;
+            --text-icon-amber:   #fbbf24;   --text-icon-teal:   #2dd4bf;
+            --text-icon-purple:  #c084fc;   --text-icon-blue:   #60a5fa;
+            --text-icon-pink:    #f472b6;   --text-icon-rose:   #fb7185;
+            --text-icon-green:   #4ade80;   --text-icon-red:    #f87171;
+            --text-icon-gray:    #9ca3af;   --text-icon-emerald:#34d399;
+            --text-icon-sky:     #38bdf8;
+            --track-teal: #0f766e;
+            --toggle-track-off: #4b5563;     /* gray-600 */
+            --focus-ring-toggle: #6b7280;  /* gray-500 */
+            --bg-gray-strong:   #4b5563;
+            --border-gray-strong: #4b5563;
+            --bg-info-box: rgba(17, 94, 89, 0.30);
+            --bg-tip-card: rgba(17, 94, 89, 0.30);
+            --bg-emerald-share:     #022c22;    /* emerald-950 */
+            --border-emerald-share: #065f46;    /* emerald-800 */
+            --text-emerald-share:   #6ee7b7;
+            --hover-bg-red:      rgba(69, 10, 10, 0.30);   /* red-950/30 */
+            --hover-bg-red-bold: rgba(127, 29, 29, 0.40);  /* red-900/40 */
+
             --shadow-sm: 0 1px 3px rgba(0,0,0,0.22), 0 1px 2px rgba(0,0,0,0.16);
             --shadow-md: 0 4px 12px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.22);
             --shadow-lg: 0 12px 32px rgba(0,0,0,0.38), 0 4px 8px rgba(0,0,0,0.22);
