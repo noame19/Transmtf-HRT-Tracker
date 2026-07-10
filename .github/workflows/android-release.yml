@@ -121,20 +121,23 @@ jobs:
             echo "::error::MainActivity.kt not found at $MAIN_ACTIVITY"
             exit 1
           fi
-          if grep -q "hrt-deep-link-marker-v2" "$MAIN_ACTIVITY"; then
-            echo "--- already patched (v2) ---"
+          if grep -q "hrt-deep-link-marker-v3" "$MAIN_ACTIVITY"; then
+            echo "--- already patched (v3) ---"
           else
             python3 - <<'PY'
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt")
           s = p.read_text()
-          marker = "// hrt-deep-link-marker-v2"
+          marker = "// hrt-deep-link-marker-v3"
 
-          # If a previous run left the OLD v1 (onNewIntent-only) or v2
-          # (override-onCreate) injection behind, strip it before re-patching.
+          # If a previous run left the OLD v1 (onNewIntent-only), v2
+          # (override-onCreate), or v3 (no-notify-cancel) injection behind,
+          # strip it before re-patching.
           # v1 marker comment marks the onNewIntent-only block we used to add.
           # v2 marker marks the now-broken "second onCreate" injection.
-          for old_marker in ("// hrt-deep-link-marker\n", "// hrt-deep-link-marker-v2\n"):
+          # v3 marker marks the previous handleIntent that didn't cancel
+          #     the notification when an action button was tapped.
+          for old_marker in ("// hrt-deep-link-marker\n", "// hrt-deep-link-marker-v2\n", "// hrt-deep-link-marker-v3\n"):
               while old_marker in s:
                   idx = s.find(old_marker)
                   # Find the next blank-line-or-brace that ends the injected block.
@@ -194,6 +197,17 @@ jobs:
               '        val planId = intent?.getStringExtra("deep_link_plan_id") ?: return\n'
               '        val scheduledAtMs = intent.getLongExtra("deep_link_scheduled_at", 0L)\n'
               "        if (planId.isEmpty() || scheduledAtMs <= 0L) return\n"
+              "        // Dismiss the heads-up notification the user just tapped.\n"
+              "        // The body tap path already had setAutoCancel(true) in the\n"
+              "        // receiver, but the three action buttons (\u5df2\u670d\u7528 /\n"
+              "        // \u63a8\u8fdf 1 \u5929 / \u63a8\u8fdf 2 \u5929) all funnel through MainActivity\n"
+              "        // instead of a dedicated broadcast, so the system does not\n"
+              "        // auto-dismiss them, and the user could otherwise tap the\n"
+              "        // same action twice. planId.hashCode() matches the id used\n"
+              "        // in ReminderReceiver.kt when posting the notification.\n"
+              "        (getSystemService(android.content.Context.NOTIFICATION_SERVICE)\n"
+              "            as? android.app.NotificationManager)\n"
+              "            ?.cancel(planId.hashCode())\n"
               "        // \"confirm\" / \"delay_1d\" / \"delay_2d\" set by the heads-up\n"
               "        // action buttons. Empty/missing = body tap (or cold-start\n"
               "        // via fire payload left by the receiver), which the JS poller\n"

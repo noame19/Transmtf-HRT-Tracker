@@ -187,7 +187,7 @@ const MainLayout: React.FC = () => {
                         id: `event-${uuidv4()}`,
                         route: plan.route,
                         ester: plan.ester,
-                        timeH: scheduledAtMs / 3600000,
+                        timeH: Date.now() / 3600000,
                         doseMG: plan.doseMG,
                         weightKG: defaultWeight,
                         extras: { ...plan.extras },
@@ -256,13 +256,14 @@ const MainLayout: React.FC = () => {
      * tap from any surface (modal/heads-up/body tap → open modal → click)
      * resolves the reminder atomically.
      *
-     * `scheduledAtMs` defaults to the current pending reminder's slot but
-     * can be overridden by the Rust poller when an action button was
-     * tapped on a heads-up that fired while the user was off-app.
+     * Records at the **click time** (`Date.now()`), NOT the planned
+     * scheduledAt — the user is telling us "I just took this", so the
+     * record must reflect the moment they actually took it. Late/early
+     * shows up in the compliance banner, which is the right place to
+     * surface that signal.
      */
-    const handleDirectConfirm = (scheduledAtMs?: number) => {
+    const handleDirectConfirm = () => {
         const plan = matchedPendingPlan;
-        const targetMs = scheduledAtMs ?? pendingReminder?.scheduledAtMs ?? Date.now();
         setPendingReminder(null);
         if (!plan) return;
         const defaultWeight = prefillWeightKG(events);
@@ -270,7 +271,7 @@ const MainLayout: React.FC = () => {
             id: `event-${uuidv4()}`,
             route: plan.route,
             ester: plan.ester,
-            timeH: targetMs / 3600000,
+            timeH: Date.now() / 3600000,
             doseMG: plan.doseMG,
             weightKG: defaultWeight,
             extras: { ...plan.extras },
