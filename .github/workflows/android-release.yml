@@ -99,16 +99,21 @@ jobs:
           echo "--- notification sources injected ---"
           ls -la "$KOTLIN_DIR/"
 
-      - name: Patch MainActivity.kt with deep-link handler (onCreate + onNewIntent)
+      - name: Patch MainActivity.kt with deep-link handler (inject into Tauri's onCreate)
         run: |
           set -e
-          # Tauri 2's `android init --ci` generates MainActivity.kt as a
-          # bare class with no deep-link override. We capture the
-          # notification deep-link (planId + scheduledAtMs + optional action)
-          # and write it to the same SharedPreferences slot NotificationScheduler
-          # writes the receiver-side fire event to, so the JS poller can pick
-          # it up. Both onCreate (cold start) and onNewIntent (warm) routes
-          # call handleIntent() to keep behavior identical.
+          # Tauri 2's `android init --ci` generates MainActivity.kt with its
+          # own `override fun onCreate(savedInstanceState)` (which boots the
+          # Tauri runtime). We capture the notification deep-link
+          # (planId + scheduledAtMs + optional action) and write it to the
+          # same SharedPreferences slot NotificationScheduler writes the
+          # receiver-side fire event to, so the JS poller can pick it up.
+          #
+          # Strategy: instead of declaring a SECOND onCreate (which Kotlin
+          # rejects as "Conflicting overloads"), we splice `handleIntent(intent)`
+          # directly into Tauri's existing onCreate right after super.onCreate.
+          # The onNewIntent override + handleIntent() helper are appended
+          # after Tauri's onCreate body closes.
           #
           # Idempotent: skipped if the marker comment is already present.
           MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt"
@@ -124,27 +129,62 @@ jobs:
           p = pathlib.Path("src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt")
           s = p.read_text()
           marker = "// hrt-deep-link-marker-v2"
-          # Locate the class body opening brace.
-          i = s.find("class MainActivity")
-          if i < 0:
-              raise SystemExit("MainActivity class declaration not found")
-          brace_open = s.find("{", i)
-          if brace_open < 0:
-              raise SystemExit("class opening brace not found")
-          # Strip any v1 marker so reapplying cleanly replaces the old body.
-          v1_idx = s.find("// hrt-deep-link-marker\n    override fun onNewIntent")
-          if v1_idx >= 0:
-              end_marker = s.find("\n    }\n", v1_idx)
-              if end_marker >= 0:
-                  end_marker += len("\n    }\n")
-                  s = s[:v1_idx] + s[end_marker:]
-                  brace_open = s.find("{", i)
+
+          # If a previous run left the OLD v1 (onNewIntent-only) or v2
+          # (override-onCreate) injection behind, strip it before re-patching.
+          # v1 marker comment marks the onNewIntent-only block we used to add.
+          # v2 marker marks the now-broken "second onCreate" injection.
+          for old_marker in ("// hrt-deep-link-marker\n", "// hrt-deep-link-marker-v2\n"):
+              while old_marker in s:
+                  idx = s.find(old_marker)
+                  # Find the next blank-line-or-brace that ends the injected block.
+                  end = s.find("\n\n    }\n", idx)
+                  if end < 0:
+                      end = s.find("\n    }\n", idx)
+                  if end < 0:
+                      raise SystemExit(f"could not find end of old patch near {old_marker!r}")
+                  end += len("\n    }\n")
+                  s = s[:idx] + s[end:]
+
+          # 1) Locate Tauri's existing onCreate so we can inject into it.
+          oncreate_idx = s.find("override fun onCreate(savedInstanceState")
+          if oncreate_idx < 0:
+              raise SystemExit("MainActivity onCreate override not found — bailing")
+          # Find the `super.onCreate(savedInstanceState)` call inside it.
+          super_idx = s.find("super.onCreate(savedInstanceState)", oncreate_idx)
+          if super_idx < 0:
+              raise SystemExit("super.onCreate call not found inside onCreate")
+          super_end = s.find("\n", super_idx)
+          if super_end < 0:
+              raise SystemExit("could not find end-of-line after super.onCreate")
+
+          # Determine indentation by looking at the line that holds `super.onCreate`.
+          line_start = s.rfind("\n", 0, super_idx) + 1
+          line_body = s[line_start:super_end]
+          # The `super.onCreate` line's leading whitespace tells us the indent
+          # for body statements inside onCreate. Add 4 more spaces for the
+          # nested handleIntent call.
+          body_indent = line_body[:len(line_body) - len(line_body.lstrip())]
+          call_indent = body_indent + "    "
+
+          # 2) Inject `handleIntent(intent)` right after super.onCreate. This
+          # fires on both cold-start (onCreate) and warm-start (onNewIntent).
+          # The `intent` property is the Activity's own field, available after
+          # super.onCreate completes.
+          s = (
+              s[:super_end + 1]
+              + f"{call_indent}handleIntent(intent)\n"
+              + f"{body_indent}{marker}\n"
+              + s[super_end + 1:]
+          )
+
+          # 3) Append the onNewIntent override + handleIntent helper at the end
+          # of the class body. We anchor on the LAST `}` in the file (which is
+          # the class closing brace) and insert before it.
+          class_close = s.rfind("}")
+          if class_close < 0:
+              raise SystemExit("no class closing brace found")
           injection = (
-              "\n    " + marker + "\n"
-              "    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n"
-              "        super.onCreate(savedInstanceState)\n"
-              "        handleIntent(intent)\n"
-              "    }\n"
               "    override fun onNewIntent(intent: android.content.Intent) {\n"
               "        super.onNewIntent(intent)\n"
               "        setIntent(intent)\n"
@@ -165,16 +205,15 @@ jobs:
               '            put("firedAtMs", System.currentTimeMillis())\n'
               "            if (action.isNotEmpty()) put(\"action\", action)\n"
               "        }.toString()\n"
-              '        getSharedPreferences("hrt_notification_cache", android.content.Context.MODE_PRIVATE)\n'
+              '        getSharedPreferences(\"hrt_notification_cache\", android.content.Context.MODE_PRIVATE)\n'
               "            .edit()\n"
-              '            .putString("pending_deep_link", pending)\n'
+              '            .putString(\"pending_deep_link\", pending)\n'
               "            .apply()\n"
               "    }\n"
           )
-          # Insert immediately after the class opening brace, with proper indent.
-          s = s[:brace_open + 1] + injection + s[brace_open + 1:]
+          s = s[:class_close] + injection + s[class_close:]
           p.write_text(s)
-          print("MainActivity.kt: injected deep-link handler (v2: onCreate + onNewIntent)")
+          print("MainActivity.kt: injected handleIntent into Tauri onCreate + appended onNewIntent (v2)")
           PY
           fi
           echo "--- MainActivity.kt after patch ---"
