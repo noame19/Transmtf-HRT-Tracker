@@ -59,14 +59,24 @@ class ReminderReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val notification = NotificationCompat.Builder(context, "hrt_reminders")
+        val builder = NotificationCompat.Builder(context, "hrt_reminders")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pi)
-            .build()
+
+        // Three action buttons — each opens MainActivity with a different
+        // `deep_link_action` extra so JS poller can dispatch to the right
+        // handler (smartAddEvent / handleDelayPlan). Distinct requestCodes
+        // per action are required so PendingIntent.getActivity doesn't
+        // overwrite an earlier button's intent.
+        builder.addAction(0, "已服用", actionPendingIntent(context, planId, scheduledAtMs, "confirm"))
+        builder.addAction(0, "推迟 1 天", actionPendingIntent(context, planId, scheduledAtMs, "delay_1d"))
+        builder.addAction(0, "推迟 2 天", actionPendingIntent(context, planId, scheduledAtMs, "delay_2d"))
+
+        val notification = builder.build()
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(planId.hashCode(), notification)
@@ -83,6 +93,38 @@ class ReminderReceiver : BroadcastReceiver() {
 
         // Schedule the NEXT moment for the same plan (cheap increment).
         scheduleNextForPlan(context, plansJson, planId, scheduledAtMs)
+    }
+
+    /**
+     * Build a PendingIntent for a single notification action button. We
+     * funnel every action through MainActivity (rather than a dedicated
+     * BroadcastReceiver) because the DoseEvent list + plan overrides live
+     * in JS localStorage — Kotlin has no way to mutate them safely without
+     * an app launch. MainActivity.onNewIntent forwards the action to the
+     * `pending_deep_link` SharedPreferences slot the JS poller watches.
+     */
+    private fun actionPendingIntent(
+        context: Context,
+        planId: String,
+        scheduledAtMs: Long,
+        action: String,
+    ): PendingIntent {
+        val intent = android.content.Intent(context, MainActivity::class.java).apply {
+            this.action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("deep_link_plan_id", planId)
+            putExtra("deep_link_scheduled_at", scheduledAtMs)
+            putExtra("deep_link_action", action)
+        }
+        // Distinct requestCode per action so all three are simultaneously
+        // alive in the system (otherwise PI dedup would collapse them).
+        val requestCode = (planId.hashCode() xor action.hashCode())
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
     }
 
     /**

@@ -99,55 +99,71 @@ jobs:
           echo "--- notification sources injected ---"
           ls -la "$KOTLIN_DIR/"
 
-      - name: Patch MainActivity.kt with onNewIntent deep-link handler
+      - name: Patch MainActivity.kt with deep-link handler (onCreate + onNewIntent)
         run: |
           set -e
           # Tauri 2's `android init --ci` generates MainActivity.kt as a
-          # bare class with no onNewIntent override. We need to capture
-          # the notification deep-link (planId + scheduledAtMs) and write
-          # it to the same SharedPreferences NotificationScheduler reads
-          # from so the JS poller can pick it up.
+          # bare class with no deep-link override. We capture the
+          # notification deep-link (planId + scheduledAtMs + optional action)
+          # and write it to the same SharedPreferences slot NotificationScheduler
+          # writes the receiver-side fire event to, so the JS poller can pick
+          # it up. Both onCreate (cold start) and onNewIntent (warm) routes
+          # call handleIntent() to keep behavior identical.
           #
-          # Idempotent: skipped if a marker comment is already present.
+          # Idempotent: skipped if the marker comment is already present.
           MAIN_ACTIVITY="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt"
           if [ ! -f "$MAIN_ACTIVITY" ]; then
             echo "::error::MainActivity.kt not found at $MAIN_ACTIVITY"
             exit 1
           fi
-          if grep -q "hrt-deep-link-marker" "$MAIN_ACTIVITY"; then
-            echo "--- already patched ---"
+          if grep -q "hrt-deep-link-marker-v2" "$MAIN_ACTIVITY"; then
+            echo "--- already patched (v2) ---"
           else
             python3 - <<'PY'
           import pathlib
           p = pathlib.Path("src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker/MainActivity.kt")
           s = p.read_text()
-          marker = "// hrt-deep-link-marker"
-          # Locate the class body opening brace and the closing brace so we
-          # can splice the override just after the class opening.
-          # The generated MainActivity is tiny: `class MainActivity : ...`
-          # followed by `{ ... }`. We insert an onNewIntent override inside
-          # the class body.
+          marker = "// hrt-deep-link-marker-v2"
+          # Locate the class body opening brace.
           i = s.find("class MainActivity")
           if i < 0:
               raise SystemExit("MainActivity class declaration not found")
-          # Find the first '{' AFTER the class declaration line.
           brace_open = s.find("{", i)
           if brace_open < 0:
               raise SystemExit("class opening brace not found")
+          # Strip any v1 marker so reapplying cleanly replaces the old body.
+          v1_idx = s.find("// hrt-deep-link-marker\n    override fun onNewIntent")
+          if v1_idx >= 0:
+              end_marker = s.find("\n    }\n", v1_idx)
+              if end_marker >= 0:
+                  end_marker += len("\n    }\n")
+                  s = s[:v1_idx] + s[end_marker:]
+                  brace_open = s.find("{", i)
           injection = (
               "\n    " + marker + "\n"
+              "    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n"
+              "        super.onCreate(savedInstanceState)\n"
+              "        handleIntent(intent)\n"
+              "    }\n"
               "    override fun onNewIntent(intent: android.content.Intent) {\n"
               "        super.onNewIntent(intent)\n"
               "        setIntent(intent)\n"
-              '        val planId = intent.getStringExtra("deep_link_plan_id") ?: return\n'
+              "        handleIntent(intent)\n"
+              "    }\n"
+              "    private fun handleIntent(intent: android.content.Intent?) {\n"
+              '        val planId = intent?.getStringExtra("deep_link_plan_id") ?: return\n'
               '        val scheduledAtMs = intent.getLongExtra("deep_link_scheduled_at", 0L)\n'
               "        if (planId.isEmpty() || scheduledAtMs <= 0L) return\n"
-              "        // Same SharedPreferences NotificationScheduler writes the\n"
-              "        // fired-event payload to; JS reads via get_pending_reminders.\n"
+              "        // \"confirm\" / \"delay_1d\" / \"delay_2d\" set by the heads-up\n"
+              "        // action buttons. Empty/missing = body tap (or cold-start\n"
+              "        // via fire payload left by the receiver), which the JS poller\n"
+              "        // treats as \"show reminder modal, no auto-action\".\n"
+              '        val action = intent.getStringExtra("deep_link_action") ?: ""\n'
               "        val pending = org.json.JSONObject().apply {\n"
               '            put("planId", planId)\n'
               '            put("scheduledAtMs", scheduledAtMs)\n'
               '            put("firedAtMs", System.currentTimeMillis())\n'
+              "            if (action.isNotEmpty()) put(\"action\", action)\n"
               "        }.toString()\n"
               '        getSharedPreferences("hrt_notification_cache", android.content.Context.MODE_PRIVATE)\n'
               "            .edit()\n"
@@ -158,7 +174,7 @@ jobs:
           # Insert immediately after the class opening brace, with proper indent.
           s = s[:brace_open + 1] + injection + s[brace_open + 1:]
           p.write_text(s)
-          print("MainActivity.kt: injected onNewIntent deep-link handler")
+          print("MainActivity.kt: injected deep-link handler (v2: onCreate + onNewIntent)")
           PY
           fi
           echo "--- MainActivity.kt after patch ---"

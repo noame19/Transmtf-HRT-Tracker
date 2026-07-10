@@ -79,19 +79,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   return (
     <div className="relative space-y-5 pt-6 pb-16">
-      {/* Reminder banner — sits above the tab strip so a fired notification
-       *  is impossible to miss on the /history route. */}
-      <ReminderBanner
-        pending={pendingReminder}
-        matchedPlan={matchedPendingPlan}
-        onConfirm={onConfirmPendingReminder}
-        onDismiss={onDismissPendingReminder}
-        onDelay1d={onDelay1d}
-        onDelay2d={onDelay2d}
-        onDelayNext={onDelayNext}
-        permissionDenied={permissionDenied}
-        onOpenPermissionSettings={onOpenNotificationSettings}
-      />
+      {/* Reminder banner — 全局 ReminderModal 现在接管 pending 弹窗，
+       *  这里只留"通知权限被拒"的琥珀色提示 banner（在 /history 顶部）。
+       *  pending 传 null 让 ReminderBanner 内部走 null 早返回，
+       *  只显示 permissionDenied 那条分支。 */}
+      {permissionDenied && (
+        <ReminderBanner
+          pending={null}
+          matchedPlan={null}
+          onConfirm={onConfirmPendingReminder}
+          onDismiss={onDismissPendingReminder}
+          onDelay1d={onDelay1d}
+          onDelay2d={onDelay2d}
+          onDelayNext={onDelayNext}
+          permissionDenied={true}
+          onOpenPermissionSettings={onOpenNotificationSettings}
+        />
+      )}
       {/* Compliance banner — appears below the reminder banner and only when
        *  the user has enough history to spot a pattern. Sibling layout
        *  (mx-4 + space-y-5 in the parent) keeps the same visual cadence as

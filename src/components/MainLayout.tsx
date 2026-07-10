@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { Settings, Activity, Calendar, FlaskConical } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
+import { prefillWeightKG } from '../utils/weight';
 import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
 import { classifyDueState, findDueReminders, isDueReminderStale } from '../utils/planReminder';
 import { isPatchApply } from '../utils/patch';
+import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
 import DoseFormModal from './DoseFormModal';
@@ -143,6 +146,80 @@ const MainLayout: React.FC = () => {
         return () => { cancelled = true; };
     }, [remindersEnabled]);
 
+    /**
+     * Polls the Rust `get_pending_reminders` shim. MainActivity.onNewIntent
+     * (and the ReminderReceiver's own fire event) write their payload into
+     * the `pending_deep_link` SharedPreferences slot; Rust reads it on
+     * invoke and clears it, so we get exactly one shot per write.
+     *
+     * - `action: "confirm"`           → 1-tap confirm: write DoseEvent, dismiss modal
+     * - `action: "delay_1d" / "_2d"`  → shift plan.startDateH by N days
+     * - no `action` (body tap or receiver-side fire) → just surface the
+     *                                    modal via setPendingReminder; the
+     *                                    user clicks an action inside.
+     *
+     * Refs hold the latest plans/events/setters so the polling closure
+     * never goes stale across renders.
+     */
+    const stateRef = useRef({ plans, events });
+    stateRef.current = { plans, events };
+    useEffect(() => {
+        const invoke = (typeof window !== 'undefined'
+            ? (window as any).__TAURI_INTERNALS__?.invoke
+            : null);
+        if (typeof invoke !== 'function') return; // browser dev or non-Tauri env
+        const tick = async () => {
+            try {
+                const json = await invoke('get_pending_reminders');
+                if (!json) return;
+                let payload: any;
+                try { payload = JSON.parse(json); } catch { return; }
+                const planId: string | undefined = payload?.planId;
+                const scheduledAtMs: number | undefined = payload?.scheduledAtMs;
+                if (!planId || !scheduledAtMs) return;
+                const action: string | undefined = payload?.action;
+                const { plans: latestPlans, events: latestEvents } = stateRef.current;
+                const plan = latestPlans.find(p => p.id === planId);
+                if (action === 'confirm') {
+                    if (!plan) return;
+                    const defaultWeight = prefillWeightKG(latestEvents);
+                    const newEvent: DoseEvent = {
+                        id: `event-${uuidv4()}`,
+                        route: plan.route,
+                        ester: plan.ester,
+                        timeH: scheduledAtMs / 3600000,
+                        doseMG: plan.doseMG,
+                        weightKG: defaultWeight,
+                        extras: { ...plan.extras },
+                    };
+                    setEvents(prev => {
+                        const exists = prev.find(e => e.id === newEvent.id);
+                        return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
+                    });
+                    setPendingReminder(null);
+                } else if (action === 'delay_1d' || action === 'delay_2d') {
+                    if (!plan) return;
+                    const days = action === 'delay_1d' ? 1 : 2;
+                    setPlans(prev => prev.map(p => p.id === planId
+                        ? { ...p, startDateH: p.startDateH + days * 24, updatedAtH: Date.now() / 3600000 }
+                        : p));
+                    setPendingReminder(null);
+                } else {
+                    // Body tap (or fire-only payload from the receiver) —
+                    // surface the modal without applying any side effect.
+                    setPendingReminder({
+                        planId,
+                        scheduledAtMs,
+                        state: classifyDueState(new Date(scheduledAtMs), new Date()),
+                    });
+                }
+            } catch { /* ignore polling errors silently */ }
+        };
+        tick();
+        const id = setInterval(tick, 1500);
+        return () => clearInterval(id);
+    }, []);
+
     const matchedPendingPlan = useMemo(() => {
         if (!pendingReminder) return null;
         return plans.find(p => p.id === pendingReminder.planId) ?? null;
@@ -170,6 +247,38 @@ const MainLayout: React.FC = () => {
         setPrefillFromPlan(plan);
         setPrefillTimeOverride(scheduledAt);
         setIsFormOpen(true);
+    };
+
+    /**
+     * 1-tap confirmation used by the global ReminderModal and the heads-up
+     * action button (replayed via the Rust poller). Writes the DoseEvent
+     * directly from the matched plan — no second form to fill — so a single
+     * tap from any surface (modal/heads-up/body tap → open modal → click)
+     * resolves the reminder atomically.
+     *
+     * `scheduledAtMs` defaults to the current pending reminder's slot but
+     * can be overridden by the Rust poller when an action button was
+     * tapped on a heads-up that fired while the user was off-app.
+     */
+    const handleDirectConfirm = (scheduledAtMs?: number) => {
+        const plan = matchedPendingPlan;
+        const targetMs = scheduledAtMs ?? pendingReminder?.scheduledAtMs ?? Date.now();
+        setPendingReminder(null);
+        if (!plan) return;
+        const defaultWeight = prefillWeightKG(events);
+        const newEvent: DoseEvent = {
+            id: `event-${uuidv4()}`,
+            route: plan.route,
+            ester: plan.ester,
+            timeH: targetMs / 3600000,
+            doseMG: plan.doseMG,
+            weightKG: defaultWeight,
+            extras: { ...plan.extras },
+        };
+        setEvents(prev => {
+            const exists = prev.find(e => e.id === newEvent.id);
+            return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
+        });
     };
 
     /**
@@ -583,6 +692,21 @@ const MainLayout: React.FC = () => {
                 onConfirm={(newEvents) => {
                     handleSaveBatch(newEvents);
                     setBatchMatches(null);
+                }}
+            />
+            {/* 全局用药提醒弹窗 — 覆盖任何路由。pendingReminder 由
+              * plan-driven effect（line 104-120）+ Kotlin get_pending_reminders
+              * 轮询两条路径共同驱动：到点或点通知都会让弹窗出现，必须三选一。 */}
+            <ReminderModal
+                isOpen={pendingReminder !== null}
+                pending={pendingReminder}
+                plan={matchedPendingPlan}
+                onConfirm={() => handleDirectConfirm()}
+                onDelay1d={() => {
+                    if (matchedPendingPlan) handleDelayPlan(matchedPendingPlan.id, 1);
+                }}
+                onDelay2d={() => {
+                    if (matchedPendingPlan) handleDelayPlan(matchedPendingPlan.id, 2);
                 }}
             />
         </div>

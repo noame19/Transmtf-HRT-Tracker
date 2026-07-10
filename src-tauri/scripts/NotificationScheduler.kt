@@ -230,7 +230,10 @@ object NotificationScheduler {
         val times = plan.times
         if (times.isEmpty()) return out
         val startCal = plan.startCal
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = fromMs }
+        // leadMinutes shifts the alarm EARLIER by N minutes before the
+        // scheduled due time. The user's plan moment is the canonical due
+        // — the alarm just needs to wake us up with lead-time to act.
+        val leadMs = plan.leadMinutes.toLong() * 60_000L
         // Cap the loop at 366 days as a safety net.
         for (i in 0 until 366) {
             val day = java.util.Calendar.getInstance().apply {
@@ -246,12 +249,19 @@ object NotificationScheduler {
                     set(java.util.Calendar.SECOND, 0)
                     set(java.util.Calendar.MILLISECOND, 0)
                 }
-                val ms = moment.timeInMillis
-                if (ms < fromMs) continue
-                if (ms >= toMs) continue
-                if (plan.endMs != null && ms > plan.endMs!!) continue
-                val isoTime = formatIsoLocal(ms)
-                out.add(ms to isoTime)
+                val rawMs = moment.timeInMillis
+                // Compare the *alarm* time (with lead) against the bounds — a
+                // past alarm is dropped, a future one (within horizon) is
+                // scheduled. End-of-plan check uses the raw moment so a plan
+                // whose alarm time was already past doesn't get one more ring.
+                val alarmMs = rawMs - leadMs
+                if (alarmMs < fromMs) continue
+                if (alarmMs >= toMs) continue
+                if (plan.endMs != null && rawMs > plan.endMs!!) continue
+                // Use the ISO timestamp of the alarm time as the request-code
+                // discriminant — the same plan+time always maps to the same code.
+                val isoTime = formatIsoLocal(alarmMs)
+                out.add(alarmMs to isoTime)
             }
         }
         return out
@@ -310,6 +320,9 @@ object NotificationScheduler {
         val times: List<Pair<Int, Int>>,
         val startCal: java.util.Calendar,
         val endMs: Long?,
+        /** Minutes before each scheduled due time the alarm should fire —
+         *  matches the `leadMinutes` field on the JS Plan type. 0 = at-time. */
+        val leadMinutes: Int = 0,
     )
 
     private fun parsePlans(json: String): List<ParsedPlan> {
@@ -343,7 +356,8 @@ object NotificationScheduler {
             val endMs = if (obj.has("endDateH") && !obj.isNull("endDateH")) {
                 obj.optLong("endDateH") * 3600000L
             } else null
-            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, startCal, endMs))
+            val leadMinutes = obj.optInt("leadMinutes", 0).coerceIn(0, 24 * 60)
+            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, startCal, endMs, leadMinutes))
         }
         return out
     }

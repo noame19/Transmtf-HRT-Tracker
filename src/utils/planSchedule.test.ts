@@ -589,3 +589,61 @@ describe('pickPrimaryEnabledPlan', () => {
         expect(warnSpy.mock.calls[0][0]).toMatch(/compute-time defensive fallback/);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// leadMinutes invariant — JS contract
+//
+// Kotlin's NotificationScheduler is responsible for subtracting leadMinutes
+// when computing the alarm time. The JS helper is intentionally declarative:
+// it returns the EXACT dose moment (not the alarm time). These tests pin
+// down that contract so a future refactor that accidentally applies
+// leadMinutes inside dueMomentsInRange / nextDueAfter will fail loudly.
+//
+// Background: Kotlin had a hidden bug where ParsedPlan didn't carry the
+// leadMinutes field, so the scheduler always fired at the raw dose time.
+// That's fixed; this is the symmetric JS-side lock so we don't drift back.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('dueMomentsInRange — leadMinutes invariant', () => {
+    it('returns moments at the exact dose time, never shifted by leadMinutes', () => {
+        const plan = makePlan({
+            schedule: { kind: 'daily', times: ['20:00'] },
+            leadMinutes: 5,
+        });
+        const from = new Date(2026, 6, 5, 0, 0);
+        const to = new Date(2026, 6, 7, 0, 0);
+        const moments = dueMomentsInRange(plan, from, to);
+        expect(moments).toHaveLength(2);
+        moments.forEach(m => {
+            expect(m.getHours()).toBe(20);
+            expect(m.getMinutes()).toBe(0);
+        });
+    });
+
+    it('different leadMinutes values produce identical moment timestamps', () => {
+        // The contract: leadMinutes affects only the alarm time (Kotlin side),
+        // never the dose moment. Lock it down across 0 / 5 / 30 minutes so a
+        // future refactor that adds a "shift for UI preview" can't slip in.
+        const from = new Date(2026, 6, 5, 0, 0);
+        const to = new Date(2026, 6, 8, 0, 0);
+        const a = makePlan({ leadMinutes: 0,  schedule: { kind: 'daily', times: ['09:00'] } });
+        const b = makePlan({ leadMinutes: 5,  schedule: { kind: 'daily', times: ['09:00'] } });
+        const c = makePlan({ leadMinutes: 30, schedule: { kind: 'daily', times: ['09:00'] } });
+        const momentsA = dueMomentsInRange(a, from, to);
+        const momentsB = dueMomentsInRange(b, from, to);
+        const momentsC = dueMomentsInRange(c, from, to);
+        expect(momentsB.map(m => m.getTime())).toEqual(momentsA.map(m => m.getTime()));
+        expect(momentsC.map(m => m.getTime())).toEqual(momentsA.map(m => m.getTime()));
+    });
+
+    it('nextDueAfter also ignores leadMinutes (next dose stays at exact dose time)', () => {
+        const plan5 = makePlan({ leadMinutes: 5, schedule: { kind: 'daily', times: ['20:00'] } });
+        const plan0 = makePlan({ leadMinutes: 0, schedule: { kind: 'daily', times: ['20:00'] } });
+        const from = new Date(2026, 6, 5, 10, 0);
+        const next5 = nextDueAfter(plan5, from);
+        const next0 = nextDueAfter(plan0, from);
+        expect(next5?.getTime()).toBe(next0?.getTime());
+        expect(next5?.getHours()).toBe(20);
+        expect(next5?.getMinutes()).toBe(0);
+    });
+});
