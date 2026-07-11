@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { Bell, Check, FastForward } from 'lucide-react';
+import { Bell, Check, FastForward, SkipForward, X } from 'lucide-react';
 import { Plan } from '../../types';
+import { useDialog } from '../contexts/DialogContext';
 import type { PendingReminder } from './ReminderBanner';
 
 interface ReminderModalProps {
@@ -10,38 +11,43 @@ interface ReminderModalProps {
     plan: Plan | null;
     /** "已服用" — write the DoseEvent directly (1-tap). */
     onConfirm: () => void;
-    /** "推迟 1 天" — shift plan.startDateH by 1 day (1-tap). */
+    /** "跳过本次" — late only. Marks this due as ignored and clears the
+     *  modal; the next due still fires on schedule. */
+    onSkip: () => void;
+    /** "计划推迟 N 天" — shifts plan.startDateH by N days. */
     onDelay1d: () => void;
-    /** "推迟 2 天" — shift plan.startDateH by 2 days (1-tap). */
     onDelay2d: () => void;
+    /** "该吃药了"右上角 X 关闭. Does NOT touch the Android notification;
+     *  only dismisses this in-app modal + adds the due to the ignored set
+     *  so neither the modal nor the virtual record reappears. */
+    onClose: () => void;
 }
 
 /**
  * Full-screen blocking modal that mirrors the announcement modal's visual
- * pattern (fixed overlay + backdrop-blur + centered glass card). Unlike
- * `AnnouncementModal`, the only ways to dismiss it are the three primary
- * buttons — no X, no click-outside, no ESC — so the user is forced to
- * actively choose an action (or wait it out / clear via system notification).
+ * pattern (fixed overlay + backdrop-blur + centered glass card).
+ *
+ * Footer is **state-dependent**:
+ *   - on_time: [已服用] + 右上角 X 关闭
+ *               (用户还可以去 history 页用虚拟记录补打，所以不需要推迟按钮)
+ *   - late:    [已服用 / 跳过本次 / 计划推迟 1 天 / 计划推迟 2 天] (无 X)
+ *               强提醒：必须四选一，不允许忽视
  *
  * This is the single source of truth for the in-app medication reminder UI,
  * rendered at the layout level (MainLayout) so it overrides any route.
- *
- * Action semantics (regardless of whether the user tapped the button on a
- * heads-up OR clicked it inside this modal):
- *   - "已服用"   → `onConfirm`, writes the DoseEvent directly with the
- *                  plan's data and the scheduled due time. No second form
- *                  to fill — the heads-up already showed drug + amount +
- *                  time, so one tap is enough.
- *   - "推迟 1 天" → `onDelay1d`, shifts plan.startDateH by 1 day. The
- *                   Android scheduler reschedules automatically when plans
- *                   change in AppDataContext.
- *   - "推迟 2 天" → `onDelay2d`, same shape, +2 days.
  */
 const ReminderModal: React.FC<ReminderModalProps> = ({
-    isOpen, pending, plan,
-    onConfirm, onDelay1d, onDelay2d,
+    isOpen,
+    pending,
+    plan,
+    onConfirm,
+    onSkip,
+    onDelay1d,
+    onDelay2d,
+    onClose,
 }) => {
     const { t } = useTranslation();
+    const { showDialog } = useDialog();
 
     // While the modal is open, block body scroll so the rest of the app
     // (which is dimmed behind the backdrop) can't be scrolled away.
@@ -55,24 +61,20 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
     if (!isOpen || !pending || !plan) return null;
 
     const scheduled = new Date(pending.scheduledAtMs);
-    const now = new Date();
-    const overdueMs = now.getTime() - scheduled.getTime();
-    const isLate = overdueMs > 0;
-
     const hh = scheduled.getHours().toString().padStart(2, '0');
     const mm = scheduled.getMinutes().toString().padStart(2, '0');
     const timeLabel = `${hh}:${mm}`;
 
-    let overdueLabel = '';
-    if (isLate) {
-        const hours = Math.floor(overdueMs / (60 * 60 * 1000));
-        const minutes = Math.round((overdueMs % (60 * 60 * 1000)) / (60 * 1000));
-        overdueLabel = hours >= 1
-            ? `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`
-            : `${Math.max(1, minutes)}m`;
-    }
-
+    const isLate = pending.state === 'late';
     const drugLabel = `${t(`ester.${plan.ester}`)} · ${plan.doseMG} mg · ${t(`route.${plan.route}`)}`;
+
+    const handleSkipClick = () => {
+        const title = t('reminder.banner.skip_confirm.title') || '确认跳过本次？';
+        const body = t('reminder.banner.skip_confirm.body') || '跳过今日原有计划且原计划将不会顺延，强烈影响身体激素状态，您确定吗？';
+        showDialog('confirm', `${title}\n\n${body}`, () => {
+            onSkip();
+        });
+    };
 
     return (
         <div
@@ -120,6 +122,22 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                             {drugLabel}
                         </p>
                     </div>
+                    {/* Close X — on_time only. late 状态不允许关闭。 */}
+                    {!isLate && (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            aria-label={t('reminder.modal.close') || '关闭'}
+                            className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center btn-press-glass transition"
+                            style={{
+                                background: 'var(--bg-card)',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-primary)',
+                            }}
+                        >
+                            <X size={18} />
+                        </button>
+                    )}
                 </div>
 
                 {/* Body — when + (optional) overdue */}
@@ -130,18 +148,12 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                     <p className="font-mono text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
                         {timeLabel}
                     </p>
-                    {isLate ? (
-                        <p style={{ color: 'var(--text-soft-rose)' }}>
-                            {t('reminder.banner.late.sub') || `已过期 ${overdueLabel}，请选择下一步`}
-                        </p>
-                    ) : (
-                        <p>
-                            {t('reminder.modal.scheduled_at') || `计划服药时间 · ${timeLabel}`}
-                        </p>
-                    )}
+                    <p>
+                        {t('reminder.modal.scheduled_at') || `计划服药时间 · ${timeLabel}`}
+                    </p>
                 </div>
 
-                {/* Footer — three vertical action buttons (force choice) */}
+                {/* Footer — state-dependent action buttons */}
                 <div className="px-6 pb-6 pt-2 flex flex-col gap-2.5">
                     <button
                         type="button"
@@ -152,34 +164,53 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                         <Check size={18} />
                         <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
                     </button>
-                    <button
-                        type="button"
-                        onClick={onDelay1d}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_1d') || '推迟 1 天'}
-                    >
-                        <FastForward size={18} />
-                        <span>{t('reminder.banner.delay_1d') || '推迟 1 天'}</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onDelay2d}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_2d') || '推迟 2 天'}
-                    >
-                        <FastForward size={18} />
-                        <span>{t('reminder.banner.delay_2d') || '推迟 2 天'}</span>
-                    </button>
+
+                    {isLate && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handleSkipClick}
+                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                                style={{
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-soft-rose)',
+                                    border: '1px solid var(--border-soft-rose)',
+                                }}
+                                aria-label={t('reminder.banner.skip') || '跳过本次'}
+                            >
+                                <SkipForward size={18} />
+                                <span>{t('reminder.banner.skip') || '跳过本次'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onDelay1d}
+                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                                style={{
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-primary)',
+                                }}
+                                aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
+                            >
+                                <FastForward size={18} />
+                                <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onDelay2d}
+                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                                style={{
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-primary)',
+                                }}
+                                aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
+                            >
+                                <FastForward size={18} />
+                                <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
