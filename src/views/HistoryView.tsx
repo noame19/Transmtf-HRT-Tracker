@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Activity, Plus, Layers, CalendarClock, Sticker } from 'lucide-react';
+import { Activity, Plus, Layers, CalendarClock, Sticker, Ghost, Check } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDateTime, formatTime, formatDateWithYear, dateKey, getRouteIcon } from '../utils/helpers';
 import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../../logic';
@@ -9,8 +9,17 @@ import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
 import ComplianceBanner from '../components/ComplianceBanner';
 import type { ComplianceMismatch } from '../utils/planCompliance';
 import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from '../utils/patch';
+import type { VirtualRecord } from '../utils/planReminder';
 
 type HistoryTab = 'records' | 'plans';
+
+/** Marker union so virtual records can ride the same group pipeline as
+ *  real DoseEvents. The `__virtual` discriminator is internal — callers
+ *  branch on it to render a translucent ghost row instead of a normal
+ *  editable card. */
+type RecordItem =
+    | { kind: 'real'; event: DoseEvent }
+    | { kind: 'virtual'; vr: VirtualRecord; timeH: number };
 
 interface HistoryViewProps {
   events: DoseEvent[];
@@ -41,6 +50,11 @@ interface HistoryViewProps {
   onDelay1d?: (planId: string) => void;
   onDelay2d?: (planId: string) => void;
   onDelayNext?: (planId: string) => void;
+  /** Virtual records the user can confirm from the /history list. */
+  virtualRecords: VirtualRecord[];
+  /** Confirm a virtual record — converts it to a real DoseEvent stamped
+   *  with the scheduled due time, then drops it from the ignored set. */
+  onConfirmVirtual: (vr: VirtualRecord) => void;
   permissionDenied: boolean;
   onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
@@ -54,28 +68,49 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   pendingReminder, matchedPendingPlan,
   onConfirmPendingReminder, onDismissPendingReminder,
   onDelay1d, onDelay2d, onDelayNext,
+  virtualRecords, onConfirmVirtual,
   permissionDenied, onOpenNotificationSettings,
   complianceMismatches,
 }) => {
   const { t, lang } = useTranslation();
   const [activeTab, setActiveTab] = useState<HistoryTab>('records');
 
+  /**
+   * Merge real DoseEvents and in-window virtual records into a single
+   * date-keyed timeline. The virtual records piggyback on the same
+   * grouping pipeline so they appear inline next to their scheduled time
+   * on the right day, sorted alongside real events.
+   */
   const groupedEvents = useMemo(() => {
-    const sorted = [...events].sort((a, b) => b.timeH - a.timeH);
+    const items: RecordItem[] = [
+      ...events.map(event => ({ kind: 'real' as const, event })),
+      ...virtualRecords.map(vr => ({
+        kind: 'virtual' as const,
+        vr,
+        timeH: vr.due.getTime() / 3600000,
+      })),
+    ];
+    // Newest first.
+    items.sort((a, b) => {
+      const aT = a.kind === 'real' ? a.event.timeH : a.timeH;
+      const bT = b.kind === 'real' ? b.event.timeH : b.timeH;
+      return bT - aT;
+    });
     // Group by dateKey (sortable yyyy-mm-dd) so 2024-01-04 and 2026-01-04 form
     // distinct groups — otherwise `formatDate` collapses them and the timeline
     // looks identical after a year of scrolling.
-    const groups: Record<string, { display: string; items: DoseEvent[] }> = {};
-    sorted.forEach(e => {
-      const d = new Date(e.timeH * 3600000);
+    const groups: Record<string, { display: string; items: RecordItem[] }> = {};
+    items.forEach(it => {
+      const tH = it.kind === 'real' ? it.event.timeH : it.timeH;
+      const d = new Date(tH * 3600000);
       const k = dateKey(d);
       if (!groups[k]) {
         groups[k] = { display: formatDateWithYear(d, lang), items: [] };
       }
-      groups[k].items.push(e);
+      groups[k].items.push(it);
     });
     return groups;
-  }, [events, lang]);
+  }, [events, virtualRecords, lang]);
 
   return (
     <div className="relative space-y-5 pt-6 pb-16">
@@ -179,9 +214,62 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{group.display}</span>
               </div>
               <div className="divide-y" style={{ divideColor: 'var(--border-secondary)' }}>
-                {(group.items as DoseEvent[])
-                  .filter(ev => !isPatchRemove(ev))
-                  .map(ev => {
+                {group.items.map(item => {
+                  if (item.kind === 'virtual') {
+                    const vr = item.vr;
+                    const timeLabel = formatTime(vr.due);
+                    const drugLabel = `${t(`ester.${vr.plan.ester}`)} · ${vr.plan.doseMG} mg · ${t(`route.${vr.plan.route}`)}`;
+                    return (
+                      <div
+                        key={`virtual-${vr.plan.id}-${vr.due.getTime()}`}
+                        className="p-4 flex items-center gap-4 border-l-2 border-dashed"
+                        style={{
+                          opacity: 0.55,
+                          borderColor: 'var(--border-soft-rose)',
+                          background: 'var(--bg-card-hover)',
+                        }}
+                      >
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
+                          style={{
+                            background: 'var(--bg-card)',
+                            borderColor: 'var(--border-secondary)',
+                          }}>
+                          <Ghost size={20} style={{ color: 'var(--text-tertiary)' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                              {t('history.virtual_record.label') || '假设已服药'}
+                            </span>
+                            <span className="font-mono text-[11px] font-medium px-2 py-1 rounded-md border"
+                              style={{ color: 'var(--text-tertiary)', borderColor: 'var(--border-secondary)' }}>
+                              {timeLabel}
+                            </span>
+                          </div>
+                          <div className="text-xs font-medium truncate" style={{ color: 'var(--text-tertiary)' }}>
+                            {drugLabel}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onConfirmVirtual(vr)}
+                          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 h-9 rounded-xl text-xs font-bold btn-press-glass"
+                          style={{
+                            background: 'var(--bg-card)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-primary)',
+                          }}
+                          aria-label={t('history.virtual_record.confirm') || '确认'}
+                        >
+                          <Check size={13} />
+                          <span>{t('history.virtual_record.confirm') || '确认'}</span>
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  const ev = item.event;
+                  if (isPatchRemove(ev)) return null;
                   // Patch-apply cards get an inline "贴片移除" button when
                   // there's no paired remove. Resolving the pair at render
                   // time means the button vanishes automatically the moment
