@@ -141,37 +141,52 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                         <button
                             onClick={() => onConfirm(when)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-white text-xs font-bold btn-press-glass glass-btn-primary"
-                            aria-label={t('reminder.banner.confirm_late') || '补打'}
+                            aria-label={t('reminder.banner.confirm_on_time') || '已服用'}
                         >
                             <Check size={14} />
-                            <span>{t('reminder.banner.confirm_late') || '补打'}</span>
+                            <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
                         </button>
                         <button
                             onClick={onDismiss}
                             className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
                             style={{
                                 background: 'var(--bg-card)',
-                                color: 'var(--text-primary)',
-                                border: '1px solid var(--border-primary)',
+                                color: 'var(--text-soft-rose)',
+                                border: '1px solid var(--border-soft-rose)',
                             }}
-                            aria-label={t('reminder.banner.skip') || '跳过'}
+                            aria-label={t('reminder.banner.skip') || '跳过本次'}
                         >
                             <SkipForward size={14} />
-                            <span>{t('reminder.banner.skip') || '跳过'}</span>
+                            <span>{t('reminder.banner.skip') || '跳过本次'}</span>
                         </button>
-                        {onDelayNext && (
+                        {onDelay1d && (
                             <button
-                                onClick={() => onDelayNext(matchedPlan.id)}
+                                onClick={() => onDelay1d(matchedPlan.id)}
                                 className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
                                 style={{
                                     background: 'var(--bg-card)',
                                     color: 'var(--text-primary)',
                                     border: '1px solid var(--border-primary)',
                                 }}
-                                aria-label={t('reminder.banner.delay_next') || '推迟到下次'}
+                                aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
                             >
                                 <FastForward size={14} />
-                                <span>{t('reminder.banner.delay_next') || '推迟到下次'}</span>
+                                <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
+                            </button>
+                        )}
+                        {onDelay2d && (
+                            <button
+                                onClick={() => onDelay2d(matchedPlan.id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
+                                style={{
+                                    background: 'var(--bg-card)',
+                                    color: 'var(--text-primary)',
+                                    border: '1px solid var(--border-primary)',
+                                }}
+                                aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
+                            >
+                                <FastForward size={14} />
+                                <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
                             </button>
                         )}
                     </>
@@ -185,36 +200,6 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                             <Check size={14} />
                             <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
                         </button>
-                        {onDelay1d && (
-                            <button
-                                onClick={() => onDelay1d(matchedPlan.id)}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                                style={{
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-primary)',
-                                }}
-                                aria-label={t('reminder.banner.delay_1d') || '推迟 1 天'}
-                            >
-                                <FastForward size={14} />
-                                <span>{t('reminder.banner.delay_1d') || '推迟 1 天'}</span>
-                            </button>
-                        )}
-                        {onDelay2d && (
-                            <button
-                                onClick={() => onDelay2d(matchedPlan.id)}
-                                className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                                style={{
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-primary)',
-                                }}
-                                aria-label={t('reminder.banner.delay_2d') || '推迟 2 天'}
-                            >
-                                <FastForward size={14} />
-                                <span>{t('reminder.banner.delay_2d') || '推迟 2 天'}</span>
-                            </button>
-                        )}
                     </>
                 )}
             </div>
