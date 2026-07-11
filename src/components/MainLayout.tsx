@@ -10,7 +10,8 @@ import { prefillWeightKG } from '../utils/weight';
 import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
-import { classifyDueState, findDueReminders, isDueReminderStale } from '../utils/planReminder';
+import { classifyDueState, findDueReminders, findVirtualRecords, isDueReminderStale } from '../utils/planReminder';
+import type { VirtualRecord } from '../utils/planReminder';
 import { isPatchApply } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
@@ -55,6 +56,23 @@ const MainLayout: React.FC = () => {
     // it here on a timer (so we don't need a WebSocket / push channel).
     const [pendingReminder, setPendingReminder] = useState<PendingReminder | null>(null);
     const [permissionDenied, setPermissionDenied] = useState(false);
+    /**
+     * Set of `${planId}@${dueMs}` keys for due moments the user has
+     * explicitly dismissed (X 关闭、跳过本次) or implicitly satisfied
+     * via the virtual-record confirm path. Both the modal effect and
+     * `findVirtualRecords` skip these so neither surface re-presents a
+     * due the user has already made a decision about.
+     */
+    const [ignoredReminders, setIgnoredReminders] = useState<Set<string>>(() => new Set());
+    const addIgnoredReminder = (planId: string, dueMs: number) => {
+        const key = `${planId}@${dueMs}`;
+        setIgnoredReminders(prev => {
+            if (prev.has(key)) return prev;
+            const next = new Set(prev);
+            next.add(key);
+            return next;
+        });
+    };
 
     const mainScrollRef = useRef<HTMLDivElement>(null);
 
@@ -107,7 +125,16 @@ const MainLayout: React.FC = () => {
             setPendingReminder(null);
             return;
         }
-        const { plan, due } = dueReminders[0];
+        // Drop any due the user already dismissed/confirmed via the
+        // virtual-record path or the modal's X / skip buttons. The
+        // banner keeps evaluating against a clean list of unsatisfied,
+        // un-ignored due moments.
+        const live = dueReminders.filter(r => !ignoredReminders.has(`${r.plan.id}@${r.due.getTime()}`));
+        if (live.length === 0) {
+            setPendingReminder(null);
+            return;
+        }
+        const { plan, due } = live[0];
         if (isDueReminderStale(due, currentTime)) {
             setPendingReminder(null);
             return;
@@ -117,7 +144,7 @@ const MainLayout: React.FC = () => {
             scheduledAtMs: due.getTime(),
             state: classifyDueState(due, currentTime),
         });
-    }, [plans, events, currentTime]);
+    }, [plans, events, currentTime, ignoredReminders]);
 
     /**
      * Whenever the reminder permission becomes denied, flip the banner
@@ -204,6 +231,13 @@ const MainLayout: React.FC = () => {
                         ? { ...p, startDateH: p.startDateH + days * 24, updatedAtH: Date.now() / 3600000 }
                         : p));
                     setPendingReminder(null);
+                } else if (action === 'skip') {
+                    // "跳过本次" from the heads-up action button. The user
+                    // already saw the strong-warning confirm dialog before
+                    // this payload was queued by the Kotlin side, so we just
+                    // record the ignore and dismiss.
+                    addIgnoredReminder(planId, scheduledAtMs);
+                    setPendingReminder(null);
                 } else {
                     // Body tap (or fire-only payload from the receiver) —
                     // surface the modal without applying any side effect.
@@ -280,6 +314,25 @@ const MainLayout: React.FC = () => {
             const exists = prev.find(e => e.id === newEvent.id);
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
         });
+        // The modal's "已服用" button also implies the user is done with
+        // this due — drop it from the ignored set so the virtual-record
+        // surface (and any future reminder re-evaluations) skip it.
+        if (pendingReminder) {
+            addIgnoredReminder(pendingReminder.planId, pendingReminder.scheduledAtMs);
+        }
+    };
+
+    /**
+     * "跳过本次" handler (modal X-关闭 + late 跳过按钮都共用). Adds the
+     * due to the ignored set so the modal + virtual-record surface skip it
+     * for the remainder of this session. The Android notification has
+     * already been cancelled by the Kotlin side before this fires.
+     */
+    const handleSkipPending = () => {
+        if (pendingReminder) {
+            addIgnoredReminder(pendingReminder.planId, pendingReminder.scheduledAtMs);
+        }
+        setPendingReminder(null);
     };
 
     /**
@@ -303,6 +356,42 @@ const MainLayout: React.FC = () => {
      *  `handleDelayPlan` but days = 1 (we round overdue < 24h up to 1d). */
     const handleDelayNext = (planId: string) => {
         handleDelayPlan(planId, 1);
+    };
+
+    /**
+     * In-window unsatisfied due moments the user could plausibly confirm
+     * via the /history list (the "虚拟记录" surface). Recomputed whenever
+     * plans / events / currentTime / ignoredReminders change so the list
+     * stays in sync with the rest of the reminder UI.
+     */
+    const virtualRecords = useMemo<VirtualRecord[]>(
+        () => findVirtualRecords(plans, events, currentTime, 60, ignoredReminders),
+        [plans, events, currentTime, ignoredReminders],
+    );
+
+    /**
+     * Confirm a virtual record from the /history list. Stamps the event
+     * with the **scheduled** due time (the user is back-filling "I took
+     * this at the planned moment"), then adds the due to the ignored
+     * set so the same virtual row doesn't reappear on the next render.
+     */
+    const handleConfirmVirtual = (vr: VirtualRecord) => {
+        const plan = vr.plan;
+        const defaultWeight = prefillWeightKG(events);
+        const newEvent: DoseEvent = {
+            id: `event-${uuidv4()}`,
+            route: plan.route,
+            ester: plan.ester,
+            timeH: vr.due.getTime() / 3600000,
+            doseMG: plan.doseMG,
+            weightKG: defaultWeight,
+            extras: { ...plan.extras },
+        };
+        setEvents(prev => {
+            const exists = prev.find(e => e.id === newEvent.id);
+            return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
+        });
+        addIgnoredReminder(vr.plan.id, vr.due.getTime());
     };
 
     useEffect(() => {
@@ -576,9 +665,12 @@ const MainLayout: React.FC = () => {
                         matchedPendingPlan,
                         onConfirmPendingReminder: handleConfirmPendingReminder,
                         onDismissPendingReminder: () => setPendingReminder(null),
+                        onSkipPending: handleSkipPending,
                         onDelay1d: (planId: string) => handleDelayPlan(planId, 1),
                         onDelay2d: (planId: string) => handleDelayPlan(planId, 2),
                         onDelayNext: handleDelayNext,
+                        virtualRecords,
+                        onConfirmVirtual: handleConfirmVirtual,
                         permissionDenied,
                         onOpenNotificationSettings: async () => {
                             const invoke = (window as any).__TAURI_INTERNALS__?.invoke;
@@ -703,12 +795,14 @@ const MainLayout: React.FC = () => {
                 pending={pendingReminder}
                 plan={matchedPendingPlan}
                 onConfirm={() => handleDirectConfirm()}
+                onSkip={handleSkipPending}
                 onDelay1d={() => {
                     if (matchedPendingPlan) handleDelayPlan(matchedPendingPlan.id, 1);
                 }}
                 onDelay2d={() => {
                     if (matchedPendingPlan) handleDelayPlan(matchedPendingPlan.id, 2);
                 }}
+                onClose={handleSkipPending}
             />
         </div>
     );
