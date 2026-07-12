@@ -16,13 +16,23 @@ interface OutletContext {
     onDeletePlan: (id: string) => void;
     onTogglePlan: (id: string, enabled: boolean) => void;
     onRemovePatch: (applyId: string) => void;
+    /** Modal deep-link state (1-tap confirm via heads-up notification).
+     *  Currently the /history view does not surface the modal — it lives at
+     *  MainLayout level so it overrides any route. We still pass these down
+     *  so a future edit-modal integration can pre-fill from the same payload. */
     pendingReminder: PendingReminder | null;
     matchedPendingPlan: Plan | null;
     onConfirmPendingReminder: (scheduledAt: Date) => void;
-    onDismissPendingReminder: () => void;
-    onDelay1d?: (planId: string) => void;
-    onDelay2d?: (planId: string) => void;
-    onDelayNext?: (planId: string) => void;
+    /** In-page banner state. Drives the ReminderBanner at the top of
+     *  /history AND the red-dot on the bottom-nav "用药" tab. Survives
+     *  modal dismissal (X) — only the user's own action (已服用/跳过/推迟)
+     *  on the banner clears it. */
+    bannerDue: PendingReminder | null;
+    matchedBannerPlan: Plan | null;
+    onConfirmBanner: (scheduledAt: Date) => void;
+    onSkipBanner: () => void;
+    onDelay1d: (planId: string) => void;
+    onDelay2d: (planId: string) => void;
     permissionDenied: boolean;
     onOpenNotificationSettings?: () => void;
 }
@@ -32,9 +42,10 @@ const HistoryPage: React.FC = () => {
         onAddEvent, onEditEvent, onBatchAdd,
         onAddPlan, onEditPlan, onDeletePlan, onTogglePlan,
         onRemovePatch,
-        pendingReminder, matchedPendingPlan,
-        onConfirmPendingReminder, onDismissPendingReminder,
-        onDelay1d, onDelay2d, onDelayNext,
+        pendingReminder, matchedPendingPlan, onConfirmPendingReminder,
+        bannerDue, matchedBannerPlan,
+        onConfirmBanner, onSkipBanner,
+        onDelay1d, onDelay2d,
         permissionDenied, onOpenNotificationSettings,
     } = useOutletContext<OutletContext>();
     const { events, plans, currentTime } = useAppData();
@@ -63,10 +74,12 @@ const HistoryPage: React.FC = () => {
             pendingReminder={pendingReminder}
             matchedPendingPlan={matchedPendingPlan}
             onConfirmPendingReminder={onConfirmPendingReminder}
-            onDismissPendingReminder={onDismissPendingReminder}
+            bannerDue={bannerDue}
+            matchedBannerPlan={matchedBannerPlan}
+            onConfirmBanner={onConfirmBanner}
+            onSkipBanner={onSkipBanner}
             onDelay1d={onDelay1d}
             onDelay2d={onDelay2d}
-            onDelayNext={onDelayNext}
             permissionDenied={permissionDenied}
             onOpenNotificationSettings={onOpenNotificationSettings}
             complianceMismatches={complianceMismatches}

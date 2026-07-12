@@ -30,17 +30,26 @@ interface HistoryViewProps {
    * invoked when a remove is genuinely missing).
    */
   onRemovePatch: (applyId: string) => void;
-  // Reminder deep-link state + handlers (passed through from MainLayout).
+  /** Modal deep-link state — kept for the heads-up-notification 1-tap
+   *  confirm path. The /history view doesn't surface the modal directly
+   *  (it lives at MainLayout level), but `onConfirmPendingReminder` is
+   *  forwarded to the permission-denied fallback in the banner below so
+   *  a deep-link confirmation still resolves cleanly. */
   pendingReminder: PendingReminder | null;
   matchedPendingPlan: Plan | null;
   onConfirmPendingReminder: (scheduledAt: Date) => void;
-  onDismissPendingReminder: () => void;
-  /** Phase-4 stubs: shift `plan.startDateH` and clear pending. Wired to
-   *  MainLayout's stub handler until the Kotlin incremental reschedule
-   *  lands. Optional — if absent the corresponding button is hidden. */
-  onDelay1d?: (planId: string) => void;
-  onDelay2d?: (planId: string) => void;
-  onDelayNext?: (planId: string) => void;
+  /** In-page banner state — the source of truth for the /history reminder
+   *  UI. Independent of the modal: even after the user X-dismisses the
+   *  modal, this stays populated until the user picks an action here. */
+  bannerDue: PendingReminder | null;
+  matchedBannerPlan: Plan | null;
+  /** Banner action handlers. onConfirmBanner writes the DoseEvent at click
+   *  time; onSkipBanner pops a destructive confirm dialog; onDelay1d/2d
+   *  shift the plan's startDateH. */
+  onConfirmBanner: (scheduledAt: Date) => void;
+  onSkipBanner: () => void;
+  onDelay1d: (planId: string) => void;
+  onDelay2d: (planId: string) => void;
   permissionDenied: boolean;
   onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
@@ -51,9 +60,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   events, onAddEvent, onEditEvent, onBatchAdd,
   plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan,
   onRemovePatch,
-  pendingReminder, matchedPendingPlan,
-  onConfirmPendingReminder, onDismissPendingReminder,
-  onDelay1d, onDelay2d, onDelayNext,
+  pendingReminder, matchedPendingPlan, onConfirmPendingReminder,
+  bannerDue, matchedBannerPlan,
+  onConfirmBanner, onSkipBanner,
+  onDelay1d, onDelay2d,
   permissionDenied, onOpenNotificationSettings,
   complianceMismatches,
 }) => {
@@ -79,11 +89,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   return (
     <div className="relative space-y-5 pt-6 pb-16">
-      {/* Reminder banner — 全局 ReminderModal 现在接管 pending 弹窗，
-       *  这里只留"通知权限被拒"的琥珀色提示 banner（在 /history 顶部）。
-       *  pending 传 null 让 ReminderBanner 内部走 null 早返回，
-       *  只显示 permissionDenied 那条分支。 */}
-      {permissionDenied && (
+      {/* Reminder banner — two modes, in priority order:
+       *  1. permissionDenied → amber "通知权限未开启" hint.
+       *  2. bannerDue (and the global modal isn't already covering this due)
+       *     → soft-rose "该吃药了"/"已过服药时间" banner with action buttons.
+       *  Only one banner renders at a time. The modal is full-screen and
+       *  covers the banner when both apply — we hide the banner when the
+       *  modal is open to avoid double-coverage. */}
+      {permissionDenied ? (
         <ReminderBanner
           pending={null}
           matchedPlan={null}
@@ -91,7 +104,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           permissionDenied={true}
           onOpenPermissionSettings={onOpenNotificationSettings}
         />
-      )}
+      ) : bannerDue && matchedBannerPlan && !pendingReminder ? (
+        <ReminderBanner
+          pending={bannerDue}
+          matchedPlan={matchedBannerPlan}
+          onConfirm={onConfirmBanner}
+          onSkip={onSkipBanner}
+          onDelay1d={onDelay1d}
+          onDelay2d={onDelay2d}
+        />
+      ) : null}
       {/* Compliance banner — appears below the reminder banner and only when
        *  the user has enough history to spot a pattern. Sibling layout
        *  (mx-4 + space-y-5 in the parent) keeps the same visual cadence as
