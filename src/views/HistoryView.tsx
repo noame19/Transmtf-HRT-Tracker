@@ -88,10 +88,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           pending={null}
           matchedPlan={null}
           onConfirm={onConfirmPendingReminder}
-          onDismiss={onDismissPendingReminder}
-          onDelay1d={onDelay1d}
-          onDelay2d={onDelay2d}
-          onDelayNext={onDelayNext}
           permissionDenied={true}
           onOpenPermissionSettings={onOpenNotificationSettings}
         />
