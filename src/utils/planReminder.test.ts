@@ -75,8 +75,8 @@ describe('hasMatchingEvent', () => {
     });
 
     it('returns false when event is outside the tolerance window', () => {
-        // Event at 16:00 — NOW is 20:00 → 4h gap > 180min tolerance.
-        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 16, 0)];
+        // Event at 17:00 — NOW is 20:00 → 3h gap > 60min tolerance.
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 17, 0)];
         expect(hasMatchingEvent(
             { ester: Ester.EV, route: Route.injection },
             NOW,
@@ -134,17 +134,17 @@ describe('hasMatchingEvent', () => {
     });
 
     it('honours a custom tolerance', () => {
-        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 17, 0)];  // 3h early
-        // Default ±180min → 180min gap → matches.
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 18, 30)];  // 1.5h early
+        // Default ±60min → 1.5h gap → no match.
         expect(hasMatchingEvent(
             { ester: Ester.EV, route: Route.injection },
             NOW, events,
-        )).toBe(true);
-        // Custom ±60min → 180min gap → no match.
+        )).toBe(false);
+        // Custom ±120min → 1.5h gap → matches.
         expect(hasMatchingEvent(
             { ester: Ester.EV, route: Route.injection },
-            NOW, events, 60,
-        )).toBe(false);
+            NOW, events, 120,
+        )).toBe(true);
     });
 });
 
@@ -156,26 +156,30 @@ describe('findDueReminders', () => {
     });
 
     it('returns [] when the plan due is outside the window', () => {
-        // Daily at 09:00 — NOW=20:00 → 11h gap > 180min.
+        // Daily at 09:00 — NOW=20:00 → 11h gap > 5h late window.
         const plans = [mkDailyPlan(Ester.EV, Route.injection, 9, 0)];
         expect(findDueReminders(plans, [], NOW)).toEqual([]);
     });
 
     it('returns the plan when due is within the window (past due)', () => {
-        // Daily at 19:00 — NOW=20:00 → 1h past, within 180min.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 19, 0)];
+        // Daily at 19:30 — NOW=20:00 → 30min past, within ±60min on-time.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 19, 30)];
         const result = findDueReminders(plans, [], NOW);
         expect(result).toHaveLength(1);
         expect(result[0].plan.id).toBe(plans[0].id);
         expect(result[0].due.getHours()).toBe(19);
+        expect(result[0].due.getMinutes()).toBe(30);
     });
 
     it('returns the plan when due is within the window (upcoming)', () => {
-        // Daily at 22:00 — NOW=20:00 → 2h ahead, within 180min.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 22, 0)];
+        // Daily at 20:45 — NOW=20:00 → 45min ahead, within ±60min on-time.
+        // dueMomentsInRange uses half-open [from, to) so to=21:00 excludes the
+        // 21:00 boundary — 20:45 is comfortably inside.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 45)];
         const result = findDueReminders(plans, [], NOW);
         expect(result).toHaveLength(1);
-        expect(result[0].due.getHours()).toBe(22);
+        expect(result[0].due.getHours()).toBe(20);
+        expect(result[0].due.getMinutes()).toBe(45);
     });
 
     it('skips plans whose due is already satisfied by an event', () => {
@@ -195,7 +199,7 @@ describe('findDueReminders', () => {
             ester: Ester.EV,
             route: Route.injection,
             doseMG: 5,
-            schedule: { kind: 'daily', times: ['10:00', '14:00', '22:00'] },
+            schedule: { kind: 'daily', times: ['10:00', '14:00', '20:30'] },
             startDateH: (NOW.getTime() - 30 * 86400000) / 3600000,
             enabled: true,
             leadMinutes: 5,
@@ -203,23 +207,28 @@ describe('findDueReminders', () => {
             createdAtH: (NOW.getTime() - 30 * 86400000) / 3600000,
             updatedAtH: (NOW.getTime() - 86400000) / 3600000,
         };
-        // NOW=20:00; 10:00=10h ago (out), 14:00=6h ago (out), 22:00=2h ahead (in).
-        // 22:00 is the only candidate — should be returned.
+        // NOW=20:00; sweep window [19:00, +5h).
+        //   10:00 today = 10h ago → out (before from).
+        //   14:00 today = 6h ago  → out (before from).
+        //   20:30 today = 30min ahead → in (the only candidate).
         const result = findDueReminders([plan], [], NOW);
         expect(result).toHaveLength(1);
-        expect(result[0].due.getHours()).toBe(22);
+        expect(result[0].due.getHours()).toBe(20);
+        expect(result[0].due.getMinutes()).toBe(30);
     });
 
     it('returns multiple plans sorted by proximity to now', () => {
-        const planA = mkDailyPlan(Ester.EV, Route.injection, 18, 0);   // 2h past
-        const planB = mkDailyPlan(Ester.CPA, Route.oral, 21, 0);      // 1h ahead
-        const planC = mkDailyPlan(Ester.EV, Route.gel, 20, 30);       // 30min ahead (closest)
+        // planA=19:00 (60min past — at the on-time/late boundary, still in window)
+        // planB=20:30 (30min ahead — closest)
+        // planC=20:45 (45min ahead)
+        const planA = mkDailyPlan(Ester.EV, Route.injection, 19, 0);
+        const planB = mkDailyPlan(Ester.CPA, Route.oral, 20, 30);
+        const planC = mkDailyPlan(Ester.EV, Route.gel, 20, 45);
         const result = findDueReminders([planA, planB, planC], [], NOW);
         expect(result).toHaveLength(3);
-        expect(result[0].plan.id).toBe(planC.id);  // closest first
-        // The remaining two are 1h ahead vs 2h past — 1h ahead wins.
-        expect(result[1].plan.id).toBe(planB.id);
-        expect(result[2].plan.id).toBe(planA.id);
+        expect(result[0].plan.id).toBe(planB.id);  // 30min closest first
+        expect(result[1].plan.id).toBe(planC.id);  // 45min
+        expect(result[2].plan.id).toBe(planA.id);  // 60min
     });
 
     it('does not return plans whose due was satisfied with oral when plan is sublingual', () => {
@@ -230,7 +239,7 @@ describe('findDueReminders', () => {
     });
 
     it('defaults to PLAN_REMINDER_TOLERANCE_MIN', () => {
-        expect(PLAN_REMINDER_TOLERANCE_MIN).toBe(180);
+        expect(PLAN_REMINDER_TOLERANCE_MIN).toBe(60);
     });
 });
 
@@ -242,13 +251,15 @@ describe('classifyDueState', () => {
         expect(classifyDueState(due, NOW)).toBe('on_time');
     });
 
-    it('returns on_time when due is within the 1-minute grace window past', () => {
-        const due = new Date(NOW.getTime() - 30 * 1000);
+    it('returns on_time when due is within the on-time window past', () => {
+        // 30min past due — still inside the 60min on-time past window.
+        const due = new Date(NOW.getTime() - 30 * 60 * 1000);
         expect(classifyDueState(due, NOW)).toBe('on_time');
     });
 
-    it('returns late when due is past the grace window', () => {
-        const due = new Date(NOW.getTime() - 2 * 60 * 1000);
+    it('returns late when due is past the on-time window', () => {
+        // 90min past due — past LATE_START_MIN (60min) → late.
+        const due = new Date(NOW.getTime() - 90 * 60 * 1000);
         expect(classifyDueState(due, NOW)).toBe('late');
     });
 

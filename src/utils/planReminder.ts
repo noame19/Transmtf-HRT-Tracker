@@ -4,16 +4,26 @@ import { canonicalComplianceRoute } from './planCompliance';
 
 // ── Defaults ──────────────────────────────────────────────────────────────
 
-/** Tolerance window for "is this due moment 'now'?" — the banner shows when
- *  current time is within ±this many minutes of a scheduled due moment.
- *  Defaults to ±3h per UX decision (looser than notification-only flow). */
-export const PLAN_REMINDER_TOLERANCE_MIN = 180;
+/** On-time window radius. Banner / modal show "该吃药了" when current time
+ *  is within ±this many minutes of a scheduled due moment. Set to ±60min
+ *  per UX decision — a 1h slack on each side of the scheduled time. */
+export const PLAN_REMINDER_TOLERANCE_MIN = 60;
 
-/** Past-due banner auto-dismiss threshold: if a due moment is more than this
- *  many hours in the past AND the user hasn't acted, stop nagging. The user
- *  is presumed to have either skipped intentionally or moved on; either way
- *  a stale banner becomes visual noise. */
-export const PLAN_REMINDER_AUTO_DISMISS_HOURS = 6;
+/** Boundary at which a due moment flips from 'on_time' to 'late'. A due at
+ *  NOW-60min is still on_time (strict `>`), NOW-61min is late. Picked to
+ *  match the upper edge of the on-time window so the two states don't
+ *  overlap on the boundary. */
+export const PLAN_REMINDER_LATE_START_MIN = 60;
+
+/** How long past `due` the late state stays visible. The "已过服药时间"
+ *  window is the half-open interval (due+LATE_START_MIN, due+LATE_END_HOURS].
+ *  Past this point the banner auto-dismisses so it doesn't nag forever. */
+export const PLAN_REMINDER_LATE_END_HOURS = 5;
+
+/** Alias kept for callers that imported the old name. Equals
+ *  `PLAN_REMINDER_LATE_END_HOURS` so auto-dismiss always lines up with
+ *  the upper edge of the late window. */
+export const PLAN_REMINDER_AUTO_DISMISS_HOURS = PLAN_REMINDER_LATE_END_HOURS;
 
 // ── Matching ──────────────────────────────────────────────────────────────
 
@@ -77,8 +87,13 @@ export function findDueReminders(
     now: Date,
     toleranceMin: number = PLAN_REMINDER_TOLERANCE_MIN,
 ): DueReminder[] {
+    // The combined "on_time + late" sweep window: due must fall in
+    // [now - toleranceMin, now + LATE_END_HOURS]. We use this asymmetric
+    // range because the late window extends further into the future
+    // (up to 5h after due) than the on-time window extends before due
+    // (only 1h before).
     const from = new Date(now.getTime() - toleranceMin * 60 * 1000);
-    const to = new Date(now.getTime() + toleranceMin * 60 * 1000);
+    const to = new Date(now.getTime() + PLAN_REMINDER_LATE_END_HOURS * 60 * 60 * 1000);
     const out: DueReminder[] = [];
     for (const p of plans) {
         if (!p.enabled) continue;
@@ -107,11 +122,13 @@ export function findDueReminders(
     return out;
 }
 
-/** Classify a due moment relative to "now". `on_time` includes a small
- *  grace window (~1 min) where we don't yet say "late" — feels better. */
+/** Classify a due moment relative to "now". 'on_time' covers the window
+ *  [due-TOLERANCE_MIN, due+LATE_START_MIN] (≤ 60min past due); 'late'
+ *  covers (due+LATE_START_MIN, due+LATE_END_HOURS]. The boundary uses
+ *  strict `>` so a due exactly LATE_START_MIN in the past is still on_time. */
 export function classifyDueState(due: Date, now: Date): 'on_time' | 'late' {
-    const GRACE_MS = 60 * 1000;
-    return now.getTime() - due.getTime() > GRACE_MS ? 'late' : 'on_time';
+    const LATE_START_MS = PLAN_REMINDER_LATE_START_MIN * 60 * 1000;
+    return now.getTime() - due.getTime() > LATE_START_MS ? 'late' : 'on_time';
 }
 
 /** True iff a due moment is so far in the past that the banner should
