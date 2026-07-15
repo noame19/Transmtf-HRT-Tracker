@@ -10,7 +10,7 @@ import { prefillWeightKG } from '../utils/weight';
 import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
-import { classifyDueState, findDueReminders, isDueReminderStale, DueReminder } from '../utils/planReminder';
+import { classifyDueState, findDueReminders, isDueReminderStale, PLAN_REMINDER_AUTO_DISMISS_MIN, DueReminder } from '../utils/planReminder';
 import { isPatchApply } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
@@ -22,6 +22,63 @@ import PlanEditModal from './PlanEditModal';
 import BatchPlanConfirmModal from './BatchPlanConfirmModal';
 
 type ViewKey = 'home' | 'history' | 'lab' | 'settings';
+
+// ── Reminder acknowledgement persistence ────────────────────────────────
+//
+// `dismissedReminders` (X close modal) and `handledReminders` (any button
+// click) used to be in-memory Sets, which meant a page refresh reset
+// them and the modal re-popped for dues the user had already seen. We now
+// persist both Sets to localStorage so the acknowledgement survives app
+// restarts. Keys are `${planId}@${dueMs}` — unique per due across time.
+// The Sets themselves can't be JSON-encoded, so we store a string array.
+//
+// Versioning: the `-v1` suffix lets us bump the shape later without
+// crashing on stale payloads.
+const REMINDER_DISMISSED_KEY = 'hrt-reminder-dismissed-v1';
+const REMINDER_HANDLED_KEY = 'hrt-reminder-handled-v1';
+
+function loadReminderSet(storageKey: string): Set<string> {
+    if (typeof localStorage === 'undefined') return new Set();
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return new Set();
+        const parsed = JSON.parse(raw);
+        return new Set(Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : []);
+    } catch {
+        return new Set();
+    }
+}
+
+function saveReminderSet(storageKey: string, s: Set<string>): void {
+    if (typeof localStorage === 'undefined') return;
+    try {
+        localStorage.setItem(storageKey, JSON.stringify([...s]));
+    } catch {
+        // Quota exceeded / private mode — silently drop. Worst case the
+        // user gets a re-pop on next refresh, no data loss.
+    }
+}
+
+/** Drop entries whose due moment is already past the auto-dismiss
+ *  threshold. Returns the original Set (same reference) when nothing
+ *  changed so React's bailout skips the re-render. */
+function pruneStaleReminderEntries(s: Set<string>, staleCutoffMs: number): Set<string> {
+    let next: Set<string> | null = null;
+    for (const k of s) {
+        const atIdx = k.lastIndexOf('@');
+        if (atIdx < 0) continue;
+        const dueMs = Number(k.slice(atIdx + 1));
+        // Keep the entry if its due moment is still within (or after) the
+        // cutoff — i.e., it could still fire a reminder in the future.
+        if (Number.isFinite(dueMs) && dueMs >= staleCutoffMs) {
+            if (next) next.add(k);
+        } else {
+            if (!next) next = new Set(s);  // lazy copy on first prune
+            next.delete(k);
+        }
+    }
+    return next ?? s;
+}
 
 const MainLayout: React.FC = () => {
     const { t, lang } = useTranslation();
@@ -68,8 +125,34 @@ const MainLayout: React.FC = () => {
      * state: the user closed the modal intending to deal with it later via the
      * banner on /history.
      */
-    const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(new Set());
-    const [handledReminders, setHandledReminders] = useState<Set<string>>(new Set());
+    const [dismissedReminders, setDismissedReminders] = useState<Set<string>>(
+        () => loadReminderSet(REMINDER_DISMISSED_KEY),
+    );
+    const [handledReminders, setHandledReminders] = useState<Set<string>>(
+        () => loadReminderSet(REMINDER_HANDLED_KEY),
+    );
+
+    // Persist Sets to localStorage on every change so a page refresh
+    // doesn't re-pop a modal the user already X'd, or re-fire a late
+    // modal they already resolved via action button.
+    useEffect(() => {
+        saveReminderSet(REMINDER_DISMISSED_KEY, dismissedReminders);
+    }, [dismissedReminders]);
+    useEffect(() => {
+        saveReminderSet(REMINDER_HANDLED_KEY, handledReminders);
+    }, [handledReminders]);
+
+    // Auto-prune stale acknowledgement entries when the clock advances.
+    // A due moment that's already past the auto-dismiss threshold can
+    // never fire again, so its key is dead weight in the Set. Pruning
+    // here keeps the localStorage payload bounded over months of use.
+    // The functional updater returns the same reference when nothing
+    // changed → React bails out → no save useEffect re-run.
+    useEffect(() => {
+        const staleCutoffMs = currentTime.getTime() - PLAN_REMINDER_AUTO_DISMISS_MIN * 60 * 1000;
+        setDismissedReminders((prev) => pruneStaleReminderEntries(prev, staleCutoffMs));
+        setHandledReminders((prev) => pruneStaleReminderEntries(prev, staleCutoffMs));
+    }, [currentTime]);
 
     const reminderKey = useCallback((planId: string, dueMs: number) => `${planId}@${dueMs}`, []);
     const markHandled = useCallback((key: string) => {
