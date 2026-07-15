@@ -311,9 +311,142 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   return (
     <>
       <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
-        <div className="grid md:grid-cols-3 gap-2.5 md:gap-4 md:items-stretch">
-          {/* Main level card */}
-          <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
+        {/* Desktop: 50/50 split between combined-dose card (left) and the
+          *  primary KPI concentration card (right). Mobile: stacked column.
+          *  md:items-stretch keeps the two cards equal-height so a tall
+          *  concentration card (e.g. with personal-model + 95% CI + status
+          *  badge) lines up with the combined-dose card's columns. */}
+        <div className="grid md:grid-cols-2 gap-2.5 md:gap-4 md:items-stretch">
+
+          {/* Combined dose card — last E2 (left column) + last anti-androgen
+            *  (right column) merged into a single card to balance the header
+            *  with the concentration card. The two-column data layout mirrors
+            *  the concentration card's "E2 vs AA" split so the row reads as
+            *  four parallel data points (dose last-taken ↔ current concentration). */}
+          <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
+
+              {/* Left column — last estradiol dose (non-oral). */}
+              <div className="flex flex-col">
+                {/* Top row: icon + label + route badge + time-ago */}
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                    style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                    {lastE2Dose
+                      ? (
+                        lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
+                        : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                      )
+                      : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                    }
+                  </div>
+                  <div className="leading-tight min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                        {t('overview.last_e2')}
+                      </p>
+                      {lastE2Dose && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                          {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
+                        </span>
+                      )}
+                    </div>
+                    {lastE2Dose ? (
+                      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                        <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                          {lastE2DoseStr}
+                        </p>
+                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                          {lastE2Dose.ester}
+                        </span>
+                        <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                          {`${formatTimeAgo(lastE2Dose.timeH)} ${formatTime(new Date(lastE2Dose.timeH * 3600000))}`}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                    )}
+                    {nextE2DueStr && (
+                      <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                        style={{ color: 'var(--accent-500)' }}>
+                        {`${t('overview.next_due')} ${nextE2DueStr} ${nextE2Due ? formatTime(nextE2Due) : ''}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom-aligned extra info (sublingual hold time / θ).
+                  *  mt-auto pushes the block to the column's bottom so the
+                  *  layout matches the original stacked-card version when
+                  *  both header cards are stretch-aligned. Priority mirrors
+                  *  DoseFormModal: tier wins over θ for stale data. */}
+                {lastE2Dose && lastE2Dose.route === Route.sublingual && (() => {
+                  const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
+                  const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
+                  let extraText: string | null = null;
+                  if (tierRaw !== undefined) {
+                    const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
+                    extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
+                  } else if (theta !== undefined && Number.isFinite(theta)) {
+                    extraText = `θ ${theta.toFixed(2)}`;
+                  }
+                  if (!extraText) return null;
+                  return (
+                    <div className="mt-auto pt-2 md:pt-3 border-t shrink-0"
+                      style={{ borderColor: 'var(--border-secondary)' }}>
+                      <p className="text-[10px] md:text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
+                        {t('field.sl_duration')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{extraText}</span>
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Right column — last anti-androgen dose (CPA / bicalutamide). */}
+              <div className="flex items-start gap-2">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  <Pill size={16} style={{ color: '#3b82f6' }} />
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.last_antiandrogen')}
+                  </p>
+                  {lastAntiandrogenDose ? (
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
+                      </p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                        {lastAntiandrogenDose.ester}
+                      </span>
+                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                  )}
+                  {nextAntiandrogenDueStr && (
+                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                      style={{ color: '#3b82f6' }}>
+                      {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main level card — concentration (E2 + AA). Now occupies the right
+            *  half so the header reads as two equal-weight cards side-by-side. */}
+          <div className="glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
             style={{
               background: isDark
                 ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
@@ -518,127 +651,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 );
               })()}
             </div>
-          </div>
-
-          {/* Side cards */}
-          <div className="flex flex-row gap-2 md:flex-col md:gap-3 md:h-full">
-
-            {/* Last anti-androgen dose (CPA / bicalutamide) — full row width now.
-                Showing "下次" date when at least one enabled anti-androgen plan exists. */}
-            <div className="flex items-start gap-2 p-3 md:p-4 glass-card card-lift-glass min-w-0 flex-1 md:flex-none">
-              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                <Pill size={16} style={{ color: '#3b82f6' }} />
-              </div>
-              <div className="leading-tight min-w-0 flex-1">
-                <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                  {t('overview.last_antiandrogen')}
-                </p>
-                {lastAntiandrogenDose ? (
-                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                    <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                      {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
-                    </p>
-                    <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                      style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                      {lastAntiandrogenDose.ester}
-                    </span>
-                    <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                      {formatTimeAgo(lastAntiandrogenDose.timeH)}
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                )}
-                {nextAntiandrogenDueStr && (
-                  <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
-                    style={{ color: '#3b82f6' }}>
-                    {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Last estradiol dose (non-oral) — full width, content redistributes when stretched on desktop */}
-            <div className="flex flex-col p-3 md:p-4 glass-card card-lift-glass flex-1 min-h-0">
-              {/* Top row: icon + label + route badge + time-ago */}
-              <div className="flex items-start gap-3 shrink-0">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                  {lastE2Dose
-                    ? (
-                      lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
-                      : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
-                      : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
-                      : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
-                      : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
-                    )
-                    : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
-                  }
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                      {t('overview.last_e2')}
-                    </p>
-                    {lastE2Dose && (
-                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                        {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
-                      </span>
-                    )}
-                  </div>
-                  {lastE2Dose ? (
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                        {lastE2DoseStr}
-                      </p>
-                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                        {lastE2Dose.ester}
-                      </span>
-                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {`${formatTimeAgo(lastE2Dose.timeH)} ${formatTime(new Date(lastE2Dose.timeH * 3600000))}`}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                  )}
-                  {nextE2DueStr && (
-                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
-                      style={{ color: 'var(--accent-500)' }}>
-                      {`${t('overview.next_due')} ${nextE2DueStr} ${nextE2Due ? formatTime(nextE2Due) : ''}`}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom-aligned extra info (sublingual hold time / θ).
-                  Priority mirrors DoseFormModal: if both fields exist on stale
-                  data, tier wins so the on-screen value matches what the edit
-                  form will display. */}
-              {lastE2Dose && lastE2Dose.route === Route.sublingual && (() => {
-                const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
-                const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
-                let extraText: string | null = null;
-                if (tierRaw !== undefined) {
-                  const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
-                  extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
-                } else if (theta !== undefined && Number.isFinite(theta)) {
-                  extraText = `θ ${theta.toFixed(2)}`;
-                }
-                if (!extraText) return null;
-                return (
-                  <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t shrink-0"
-                    style={{ borderColor: 'var(--border-secondary)' }}>
-                    <p className="text-[10px] md:text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
-                      {t('field.sl_duration')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{extraText}</span>
-                    </p>
-                  </div>
-                );
-              })()}
-            </div>
-
           </div>
         </div>
       </header>
