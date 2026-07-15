@@ -38,18 +38,19 @@ interface HistoryViewProps {
   pendingReminder: PendingReminder | null;
   matchedPendingPlan: Plan | null;
   onConfirmPendingReminder: (scheduledAt: Date) => void;
-  /** In-page banner state — the source of truth for the /history reminder
-   *  UI. Independent of the modal: even after the user X-dismisses the
-   *  modal, this stays populated until the user picks an action here. */
-  bannerDue: PendingReminder | null;
-  matchedBannerPlan: Plan | null;
-  /** Banner action handlers. onConfirmBanner writes the DoseEvent at click
-   *  time; onSkipBanner pops a destructive confirm dialog; onDelay1d/2d
-   *  shift the plan's startDateH. */
-  onConfirmBanner: (scheduledAt: Date) => void;
-  onSkipBanner: () => void;
-  onDelay1d: (planId: string) => void;
-  onDelay2d: (planId: string) => void;
+  /** In-page banner stack — one entry per pending due. Users with
+   *  multiple drugs (E2 + CPA + PRL) get one banner per drug so each
+   *  can be addressed independently. Empty array → no banner rendered.
+   *  Independent of the modal: even after the user X-dismisses the
+   *  modal, these stay populated until the user picks an action here. */
+  bannerEntries: { plan: Plan; pending: PendingReminder }[];
+  /** Banner action handlers. Each takes `scheduledAtMs` so the handler
+   *  can disambiguate which banner is acting — the modal's source is
+   *  always implied by `pendingReminder`, but the banner has many. */
+  onConfirmBanner: (scheduledAtMs: number) => void;
+  onSkipBanner: (scheduledAtMs: number) => void;
+  onDelay1d: (planId: string, scheduledAtMs: number) => void;
+  onDelay2d: (planId: string, scheduledAtMs: number) => void;
   permissionDenied: boolean;
   onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
@@ -61,7 +62,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan,
   onRemovePatch,
   pendingReminder, matchedPendingPlan, onConfirmPendingReminder,
-  bannerDue, matchedBannerPlan,
+  bannerEntries,
   onConfirmBanner, onSkipBanner,
   onDelay1d, onDelay2d,
   permissionDenied, onOpenNotificationSettings,
@@ -89,13 +90,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   return (
     <div className="relative space-y-5 pt-6 pb-16">
-      {/* Reminder banner — two modes, in priority order:
-       *  1. permissionDenied → amber "通知权限未开启" hint.
+      {/* Reminder banners — three modes, in priority order:
+       *  1. permissionDenied → amber "通知权限未开启" hint (single banner).
        *  2. bannerDue (and the global modal isn't already covering this due)
        *     → soft-rose "该吃药了"/"已过服药时间" banner with action buttons.
-       *  Only one banner renders at a time. The modal is full-screen and
-       *  covers the banner when both apply — we hide the banner when the
-       *  modal is open to avoid double-coverage. */}
+       *     Rendered as a STACK: one banner per pending due so users with
+       *     multiple drugs (E2 + CPA + PRL) on the same day see each drug
+       *     addressed independently. We hide the banner stack entirely
+       *     when the modal is open so the full-screen modal isn't
+       *     double-covered.
+       *  3. (no banners) → normal timeline view. */}
       {permissionDenied ? (
         <ReminderBanner
           pending={null}
@@ -104,16 +108,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           permissionDenied={true}
           onOpenPermissionSettings={onOpenNotificationSettings}
         />
-      ) : bannerDue && matchedBannerPlan && !pendingReminder ? (
-        <ReminderBanner
-          pending={bannerDue}
-          matchedPlan={matchedBannerPlan}
-          onConfirm={onConfirmBanner}
-          onSkip={onSkipBanner}
-          onDelay1d={onDelay1d}
-          onDelay2d={onDelay2d}
-        />
-      ) : null}
+      ) : pendingReminder ? null : (
+        bannerEntries.map((entry) => (
+          <ReminderBanner
+            // planId+dueMs is unique per (plan, scheduledAt) so the same
+            // plan with multiple daily times gets one banner per time.
+            key={`${entry.plan.id}@${entry.pending.scheduledAtMs}`}
+            pending={entry.pending}
+            matchedPlan={entry.plan}
+            onConfirm={() => onConfirmBanner(entry.pending.scheduledAtMs)}
+            onSkip={() => onSkipBanner(entry.pending.scheduledAtMs)}
+            onDelay1d={() => onDelay1d(entry.plan.id, entry.pending.scheduledAtMs)}
+            onDelay2d={() => onDelay2d(entry.plan.id, entry.pending.scheduledAtMs)}
+          />
+        ))
+      )}
       {/* Compliance banner — appears below the reminder banner and only when
        *  the user has enough history to spot a pattern. Sibling layout
        *  (mx-4 + space-y-5 in the parent) keeps the same visual cadence as

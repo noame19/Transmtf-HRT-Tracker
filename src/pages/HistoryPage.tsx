@@ -23,16 +23,17 @@ interface OutletContext {
     pendingReminder: PendingReminder | null;
     matchedPendingPlan: Plan | null;
     onConfirmPendingReminder: (scheduledAt: Date) => void;
-    /** In-page banner state. Drives the ReminderBanner at the top of
-     *  /history AND the red-dot on the bottom-nav "用药" tab. Survives
-     *  modal dismissal (X) — only the user's own action (已服用/跳过/推迟)
-     *  on the banner clears it. */
-    bannerDue: PendingReminder | null;
-    matchedBannerPlan: Plan | null;
-    onConfirmBanner: (scheduledAt: Date) => void;
-    onSkipBanner: () => void;
-    onDelay1d: (planId: string) => void;
-    onDelay2d: (planId: string) => void;
+    /** In-page banner stack — one entry per pending due. Users with
+     *  multiple drugs (E2 + CPA + PRL) get one banner per drug so each
+     *  can be addressed independently. Empty array → no banner rendered. */
+    bannerEntries: { plan: Plan; pending: PendingReminder }[];
+    /** Banner action handlers. Each takes `scheduledAtMs` so the handler
+     *  can disambiguate which banner is acting (the modal's source is
+     *  always implied by `pendingReminder`, but the banner has many). */
+    onConfirmBanner: (scheduledAtMs: number) => void;
+    onSkipBanner: (scheduledAtMs: number) => void;
+    onDelay1d: (planId: string, scheduledAtMs: number) => void;
+    onDelay2d: (planId: string, scheduledAtMs: number) => void;
     permissionDenied: boolean;
     onOpenNotificationSettings?: () => void;
 }
@@ -43,7 +44,7 @@ const HistoryPage: React.FC = () => {
         onAddPlan, onEditPlan, onDeletePlan, onTogglePlan,
         onRemovePatch,
         pendingReminder, matchedPendingPlan, onConfirmPendingReminder,
-        bannerDue, matchedBannerPlan,
+        bannerEntries,
         onConfirmBanner, onSkipBanner,
         onDelay1d, onDelay2d,
         permissionDenied, onOpenNotificationSettings,
@@ -74,8 +75,7 @@ const HistoryPage: React.FC = () => {
             pendingReminder={pendingReminder}
             matchedPendingPlan={matchedPendingPlan}
             onConfirmPendingReminder={onConfirmPendingReminder}
-            bannerDue={bannerDue}
-            matchedBannerPlan={matchedBannerPlan}
+            bannerEntries={bannerEntries}
             onConfirmBanner={onConfirmBanner}
             onSkipBanner={onSkipBanner}
             onDelay1d={onDelay1d}

@@ -120,9 +120,9 @@ const MainLayout: React.FC = () => {
      * still trigger a 1-tap write — but it eventually converges into the same
      * `handledReminders` set so the UI stays consistent.
      *
-     * `findDueReminders` already sweeps the combined on-time + late window
-     * [now-1h, now+5h], so this effect just picks the closest non-dismissed,
-     * non-handled, non-stale due moment.
+     * `findDueReminders` sweeps the combined on-time + late window
+     * [now-5h, now+1h+1min] (due-space), so this effect just picks the
+     * closest non-dismissed, non-handled, non-stale due moment.
      */
     useEffect(() => {
         const dueReminders = findDueReminders(plans, events, currentTime);
@@ -141,23 +141,36 @@ const MainLayout: React.FC = () => {
     }, [plans, events, currentTime, dismissedReminders, handledReminders, reminderKey]);
 
     /**
-     * Banner source — independent of the modal. Shows the closest unsatisfied
-     * due moment regardless of whether the modal has been dismissed. Hidden
-     * only when the user has acted on the banner (handledReminders) OR the
-     * due has drifted past the late window (stale).
+     * Banner source — independent of the modal. Returns ALL unsatisfied,
+     * non-stale, non-handled due moments so /history can render one banner
+     * per pending dose (users on multiple drugs expect each drug's banner
+     * to be addressable separately — collapsing them into one banner hides
+     * what they're missing).
      *
-     * Powers both the in-page ReminderBanner on /history AND the red-dot
-     * badge on the "用药" tab in the bottom nav.
+     * Drives the in-page ReminderBanner stack on /history AND the red-dot
+     * badge on the "用药" tab in the bottom nav (badge = `entries.length > 0`).
+     *
+     * Each entry carries its own `(plan, pending)` pair so the banner's
+     * "已服用" / "跳过本次" / "推迟 N 天" buttons can target the right due
+     * without any shared mutable state.
      */
-    const bannerDue = useMemo<DueReminder | null>(() => {
+    const bannerEntries = useMemo<{ plan: Plan; pending: PendingReminder }[]>(() => {
         const dueReminders = findDueReminders(plans, events, currentTime);
-        for (const r of dueReminders) {
-            if (isDueReminderStale(r.due, currentTime)) continue;
-            const key = reminderKey(r.plan.id, r.due.getTime());
+        const out: { plan: Plan; pending: PendingReminder }[] = [];
+        for (const { plan, due } of dueReminders) {
+            if (isDueReminderStale(due, currentTime)) continue;
+            const key = reminderKey(plan.id, due.getTime());
             if (handledReminders.has(key)) continue;
-            return r;
+            out.push({
+                plan,
+                pending: {
+                    planId: plan.id,
+                    scheduledAtMs: due.getTime(),
+                    state: classifyDueState(due, currentTime),
+                },
+            });
         }
-        return null;
+        return out;
     }, [plans, events, currentTime, handledReminders, reminderKey]);
 
     /**
@@ -271,11 +284,6 @@ const MainLayout: React.FC = () => {
         return plans.find(p => p.id === pendingReminder.planId) ?? null;
     }, [pendingReminder, plans]);
 
-    const matchedBannerPlan = useMemo(() => {
-        if (!bannerDue) return null;
-        return plans.find(p => p.id === bannerDue.plan.id) ?? null;
-    }, [bannerDue, plans]);
-
     /**
      * Confirm the pending reminder from the deep-link path. Bypasses
      * `matchPlansForNow` (which uses the current clock) and instead targets
@@ -338,15 +346,16 @@ const MainLayout: React.FC = () => {
     };
 
     /**
-     * Banner "已服用" handler. Mirrors `handleDirectConfirm` but reads from
-     * `bannerDue` (which may be a different due moment than the modal's
-     * `pendingReminder` if the user previously X'd the modal). After the
-     * event is written, `findDueReminders` will treat this due as satisfied
-     * and the banner disappears.
+     * Banner "已服用" handler. Each banner carries its own `(plan, pending)`
+     * pair, so we accept `scheduledAtMs` to disambiguate which entry is
+     * being confirmed. After the event is written, `findDueReminders` will
+     * treat this due as satisfied and that banner disappears on the next
+     * render (the other banners stay).
      */
-    const handleConfirmBanner = (scheduledAt: Date) => {
-        if (!bannerDue) return;
-        const plan = bannerDue.plan;
+    const handleConfirmBanner = (scheduledAtMs: number) => {
+        const target = bannerEntries.find(e => e.pending.scheduledAtMs === scheduledAtMs);
+        if (!target) return;
+        const plan = target.plan;
         const defaultWeight = prefillWeightKG(events);
         const newEvent: DoseEvent = {
             id: `event-${uuidv4()}`,
@@ -361,7 +370,7 @@ const MainLayout: React.FC = () => {
             const exists = prev.find(e => e.id === newEvent.id);
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
         });
-        markHandled(reminderKey(plan.id, bannerDue.due.getTime()));
+        markHandled(reminderKey(plan.id, scheduledAtMs));
     };
 
     /**
@@ -382,43 +391,53 @@ const MainLayout: React.FC = () => {
      * the due handled. The modal closes immediately (visual feedback); if
      * the user cancels, nothing changes.
      *
-     * Source-key resolution: prefers `pendingReminder` (modal source) and
-     * falls back to `bannerDue` (banner source) so the same handler works
-     * from both surfaces.
+     * Source-key resolution priority:
+     *   1. Explicit `scheduledAtMs` arg (banner — must disambiguate between
+     *      multiple banners).
+     *   2. `pendingReminder` (modal — only one modal at a time).
+     *   3. No-op.
      */
-    const handleSkipPending = () => {
-        const source = pendingReminder
-            ? { planId: pendingReminder.planId, scheduledAtMs: pendingReminder.scheduledAtMs }
-            : bannerDue
-                ? { planId: bannerDue.plan.id, scheduledAtMs: bannerDue.due.getTime() }
-                : null;
+    const handleSkipPending = (scheduledAtMs?: number) => {
+        let source: { planId: string; scheduledAtMs: number } | null = null;
+        if (typeof scheduledAtMs === 'number') {
+            const entry = bannerEntries.find(e => e.pending.scheduledAtMs === scheduledAtMs);
+            if (entry) source = { planId: entry.plan.id, scheduledAtMs };
+        }
+        if (!source && pendingReminder) {
+            source = { planId: pendingReminder.planId, scheduledAtMs: pendingReminder.scheduledAtMs };
+        }
         if (!source) return;
         const title = t('reminder.banner.skip_confirm.title') || '跳过本次？';
         const body = t('reminder.banner.skip_confirm.body')
             || '将跳过今日原有计划，原计划不会顺延。强烈影响身体激素状态，您确定吗？';
         showDialog('confirm', `${title}\n\n${body}`, () => {
-            markHandled(reminderKey(source.planId, source.scheduledAtMs));
+            markHandled(reminderKey(source!.planId, source!.scheduledAtMs));
             setPendingReminder(null);
         });
     };
 
     /**
-     * "推迟 N 天" handler (late state). Phase-4 stub: shifts
-     * `plan.startDateH` by N days and marks the current due handled. The
-     * Kotlin NotificationScheduler is NOT yet wired to incremental
+     * "推迟 N 天" handler (used by both modal and banner). Phase-4 stub:
+     * shifts `plan.startDateH` by N days and marks the current due handled.
+     * The Kotlin NotificationScheduler is NOT yet wired to incremental
      * reschedule, so the next alarm will still fire at the original time
      * until the JS-side reschedule effect lands.
      *
      * Source-key resolution mirrors `handleSkipPending` so this works from
      * both modal and banner.
      */
-    const handleDelayPlan = (planId: string, days: number) => {
-        const source = pendingReminder
-            ? { planId: pendingReminder.planId, scheduledAtMs: pendingReminder.scheduledAtMs }
-            : bannerDue
-                ? { planId: bannerDue.plan.id, scheduledAtMs: bannerDue.due.getTime() }
-                : null;
-        if (source && source.planId === planId) {
+    const handleDelayPlan = (planId: string, days: number, scheduledAtMs?: number) => {
+        let source: { planId: string; scheduledAtMs: number } | null = null;
+        if (typeof scheduledAtMs === 'number') {
+            const entry = bannerEntries.find(e => e.pending.scheduledAtMs === scheduledAtMs);
+            if (entry && entry.plan.id === planId) {
+                source = { planId: entry.plan.id, scheduledAtMs };
+            }
+        }
+        if (!source && pendingReminder && pendingReminder.planId === planId) {
+            source = { planId: pendingReminder.planId, scheduledAtMs: pendingReminder.scheduledAtMs };
+        }
+        if (source) {
             markHandled(reminderKey(planId, source.scheduledAtMs));
         }
         setPendingReminder(null);
@@ -623,10 +642,12 @@ const MainLayout: React.FC = () => {
 
     /**
      * Whether the bottom-nav /history tab should display the red dot badge
-     * (i.e. there's a banner waiting for the user to act on). Drives the
-     * tiny dot in the tab pill — no text, just a presence indicator.
+     * (i.e. there's at least one banner waiting for the user to act on).
+     * Drives the tiny dot in the tab pill — no text, just a presence
+     * indicator. Even a single pending due lights it up; multi-drug stacks
+     * don't get a count yet (out of scope for this UX pass).
      */
-    const historyBadge = bannerDue !== null;
+    const historyBadge = bannerEntries.length > 0;
 
     return (
         <div className="h-screen w-full overflow-x-hidden flex flex-col select-none font-sans"
@@ -716,26 +737,19 @@ const MainLayout: React.FC = () => {
                         // Legacy modal deep-link fields (kept for the deep-link
                         // 1-tap confirm path that the heads-up notification
                         // still triggers). The /history page only consumes
-                        // bannerDue / matchedBannerPlan / banner handlers.
+                        // bannerEntries + banner handlers.
                         pendingReminder,
                         matchedPendingPlan,
                         onConfirmPendingReminder: handleConfirmPendingReminder,
                         // Banner (in-page) source + handlers — this is what
-                        // /history consumes. Independent of the modal: the
-                        // modal can be dismissed (X) while the banner keeps
-                        // showing until the user acts on it.
-                        bannerDue: bannerDue
-                            ? {
-                                planId: bannerDue.plan.id,
-                                scheduledAtMs: bannerDue.due.getTime(),
-                                state: classifyDueState(bannerDue.due, currentTime),
-                            }
-                            : null,
-                        matchedBannerPlan,
+                        // /history consumes. Each entry carries its own
+                        // (plan, pending) pair so handlers can disambiguate
+                        // when multiple drugs have overlapping due windows.
+                        bannerEntries,
                         onConfirmBanner: handleConfirmBanner,
                         onSkipBanner: handleSkipPending,
-                        onDelay1d: (planId: string) => handleDelayPlan(planId, 1),
-                        onDelay2d: (planId: string) => handleDelayPlan(planId, 2),
+                        onDelay1d: (planId: string, scheduledAtMs: number) => handleDelayPlan(planId, 1, scheduledAtMs),
+                        onDelay2d: (planId: string, scheduledAtMs: number) => handleDelayPlan(planId, 2, scheduledAtMs),
                         permissionDenied,
                         onOpenNotificationSettings: async () => {
                             const invoke = (window as any).__TAURI_INTERNALS__?.invoke;
