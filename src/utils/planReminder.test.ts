@@ -238,6 +238,50 @@ describe('findDueReminders', () => {
         expect(findDueReminders(plans, events, NOW)).toEqual([]);
     });
 
+    // ── Sweep window boundaries ─────────────────────────────────────────────
+    // The combined window is due ∈ [now-5h, now+1h+1min]. These tests pin
+    // the exact behaviour at the on-time upper boundary AND a few minutes
+    // past it — the bug that motivated splitting the original
+    // [now-1h, now+5h] window apart.
+
+    it('includes a due exactly at the on-time upper boundary (now+1h)', () => {
+        // 21:00 = NOW + 60min — on the boundary; should be on_time.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 0)];
+        const result = findDueReminders(plans, [], NOW);
+        expect(result).toHaveLength(1);
+        expect(result[0].due.getHours()).toBe(21);
+        expect(result[0].due.getMinutes()).toBe(0);
+    });
+
+    it('excludes a due 1 minute past the on-time upper boundary', () => {
+        // 21:01 = NOW + 61min — outside both on-time (≤ now+1h) and late
+        // windows (late needs now > due+1h, which means due < now-1h).
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 1)];
+        expect(findDueReminders(plans, [], NOW)).toEqual([]);
+    });
+
+    it('excludes a due 5 minutes past the on-time upper boundary', () => {
+        // 21:05 = NOW + 65min — reproduces the original user-reported bug:
+        // a plan 1h5min ahead incorrectly surfaced a banner/modal.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 5)];
+        expect(findDueReminders(plans, [], NOW)).toEqual([]);
+    });
+
+    it('includes a due exactly at the late lower boundary (now-5h)', () => {
+        // 15:00 = NOW - 5h — on the late boundary; should be late (5h past).
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 15, 0)];
+        const result = findDueReminders(plans, [], NOW);
+        expect(result).toHaveLength(1);
+        expect(result[0].due.getHours()).toBe(15);
+        expect(result[0].due.getMinutes()).toBe(0);
+    });
+
+    it('excludes a due past the late upper boundary (now-5h-1min)', () => {
+        // 14:59 = NOW - 5h-1min — past the stale threshold.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 14, 59)];
+        expect(findDueReminders(plans, [], NOW)).toEqual([]);
+    });
+
     it('defaults to PLAN_REMINDER_TOLERANCE_MIN', () => {
         expect(PLAN_REMINDER_TOLERANCE_MIN).toBe(60);
     });

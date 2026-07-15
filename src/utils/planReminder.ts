@@ -87,13 +87,21 @@ export function findDueReminders(
     now: Date,
     toleranceMin: number = PLAN_REMINDER_TOLERANCE_MIN,
 ): DueReminder[] {
-    // The combined "on_time + late" sweep window: due must fall in
-    // [now - toleranceMin, now + LATE_END_HOURS]. We use this asymmetric
-    // range because the late window extends further into the future
-    // (up to 5h after due) than the on-time window extends before due
-    // (only 1h before).
-    const from = new Date(now.getTime() - toleranceMin * 60 * 1000);
-    const to = new Date(now.getTime() + PLAN_REMINDER_LATE_END_HOURS * 60 * 60 * 1000);
+    // Combined "on_time + late" sweep window, expressed in *due* space:
+    //   due ∈ [now-5h, now+1h]
+    // because each state is a window in *now* space around the same due:
+    //   on_time  = now ∈ [due-1h, due+1h]  →  due ∈ [now-1h, now+1h]
+    //   late     = now ∈ (due+1h, due+5h] →  due ∈ [now-5h, now-1h)
+    // The earlier asymmetric "[now-1h, now+5h]" version was wrong: it let a
+    // due 2h ahead (still inside [now-1h, now+5h]) into the reminder set,
+    // even though it's outside both on_time and late windows. The corrected
+    // union is 6h wide but only spans `now-5h` to `now+1h` in due-space.
+    //
+    // We add 1 minute of slack to `to` because `dueMomentsInRange` uses a
+    // strict `>=` upper bound and we want due = now+1h (the on-time/late
+    // boundary) to be included as on_time, not silently dropped.
+    const from = new Date(now.getTime() - PLAN_REMINDER_LATE_END_HOURS * 60 * 60 * 1000);
+    const to = new Date(now.getTime() + (toleranceMin + 1) * 60 * 1000);
     const out: DueReminder[] = [];
     for (const p of plans) {
         if (!p.enabled) continue;
