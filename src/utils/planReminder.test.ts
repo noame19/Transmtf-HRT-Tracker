@@ -5,7 +5,7 @@ import {
     findDueReminders,
     hasMatchingEvent,
     isDueReminderStale,
-    PLAN_REMINDER_AUTO_DISMISS_HOURS,
+    PLAN_REMINDER_AUTO_DISMISS_MIN,
     PLAN_REMINDER_TOLERANCE_MIN,
 } from './planReminder';
 
@@ -172,14 +172,14 @@ describe('findDueReminders', () => {
     });
 
     it('returns the plan when due is within the window (upcoming)', () => {
-        // Daily at 20:45 — NOW=20:00 → 45min ahead, within ±60min on-time.
-        // dueMomentsInRange uses half-open [from, to) so to=21:00 excludes the
-        // 21:00 boundary — 20:45 is comfortably inside.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 45)];
+        // Daily at 20:20 — NOW=20:00 → 20min ahead, within new 30min pre-window.
+        // dueMomentsInRange uses half-open [from, to) so to=20:31 excludes the
+        // 20:31 boundary — 20:20 is comfortably inside.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 20)];
         const result = findDueReminders(plans, [], NOW);
         expect(result).toHaveLength(1);
         expect(result[0].due.getHours()).toBe(20);
-        expect(result[0].due.getMinutes()).toBe(45);
+        expect(result[0].due.getMinutes()).toBe(20);
     });
 
     it('skips plans whose due is already satisfied by an event', () => {
@@ -218,17 +218,17 @@ describe('findDueReminders', () => {
     });
 
     it('returns multiple plans sorted by proximity to now', () => {
-        // planA=19:00 (60min past — at the on-time/late boundary, still in window)
-        // planB=20:30 (30min ahead — closest)
-        // planC=20:45 (45min ahead)
-        const planA = mkDailyPlan(Ester.EV, Route.injection, 19, 0);
-        const planB = mkDailyPlan(Ester.CPA, Route.oral, 20, 30);
-        const planC = mkDailyPlan(Ester.EV, Route.gel, 20, 45);
+        // planA=19:30 (30min past — in on_time post-window)
+        // planB=20:20 (20min ahead — closest, in on_time pre-window)
+        // planC=18:30 (90min past — in late window [65min, 245min])
+        const planA = mkDailyPlan(Ester.EV, Route.injection, 19, 30);
+        const planB = mkDailyPlan(Ester.CPA, Route.oral, 20, 20);
+        const planC = mkDailyPlan(Ester.EV, Route.gel, 18, 30);
         const result = findDueReminders([planA, planB, planC], [], NOW);
         expect(result).toHaveLength(3);
-        expect(result[0].plan.id).toBe(planB.id);  // 30min closest first
-        expect(result[1].plan.id).toBe(planC.id);  // 45min
-        expect(result[2].plan.id).toBe(planA.id);  // 60min
+        expect(result[0].plan.id).toBe(planB.id);  // 20min closest first
+        expect(result[1].plan.id).toBe(planA.id);  // 30min
+        expect(result[2].plan.id).toBe(planC.id);  // 90min
     });
 
     it('does not return plans whose due was satisfied with oral when plan is sublingual', () => {
@@ -239,46 +239,64 @@ describe('findDueReminders', () => {
     });
 
     // ── Sweep window boundaries ─────────────────────────────────────────────
-    // The combined window is due ∈ [now-5h, now+1h+1min]. These tests pin
-    // the exact behaviour at the on-time upper boundary AND a few minutes
-    // past it — the bug that motivated splitting the original
-    // [now-1h, now+5h] window apart.
+    // The combined window is due ∈ [now-4h05min, now+30min] minus the
+    // 5-minute "transition gap" (now-65min, now-60min). These tests pin
+    // the exact behaviour at the on-time pre boundary, the on-time/late
+    // gap, and the late/stale boundary.
 
-    it('includes a due exactly at the on-time upper boundary (now+1h)', () => {
-        // 21:00 = NOW + 60min — on the boundary; should be on_time.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 0)];
+    it('includes a due exactly at the on-time upper boundary (now+30min)', () => {
+        // 20:30 = NOW + 30min — on the boundary; should be on_time.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 30)];
         const result = findDueReminders(plans, [], NOW);
         expect(result).toHaveLength(1);
-        expect(result[0].due.getHours()).toBe(21);
-        expect(result[0].due.getMinutes()).toBe(0);
+        expect(result[0].due.getHours()).toBe(20);
+        expect(result[0].due.getMinutes()).toBe(30);
     });
 
     it('excludes a due 1 minute past the on-time upper boundary', () => {
-        // 21:01 = NOW + 61min — outside both on-time (≤ now+1h) and late
-        // windows (late needs now > due+1h, which means due < now-1h).
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 1)];
+        // 20:32 = NOW + 32min — outside the new 30min pre-window. The
+        // sweep window tolerates this (to = now+31min strict `>=`), so
+        // we want due = now+32min to prove the pre-window filter is the
+        // thing dropping it, not the sweep boundary.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 32)];
         expect(findDueReminders(plans, [], NOW)).toEqual([]);
     });
 
     it('excludes a due 5 minutes past the on-time upper boundary', () => {
-        // 21:05 = NOW + 65min — reproduces the original user-reported bug:
-        // a plan 1h5min ahead incorrectly surfaced a banner/modal.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 21, 5)];
+        // 20:35 = NOW + 35min — well past the 30min pre-window.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 20, 35)];
         expect(findDueReminders(plans, [], NOW)).toEqual([]);
     });
 
-    it('includes a due exactly at the late lower boundary (now-5h)', () => {
-        // 15:00 = NOW - 5h — on the late boundary; should be late (5h past).
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 15, 0)];
+    it('excludes a due inside the 5-minute transition gap (60min < past < 65min)', () => {
+        // 18:58 = NOW - 62min — inside the gap (on_time closed at 60min,
+        // late hasn't opened at 65min). No reminder should fire.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 18, 58)];
+        expect(findDueReminders(plans, [], NOW)).toEqual([]);
+    });
+
+    it('includes a due exactly at the late lower boundary (now-65min)', () => {
+        // 18:55 = NOW - 65min — on the late boundary; should be late.
+        // classifyDueState uses `>=`, so due at exactly 65min past is late.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 18, 55)];
+        const result = findDueReminders(plans, [], NOW);
+        expect(result).toHaveLength(1);
+        expect(result[0].due.getHours()).toBe(18);
+        expect(result[0].due.getMinutes()).toBe(55);
+    });
+
+    it('includes a due exactly at the late upper boundary (now-4h05min)', () => {
+        // 15:55 = NOW - 245min — on the late boundary; should be late.
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 15, 55)];
         const result = findDueReminders(plans, [], NOW);
         expect(result).toHaveLength(1);
         expect(result[0].due.getHours()).toBe(15);
-        expect(result[0].due.getMinutes()).toBe(0);
+        expect(result[0].due.getMinutes()).toBe(55);
     });
 
-    it('excludes a due past the late upper boundary (now-5h-1min)', () => {
-        // 14:59 = NOW - 5h-1min — past the stale threshold.
-        const plans = [mkDailyPlan(Ester.EV, Route.injection, 14, 59)];
+    it('excludes a due past the late upper boundary (now-4h06min)', () => {
+        // 15:54 = NOW - 246min — past the stale threshold (245min).
+        const plans = [mkDailyPlan(Ester.EV, Route.injection, 15, 54)];
         expect(findDueReminders(plans, [], NOW)).toEqual([]);
     });
 
@@ -323,12 +341,12 @@ describe('isDueReminderStale', () => {
 
     it('returns false at exactly the auto-dismiss boundary', () => {
         // Edge: age === threshold → NOT stale (uses strict >).
-        const due = new Date(NOW.getTime() - PLAN_REMINDER_AUTO_DISMISS_HOURS * 60 * 60 * 1000);
+        const due = new Date(NOW.getTime() - PLAN_REMINDER_AUTO_DISMISS_MIN * 60 * 1000);
         expect(isDueReminderStale(due, NOW)).toBe(false);
     });
 
     it('returns true when past the auto-dismiss threshold', () => {
-        const due = new Date(NOW.getTime() - (PLAN_REMINDER_AUTO_DISMISS_HOURS + 1) * 60 * 60 * 1000);
+        const due = new Date(NOW.getTime() - (PLAN_REMINDER_AUTO_DISMISS_MIN + 1) * 60 * 1000);
         expect(isDueReminderStale(due, NOW)).toBe(true);
     });
 

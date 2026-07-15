@@ -4,26 +4,40 @@ import { canonicalComplianceRoute } from './planCompliance';
 
 // ── Defaults ──────────────────────────────────────────────────────────────
 
-/** On-time window radius. Banner / modal show "该吃药了" when current time
- *  is within ±this many minutes of a scheduled due moment. Set to ±60min
- *  per UX decision — a 1h slack on each side of the scheduled time. */
+/** How far AHEAD of `due` the on_time window opens. Banner / modal show
+ *  "该吃药了" starting from `due - ON_TIME_PRE_MIN`. Set to 30min so the
+ *  pre-window is tighter than the post window — reminding 1h ahead would
+ *  be premature; 30min is enough runway to see it during a routine check. */
+export const PLAN_REMINDER_ON_TIME_PRE_MIN = 30;
+
+/** How far PAST `due` the on_time window stays open. Banner / modal
+ *  continue showing "该吃药了" up to `due + ON_TIME_POST_MIN`. Set to 60min
+ *  — a 1h slack on the late side, mirroring the historical UX. */
+export const PLAN_REMINDER_ON_TIME_POST_MIN = 60;
+
+/** On-time window radius (full). Banner / modal show "该吃药了" when
+ *  current time is within ±toleranceMin of a scheduled due moment. Kept
+ *  for `hasMatchingEvent` backward compat — actual on_time window now
+ *  uses the asymmetric PRE/POST constants above (pre=30, post=60). */
 export const PLAN_REMINDER_TOLERANCE_MIN = 60;
 
 /** Boundary at which a due moment flips from 'on_time' to 'late'. A due at
- *  NOW-60min is still on_time (strict `>`), NOW-61min is late. Picked to
- *  match the upper edge of the on-time window so the two states don't
- *  overlap on the boundary. */
-export const PLAN_REMINDER_LATE_START_MIN = 60;
+ *  NOW-65min is late (boundary inclusive), NOW-60min is still on_time. The
+ *  5-minute gap between `ON_TIME_POST_MIN` (60) and `LATE_START_MIN` (65)
+ *  is intentional — without it the on_time modal would flip to late within
+ *  a minute of closing, which feels jarring. */
+export const PLAN_REMINDER_LATE_START_MIN = 65;
 
 /** How long past `due` the late state stays visible. The "已过服药时间"
- *  window is the half-open interval (due+LATE_START_MIN, due+LATE_END_HOURS].
- *  Past this point the banner auto-dismisses so it doesn't nag forever. */
-export const PLAN_REMINDER_LATE_END_HOURS = 5;
+ *  window is the half-open interval [due+LATE_START_MIN, due+LATE_END_MIN].
+ *  Past this point the banner auto-dismisses so it doesn't nag forever.
+ *  Set to 245min = 4h05min (so the late window is exactly 3h long). */
+export const PLAN_REMINDER_LATE_END_MIN = 245;
 
 /** Alias kept for callers that imported the old name. Equals
- *  `PLAN_REMINDER_LATE_END_HOURS` so auto-dismiss always lines up with
+ *  `PLAN_REMINDER_LATE_END_MIN` so auto-dismiss always lines up with
  *  the upper edge of the late window. */
-export const PLAN_REMINDER_AUTO_DISMISS_HOURS = PLAN_REMINDER_LATE_END_HOURS;
+export const PLAN_REMINDER_AUTO_DISMISS_MIN = PLAN_REMINDER_LATE_END_MIN;
 
 // ── Matching ──────────────────────────────────────────────────────────────
 
@@ -87,35 +101,46 @@ export function findDueReminders(
     now: Date,
     toleranceMin: number = PLAN_REMINDER_TOLERANCE_MIN,
 ): DueReminder[] {
-    // Combined "on_time + late" sweep window, expressed in *due* space:
-    //   due ∈ [now-5h, now+1h]
-    // because each state is a window in *now* space around the same due:
-    //   on_time  = now ∈ [due-1h, due+1h]  →  due ∈ [now-1h, now+1h]
-    //   late     = now ∈ (due+1h, due+5h] →  due ∈ [now-5h, now-1h)
-    // The earlier asymmetric "[now-1h, now+5h]" version was wrong: it let a
-    // due 2h ahead (still inside [now-1h, now+5h]) into the reminder set,
-    // even though it's outside both on_time and late windows. The corrected
-    // union is 6h wide but only spans `now-5h` to `now+1h` in due-space.
+    // Combined sweep window in due-space, covering BOTH on_time and late:
+    //   on_time  = now ∈ [due-30min, due+1h]     →  due ∈ [now-1h,   now+30min]
+    //   late     = now ∈ [due+1h5min, due+4h5min] → due ∈ [now-4h05m, now-1h05m]
+    //   gap      = 60min < past < 65min  (filtered below — no reminder fires)
+    //   stale    = past > 4h05min          (filtered by the lower bound)
+    //   future   = now-due < -30min        (filtered by the upper bound)
+    //
+    // The earlier symmetric "[now-1h, now+1h]" / "[now-5h, now-1h]" attempt
+    // was wrong: it let a due 2h ahead fall through. The corrected union
+    // is `[now-4h05min, now+30min]` in due-space.
     //
     // We add 1 minute of slack to `to` because `dueMomentsInRange` uses a
-    // strict `>=` upper bound and we want due = now+1h (the on-time/late
-    // boundary) to be included as on_time, not silently dropped.
-    const from = new Date(now.getTime() - PLAN_REMINDER_LATE_END_HOURS * 60 * 60 * 1000);
-    const to = new Date(now.getTime() + (toleranceMin + 1) * 60 * 1000);
+    // strict `>= to` upper bound and we want due = now+30min (the on-time
+    // upper edge) to be included as on_time, not silently dropped.
+    const from = new Date(now.getTime() - PLAN_REMINDER_LATE_END_MIN * 60 * 1000);
+    const to = new Date(now.getTime() + (PLAN_REMINDER_ON_TIME_PRE_MIN + 1) * 60 * 1000);
+    const GAP_LO_MS = PLAN_REMINDER_ON_TIME_POST_MIN * 60 * 1000;   // 60min past
+    const GAP_HI_MS = PLAN_REMINDER_LATE_START_MIN * 60 * 1000;      // 65min past
     const out: DueReminder[] = [];
     for (const p of plans) {
         if (!p.enabled) continue;
         const dues = dueMomentsInRange(p, from, to);
-        if (dues.length === 0) continue;
+        // Drop dues that fall in the "transition gap" (60min < past < 65min).
+        // These moments have no reminder state — the on_time window just
+        // closed and the late window hasn't opened yet. Skipping them here
+        // keeps the modal from flickering between states for 5 minutes.
+        const validDues = dues.filter((d) => {
+            const pastMs = now.getTime() - d.getTime();
+            return !(pastMs > GAP_LO_MS && pastMs < GAP_HI_MS);
+        });
+        if (validDues.length === 0) continue;
         // Pick the closest due moment to now (earliest positive or latest
         // past — whichever is nearer). Multiple matches within the window
         // are unusual but possible (e.g. daily plan with multiple times).
-        let closest = dues[0];
+        let closest = validDues[0];
         let bestGap = Math.abs(closest.getTime() - now.getTime());
-        for (let i = 1; i < dues.length; i++) {
-            const gap = Math.abs(dues[i].getTime() - now.getTime());
+        for (let i = 1; i < validDues.length; i++) {
+            const gap = Math.abs(validDues[i].getTime() - now.getTime());
             if (gap < bestGap) {
-                closest = dues[i];
+                closest = validDues[i];
                 bestGap = gap;
             }
         }
@@ -131,12 +156,13 @@ export function findDueReminders(
 }
 
 /** Classify a due moment relative to "now". 'on_time' covers the window
- *  [due-TOLERANCE_MIN, due+LATE_START_MIN] (≤ 60min past due); 'late'
- *  covers (due+LATE_START_MIN, due+LATE_END_HOURS]. The boundary uses
- *  strict `>` so a due exactly LATE_START_MIN in the past is still on_time. */
+ *  [due-ON_TIME_PRE_MIN, due+ON_TIME_POST_MIN] = [due-30min, due+1h];
+ *  'late' covers [due+LATE_START_MIN, due+LATE_END_MIN] = [due+1h05min,
+ *  due+4h05min]. The boundary uses `>=` so a due exactly LATE_START_MIN
+ *  in the past is already late (matches the new gap-free sweep). */
 export function classifyDueState(due: Date, now: Date): 'on_time' | 'late' {
     const LATE_START_MS = PLAN_REMINDER_LATE_START_MIN * 60 * 1000;
-    return now.getTime() - due.getTime() > LATE_START_MS ? 'late' : 'on_time';
+    return now.getTime() - due.getTime() >= LATE_START_MS ? 'late' : 'on_time';
 }
 
 /** True iff a due moment is so far in the past that the banner should
@@ -144,9 +170,9 @@ export function classifyDueState(due: Date, now: Date): 'on_time' | 'late' {
 export function isDueReminderStale(
     due: Date,
     now: Date,
-    autoDismissHours: number = PLAN_REMINDER_AUTO_DISMISS_HOURS,
+    autoDismissMin: number = PLAN_REMINDER_AUTO_DISMISS_MIN,
 ): boolean {
     const ageMs = now.getTime() - due.getTime();
     if (ageMs <= 0) return false;
-    return ageMs > autoDismissHours * 60 * 60 * 1000;
+    return ageMs > autoDismissMin * 60 * 1000;
 }

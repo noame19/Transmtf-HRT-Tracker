@@ -18,9 +18,13 @@ interface ReminderModalProps {
      *  resolving the reminder — the banner stays up on /history until
      *  the user picks an action there. */
     onClose?: () => void;
-    /** "计划推迟 1 天" — shift plan.startDateH by 1 day (late state only). */
+    /** "计划推迟 1 天" — shift plan.startDateH by 1 day. Available in BOTH
+     *  states (on_time + late): the user might be about to take the dose
+     *  but want to push the whole schedule, or might be late and decide
+     *  to give up today + restart tomorrow. */
     onDelay1d: () => void;
-    /** "计划推迟 2 天" — shift plan.startDateH by 2 days (late state only). */
+    /** "计划推迟 2 天" — shift plan.startDateH by 2 days. Same rationale
+     *  as `onDelay1d`. */
     onDelay2d: () => void;
 }
 
@@ -29,8 +33,11 @@ interface ReminderModalProps {
  * pattern (fixed overlay + backdrop-blur + centered glass card).
  *
  * State-dependent behaviour:
- *   - on_time  → 2 actions: [已服用] (primary) + X (top-right close, keeps
- *               banner alive on /history so the user can still confirm).
+ *   - on_time  → 3 actions: [已服用] (primary) + [计划推迟 1 天] + [计划
+ *               推迟 2 天] + X (top-right close, keeps banner alive on
+ *               /history so the user can still confirm). NO "跳过本次"
+ *               — at on_time the dose is "current", not past, so skipping
+ *               would be self-defeating.
  *   - late     → 4 actions: [已服用 / 跳过本次 / 计划推迟 1 天 /
  *               计划推迟 2 天]. No X — late state is action-required.
  *               "跳过本次" delegates to the parent which shows a destructive
@@ -176,38 +183,40 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                             <span>{t('reminder.banner.skip') || '跳过本次'}</span>
                         </button>
                     )}
-                    {isLate && (
-                        <>
-                            <button
-                                type="button"
-                                onClick={onDelay1d}
-                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                                style={{
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-primary)',
-                                }}
-                                aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
-                            >
-                                <FastForward size={18} />
-                                <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={onDelay2d}
-                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                                style={{
-                                    background: 'var(--bg-card)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--border-primary)',
-                                }}
-                                aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
-                            >
-                                <FastForward size={18} />
-                                <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
-                            </button>
-                        </>
-                    )}
+                    {/* Delay buttons render in BOTH states (on_time + late):
+                      *  the user might be ready to take the dose but want
+                      *  to push the whole schedule (on_time), or have given
+                      *  up on today and want to restart from tomorrow (late).
+                      *  "跳过本次" stays late-only because skipping within
+                      *  the on_time window would be self-defeating. */}
+                    <button
+                        type="button"
+                        onClick={onDelay1d}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                        style={{
+                            background: 'var(--bg-card)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-primary)',
+                        }}
+                        aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
+                    >
+                        <FastForward size={18} />
+                        <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onDelay2d}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                        style={{
+                            background: 'var(--bg-card)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border-primary)',
+                        }}
+                        aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
+                    >
+                        <FastForward size={18} />
+                        <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
+                    </button>
                 </div>
             </div>
 
