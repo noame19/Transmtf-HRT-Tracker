@@ -124,7 +124,12 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                 </div>
             </div>
 
-            {/* Action buttons — state-dependent count */}
+            {/* Action buttons — the in-page banner is a "主动处理" surface,
+              *  so unlike the modal (which interrupts and should be quick
+              *  to dismiss) we expose the full 4-action set in BOTH states.
+              *  Modal still gates by state because it pops up uninvited and
+              *  shouldn't ask the user to make a 4-way decision before
+              *  they've even seen the notification. */}
             <div className="flex flex-wrap items-center gap-2">
                 <button
                     onClick={() => onConfirm(when)}
@@ -135,7 +140,7 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                     <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
                 </button>
 
-                {isLate && onSkip && (
+                {onSkip && (
                     <button
                         onClick={onSkip}
                         className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
@@ -153,7 +158,7 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                     </button>
                 )}
 
-                {isLate && onDelay1d && (
+                {onDelay1d && (
                     <button
                         onClick={() => onDelay1d(matchedPlan.id)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
@@ -169,7 +174,7 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
                     </button>
                 )}
 
-                {isLate && onDelay2d && (
+                {onDelay2d && (
                     <button
                         onClick={() => onDelay2d(matchedPlan.id)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
