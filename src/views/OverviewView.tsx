@@ -311,21 +311,21 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   return (
     <>
       <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
-        {/* Desktop: merged last-dose card occupies the LEFT 2/3
-          *  (md:col-span-2 of a 3-column grid), and the concentration card
-          *  (the primary KPI) occupies the right 1/3 column. Mobile: stacked
-          *  column. md:items-stretch keeps both cards equal-height so they
-          *  align with the tall concentration card's bottom. */}
-        <div className="grid md:grid-cols-3 gap-2.5 md:gap-4 md:items-stretch">
+        {/* Desktop: merged last-dose card occupies the LEFT 1/2 column and
+          *  the concentration card (the primary KPI) occupies the right 1/2
+          *  column. Mobile: stacked column. md:items-stretch keeps both
+          *  cards equal-height so they align with the tall concentration
+          *  card's bottom. */}
+        <div className="grid md:grid-cols-2 gap-2.5 md:gap-4 md:items-stretch">
 
           {/* Combined dose card — last anti-androgen (left column) + last
             *  estradiol dose (right column) merged into a single card.
-            *  Occupies the LEFT 2/3 column on desktop; stretches to the
+            *  Occupies the LEFT 1/2 column on desktop; stretches to the
             *  concentration card's height via md:items-stretch. The two-
             *  column data layout mirrors the concentration card's
             *  "E2 vs AA" split so the row reads as four parallel data
             *  points (dose last-taken ↔ current concentration). */}
-          <div className="md:col-span-2 glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
+          <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
 
               {/* Left column — last anti-androgen dose (CPA / bicalutamide). */}
@@ -448,7 +448,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
 
           {/* Main level card — concentration (E2 + AA). Primary KPI for the
-            *  whole overview; occupies the right 1/3 column. */}
+            *  whole overview; occupies the right 1/2 column. */}
           <div className="glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
             style={{
               background: isDark
