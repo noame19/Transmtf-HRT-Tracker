@@ -17,6 +17,15 @@ function hexToRgb(hex: string): string {
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 }
 
+/** Same-calendar-day check (local time). Used by Overview to decide if a
+ *  scheduled next-dose falls in today's calendar — drives the due-today
+ *  active state (ring + ping pulse) on the combined-dose card. */
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
 interface SimCI {
     timeH: number[];
     e2Adjusted: number[];
@@ -260,6 +269,30 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     [nextE2Due, currentTime, t, lang],
   );
 
+  // Due-today flags — true iff next-AA / next-E2 falls in today's calendar.
+  // Drives the per-drug "active" highlight on the combined-dose card:
+  // colored icon-wrapper gradient (resting), plus a 2px halo + a tiny
+  // "cute-dot-ping" pulse in the wrapper's top-right corner (when due
+  // today). Pattern adopted from the reference Overview mock — see the
+  // `due-today-active-aa` / `cute-dot-ping-aa` semantics there.
+  const isAADueToday = !!nextAntiandrogenDue && isSameDay(nextAntiandrogenDue, currentTime);
+  const isE2DueToday = !!nextE2Due && isSameDay(nextE2Due, currentTime);
+
+  // Drug-color accent palette for the dose-tile icon wrappers. The wrapper
+  // draws its own soft gradient (so the drug category is readable at a
+  // glance), and the inner SVG inherits the matching `icon` color via
+  // currentColor. Resting state always tinted; the 2px halo + ping dot only
+  // appear when the next dose is due today. We deliberately keep the E2
+  // icon's route-specific Tailwind color class (pink/teal/cyan/orange) on
+  // top of the wrapper's pink tint — route information outweighs the
+  // "everything-is-pink" unification when both convey useful signal.
+  const aaAccent = isDark
+    ? { bg: 'linear-gradient(135deg, rgba(96,165,250,0.22), rgba(96,165,250,0.06))', border: 'rgba(96,165,250,0.45)', icon: '#60a5fa', activeRing: 'rgba(96,165,250,0.35)', dotColor: '#60a5fa' }
+    : { bg: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(59,130,246,0.03))', border: 'rgba(59,130,246,0.32)', icon: '#3b82f6', activeRing: 'rgba(59,130,246,0.30)', dotColor: '#3b82f6' };
+  const e2Accent = isDark
+    ? { bg: 'linear-gradient(135deg, rgba(244,114,182,0.22), rgba(244,114,182,0.06))', border: 'rgba(244,114,182,0.45)', icon: '#f472b6', activeRing: 'rgba(244,114,182,0.35)', dotColor: '#f472b6' }
+    : { bg: 'linear-gradient(135deg, rgba(236,72,153,0.10), rgba(236,72,153,0.03))', border: 'rgba(236,72,153,0.32)', icon: '#ec4899', activeRing: 'rgba(236,72,153,0.30)', dotColor: '#ec4899' };
+
   // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
   // when older than ~30 days so old-record context stays readable.
   const formatTimeAgo = (eventTimeH: number): string => {
@@ -328,11 +361,31 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
 
-              {/* Left column — last anti-androgen dose (CPA / bicalutamide). */}
+              {/* Left column — last anti-androgen dose (CPA / bicalutamide).
+                *  Icon wrapper is blue-tinted (aa-accent) — readable at a
+                *  glance as "anti-androgen tile". When the next anti-
+                *  androgen dose falls in today's calendar, the wrapper
+                *  gets a 2px halo + a tiny pulse dot in the top-right
+                *  corner (reference pattern: due-today-active-aa +
+                *  cute-dot-ping-aa). */}
               <div className="flex items-start gap-2">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                  <Pill size={16} style={{ color: '#3b82f6' }} />
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0 relative"
+                  style={{
+                    background: aaAccent.bg,
+                    borderColor: aaAccent.border,
+                    color: aaAccent.icon,
+                    boxShadow: isAADueToday ? `0 0 0 2px ${aaAccent.activeRing}` : 'none',
+                    transition: 'box-shadow 200ms ease',
+                  }}>
+                  <Pill size={16} className="md:w-5 md:h-5" />
+                  {isAADueToday && (
+                    <span className="absolute top-1 right-1 flex h-2 w-2 pointer-events-none" aria-hidden="true">
+                      <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                        style={{ backgroundColor: aaAccent.dotColor }} />
+                      <span className="relative inline-flex rounded-full h-2 w-2"
+                        style={{ backgroundColor: aaAccent.dotColor }} />
+                    </span>
+                  )}
                 </div>
                 <div className="leading-tight min-w-0 flex-1">
                   <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
@@ -367,18 +420,32 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="flex flex-col">
                 {/* Top row: icon + label + route badge + time-ago */}
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                    style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0 relative"
+                    style={{
+                      background: e2Accent.bg,
+                      borderColor: e2Accent.border,
+                      color: e2Accent.icon,
+                      boxShadow: isE2DueToday ? `0 0 0 2px ${e2Accent.activeRing}` : 'none',
+                      transition: 'box-shadow 200ms ease',
+                    }}>
                     {lastE2Dose
                       ? (
                         lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
                         : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
                         : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
                         : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
-                        : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                        : <Syringe size={16} />
                       )
                       : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
                     }
+                    {isE2DueToday && (
+                      <span className="absolute top-1 right-1 flex h-2 w-2 pointer-events-none" aria-hidden="true">
+                        <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                          style={{ backgroundColor: e2Accent.dotColor }} />
+                        <span className="relative inline-flex rounded-full h-2 w-2"
+                          style={{ backgroundColor: e2Accent.dotColor }} />
+                      </span>
+                    )}
                   </div>
                   <div className="leading-tight min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
