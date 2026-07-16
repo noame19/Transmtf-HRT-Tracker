@@ -4,7 +4,7 @@ import { formatDate, formatTime } from '../utils/helpers';
 import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
 import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, AreaChart, ComposedChart, Scatter, Brush
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, ComposedChart, Scatter
 } from 'recharts';
 
 interface SimCI {
@@ -320,7 +320,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
     const MAX_RENDER_POINTS = 1200;
-    const MAX_OVERVIEW_POINTS = 180;
 
     const niceCeil = (value: number, fallback: number): number => {
         if (!Number.isFinite(value) || value <= 0) return fallback;
@@ -444,7 +443,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     }, [sim, ciMap, simCI, baselineE2PGmL, primaryAA, aaScale]);
 
     const data = useMemo(() => downsampleSeries(rawData, MAX_RENDER_POINTS), [rawData]);
-    const overviewData = useMemo(() => downsampleSeries(rawData, MAX_OVERVIEW_POINTS), [rawData]);
 
     const labPoints = useMemo(() => {
         if (!labResults || labResults.length === 0) return [];
@@ -700,37 +698,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const start = targetCenter - duration / 2;
         const end = targetCenter + duration / 2;
         commitDomain(clampDomain([start, end]));
-    };
-
-    const findClosestIndex = useCallback((series: { time: number }[], time: number) => {
-        if (series.length === 0) return 0;
-        let low = 0;
-        let high = series.length - 1;
-        while (high - low > 1) {
-            const mid = Math.floor((low + high) / 2);
-            if (series[mid].time === time) return mid;
-            if (series[mid].time < time) low = mid;
-            else high = mid;
-        }
-        return Math.abs(series[high].time - time) < Math.abs(series[low].time - time) ? high : low;
-    }, []);
-
-    const brushRange = useMemo(() => {
-        if (overviewData.length === 0) return { startIndex: 0, endIndex: 0 };
-        const domain = xDomain || [minTime, maxTime];
-        const startIndex = findClosestIndex(overviewData, domain[0]);
-        const endIndexRaw = findClosestIndex(overviewData, domain[1]);
-        const endIndex = Math.max(startIndex + 1, endIndexRaw);
-        return { startIndex, endIndex: Math.min(overviewData.length - 1, endIndex) };
-    }, [overviewData, xDomain, minTime, maxTime, findClosestIndex]);
-
-    const handleBrushChange = (range: { startIndex?: number; endIndex?: number }) => {
-        if (!range || range.startIndex === undefined || range.endIndex === undefined || overviewData.length === 0) return;
-        const startIndex = Math.max(0, Math.min(range.startIndex, overviewData.length - 1));
-        const endIndex = Math.max(startIndex + 1, Math.min(range.endIndex, overviewData.length - 1));
-        const start = overviewData[startIndex].time;
-        const end = overviewData[endIndex].time;
-        scheduleDomainUpdate(clampDomain([start, end]));
     };
 
     if (!sim || sim.timeH.length === 0) return (
@@ -1146,62 +1113,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                     </ComposedChart>
                 </ResponsiveContainer>
             </div>
-            {/* Overview mini-map with draggable handles */}
-            {overviewData.length > 1 && (
-                <div
-                    className="px-3 pb-4 mt-1 touch-none select-none"
-                    style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-                    onTouchMoveCapture={(e) => e.preventDefault()}
-                >
-                    <div className="w-full h-16 bg-[var(--bg-secondary)] border border-[var(--border-secondary)] rounded-none shadow-inner overflow-hidden">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={overviewData} margin={{ top: 6, right: 8, left: -6, bottom: 6 }}>
-                                <defs>
-                                    <linearGradient id="overviewConc" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#bfdbfe" stopOpacity={0.28}/>
-                                        <stop offset="95%" stopColor="#bfdbfe" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <XAxis
-                                    dataKey="time"
-                                    type="number"
-                                    hide
-                                    domain={[minTime, maxTime]}
-                                />
-                                <YAxis dataKey="concE2" hide />
-                                <Area
-                                    type="monotone"
-                                    dataKey="concE2"
-                                    stroke="#bfdbfe"
-                                    strokeWidth={1.2}
-                                    fill="url(#overviewConc)"
-                                    isAnimationActive={false}
-                                />
-                                <Brush
-                                    dataKey="time"
-                                    height={22}
-                                    stroke="#bfdbfe"
-                                    startIndex={brushRange.startIndex}
-                                    endIndex={brushRange.endIndex}
-                                    gap={10}
-                                    travellerWidth={12}
-                                    tickFormatter={(ms) => formatDate(new Date(ms), lang)}
-                                    onChange={handleBrushChange}
-                                >
-                                    <Area
-                                        type="monotone"
-                                        dataKey="concE2"
-                                        stroke="#93c5fd"
-                                        fill="#bfdbfe"
-                                        fillOpacity={0.15}
-                                        isAnimationActive={false}
-                                    />
-                                </Brush>
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
