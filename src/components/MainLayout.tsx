@@ -802,7 +802,10 @@ const MainLayout: React.FC = () => {
             >
                 <div
                     key={location.pathname}
-                    className="min-h-full max-w-full overflow-hidden"
+                    /* 改为 flex column 后，Outlet 渲染的 OverviewView 容器可以用
+                     * flex-1 撑满剩余高度（不依赖父级显式 height）。
+                     * min-h-full 保证 mobile 时内容比视口长时整体能撑开滚动。 */
+                    className="min-h-full max-w-full flex flex-col overflow-hidden"
                     style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
                 >
                     <Outlet context={{
@@ -840,8 +843,9 @@ const MainLayout: React.FC = () => {
                             try { await invoke('request_notification_permission'); } catch { /* ignore */ }
                         },
                     }} />
-                    {/* bottom padding so content isn't hidden behind the mobile nav */}
-                    <div className="h-24 md:h-4" />
+                    {/* bottom padding so content isn't hidden behind the mobile nav.
+                     * shrink-0 防止它在 flex column 里被压扁，让上方 Outlet 拿到 100% 剩余高度。 */}
+                    <div className="h-24 md:h-4 shrink-0" />
                 </div>
             </main>
 

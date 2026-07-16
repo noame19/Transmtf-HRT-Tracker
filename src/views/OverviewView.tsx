@@ -310,10 +310,11 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   };
 
   return (
-    /* md+ 容器转 flex column，让 header（KPI 区）自然高度、main 占据剩余视口高度。
-     * 配合 ResultChart / MedicationHeatmap 内部的 h-full + flex-1，
-     * 让"血药浓度图 + 用药日历"两卡在平板/桌面精确填满视口剩余空间。 */
-    <div className="md:flex md:flex-col md:h-full">
+    /* md+ 容器在 MainLayout 内层 div（flex column）里以 flex-1 撑满。
+     * 之前用 md:h-full 不生效，因为 min-h-full 撑开的高度不算"显式 height"，
+     * Chrome 不会让子元素 h-full 继承。改用 flex-1 后依赖 flex 算法，不再
+     * 依赖父级显式 height。 */
+    <div className="md:flex md:flex-col md:flex-1 md:min-h-0">
       <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4 shrink-0">
         {/* Desktop: merged last-dose card occupies the LEFT 1/2 column and
           *  the concentration card (the primary KPI) occupies the right 1/2
