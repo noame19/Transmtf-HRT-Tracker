@@ -11,8 +11,11 @@ import {
     panDomain,
     zoomDomainAt,
     hitTestCurves,
+    nearestPoint,
+    pixelXAtTime,
     timeAtPixel,
     type CurveSeries,
+    type CurvePoint,
     type PlotRect,
 } from '../utils/chartGesture';
 
@@ -329,6 +332,23 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     const chartContainerRef = useRef<HTMLDivElement | null>(null);
     const dragStateRef = useRef<{ startX: number; plotRect: PlotRect } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    // Touch gesture state machine: idle → {pan | inspect} → pinch → idle.
+    const touchStateRef = useRef<{
+        mode: 'idle' | 'pan' | 'inspect' | 'pinch';
+        panLastX?: number;
+        inspectLastX?: number;
+        inspectLastY?: number;
+        inspectLastTime?: number;
+        pinchInitialDistance?: number;
+        pinchInitialDomain?: [number, number];
+        pinchAnchorTime?: number;
+    }>({ mode: 'idle' });
+    const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+    const [touchOverlay, setTouchOverlay] = useState<{
+        time: number;
+        touchX: number;
+        touchY: number;
+    } | null>(null);
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
     const MAX_RENDER_POINTS = 1200;
@@ -812,6 +832,163 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, [isDragging, xDomain, domainBounds, scheduleDomainUpdate]);
 
+    // -------- Touch gestures --------
+    // Single-finger on a curve → inspect (vertical line + tooltip that follows).
+    // Single-finger on blank → pan.
+    // Two fingers → pinch zoom anchored at the midpoint time. After the second
+    // finger lifts we deliberately do NOT reinterpret the remaining finger as a
+    // pan/inspect gesture; the user must lift all fingers and start over.
+    const TOUCH_TOLERANCE_PX = 24;
+
+    const updateTouchesFromList = (list: TouchList, remove: boolean) => {
+        for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            if (remove) {
+                activeTouchesRef.current.delete(t.identifier);
+            } else {
+                activeTouchesRef.current.set(t.identifier, { x: t.clientX, y: t.clientY });
+            }
+        }
+    };
+
+    const handleTouchStart = useCallback((e: TouchEvent) => {
+        updateTouchesFromList(e.changedTouches, false);
+        e.preventDefault();
+        const touches = [...activeTouchesRef.current.values()];
+        const plotRect = getPlotRect();
+        if (!plotRect || touches.length === 0 || !xDomain) return;
+
+        if (touches.length === 1) {
+            const t0 = touches[0];
+            const hit = hitTestCurves(t0.x, t0.y, plotRect, xDomain, curveSeries, TOUCH_TOLERANCE_PX);
+            if (hit) {
+                touchStateRef.current = {
+                    mode: 'inspect',
+                    inspectLastX: t0.x,
+                    inspectLastY: t0.y,
+                    inspectLastTime: hit.time,
+                };
+                setTouchOverlay({ time: hit.time, touchX: t0.x, touchY: t0.y });
+            } else {
+                touchStateRef.current = {
+                    mode: 'pan',
+                    panLastX: t0.x,
+                };
+                setTouchOverlay(null);
+            }
+        } else if (touches.length >= 2) {
+            // Second finger arrived — switch to pinch and drop any inspect overlay.
+            const [p0, p1] = touches;
+            const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+            if (distance <= 0 || !xDomain) return;
+            const midX = (p0.x + p1.x) / 2;
+            const anchorTime = timeAtPixel(midX, plotRect, xDomain);
+            touchStateRef.current = {
+                mode: 'pinch',
+                pinchInitialDistance: distance,
+                pinchInitialDomain: [xDomain[0], xDomain[1]],
+                pinchAnchorTime: anchorTime,
+            };
+            setTouchOverlay(null);
+        }
+    }, [xDomain, curveSeries, domainBounds, getPlotRect]);
+
+    const handleTouchMove = useCallback((e: TouchEvent) => {
+        // Sync the moved fingers' current positions back into the active set so
+        // pinch distance / pan delta stay accurate.
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            const existing = activeTouchesRef.current.get(t.identifier);
+            if (existing) {
+                existing.x = t.clientX;
+                existing.y = t.clientY;
+            }
+        }
+        e.preventDefault();
+        const state = touchStateRef.current;
+        const touches = [...activeTouchesRef.current.values()];
+        const plotRect = getPlotRect();
+        if (!plotRect || touches.length === 0) return;
+
+        if (state.mode === 'inspect' && touches.length === 1 && xDomain) {
+            const t0 = touches[0];
+            const hit = hitTestCurves(t0.x, t0.y, plotRect, xDomain, curveSeries, TOUCH_TOLERANCE_PX);
+            if (hit) {
+                touchStateRef.current.inspectLastTime = hit.time;
+                touchStateRef.current.inspectLastX = t0.x;
+                touchStateRef.current.inspectLastY = t0.y;
+                setTouchOverlay({ time: hit.time, touchX: t0.x, touchY: t0.y });
+            }
+        } else if (state.mode === 'pan' && touches.length === 1 && state.panLastX != null && xDomain) {
+            const t0 = touches[0];
+            const dx = t0.x - state.panLastX;
+            state.panLastX = t0.x;
+            scheduleDomainUpdate(panDomain(xDomain, dx, plotRect.width, domainBounds));
+        } else if (state.mode === 'pinch' && touches.length >= 2) {
+            const [p0, p1] = touches;
+            const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+            if (
+                distance <= 0
+                || !state.pinchInitialDistance
+                || !state.pinchInitialDomain
+                || state.pinchAnchorTime == null
+            ) return;
+            const factor = distance / state.pinchInitialDistance;
+            const next = zoomDomainAt(state.pinchInitialDomain, state.pinchAnchorTime, factor, domainBounds);
+            scheduleDomainUpdate(next);
+            // Make pinch continuous: treat each frame as the new baseline so the
+            // chart follows the fingers smoothly instead of snapping back.
+            state.pinchInitialDistance = distance;
+            state.pinchInitialDomain = next;
+            const midX = (p0.x + p1.x) / 2;
+            state.pinchAnchorTime = timeAtPixel(midX, plotRect, next);
+        }
+    }, [xDomain, curveSeries, domainBounds, getPlotRect, scheduleDomainUpdate]);
+
+    const handleTouchEnd = useCallback((e: TouchEvent) => {
+        updateTouchesFromList(e.changedTouches, true);
+        const state = touchStateRef.current;
+        const remaining = activeTouchesRef.current.size;
+
+        if (state.mode === 'pinch') {
+            // Per design: do NOT reinterpret the remaining finger. Stay frozen in
+            // pinch (effectively no-op) until every finger lifts, then go idle.
+            if (remaining === 0) {
+                touchStateRef.current = { mode: 'idle' };
+            }
+        } else if (state.mode === 'inspect') {
+            // Keep the last overlay on screen so the user can still read it after
+            // releasing. Only new touches / explicit clear will dismiss it.
+            touchStateRef.current = { mode: 'idle' };
+        } else if (state.mode === 'pan') {
+            touchStateRef.current = { mode: 'idle' };
+            setTouchOverlay(null);
+        }
+    }, []);
+
+    const handleTouchCancel = useCallback(() => {
+        activeTouchesRef.current.clear();
+        touchStateRef.current = { mode: 'idle' };
+        setTouchOverlay(null);
+    }, []);
+
+    // Bind touch listeners natively so we can use passive: false and preventDefault.
+    useEffect(() => {
+        const node = chartContainerRef.current;
+        if (!node) return;
+        const opts = { passive: false } as const;
+        node.addEventListener('touchstart', handleTouchStart, opts);
+        node.addEventListener('touchmove', handleTouchMove, opts);
+        node.addEventListener('touchend', handleTouchEnd, opts);
+        node.addEventListener('touchcancel', handleTouchCancel, opts);
+        return () => {
+            node.removeEventListener('touchstart', handleTouchStart);
+            node.removeEventListener('touchmove', handleTouchMove);
+            node.removeEventListener('touchend', handleTouchEnd);
+            node.removeEventListener('touchcancel', handleTouchCancel);
+        };
+    }, [handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
+
     const zoomToDuration = (days: number) => {
         const duration = days * 24 * 3600 * 1000;
         const currentCenter = xDomain ? (xDomain[0] + xDomain[1]) / 2 : now;
@@ -830,6 +1007,46 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     );
 
     const hasPersonalModel = hasE2Personal;
+
+    // Geometry for the touch overlay: vertical line + tooltip box anchored to
+    // the curve time (not the finger x). Recomputed on xDomain / touch change.
+    const touchOverlayGeom = useMemo(() => {
+        if (!touchOverlay) return null;
+        const containerRect = chartContainerRef.current?.getBoundingClientRect();
+        if (!containerRect) return null;
+        const grid = chartContainerRef.current?.querySelector('.recharts-cartesian-grid') as SVGGraphicsElement | null;
+        const gridRect = grid?.getBoundingClientRect?.();
+        const plotRect: PlotRect = gridRect && gridRect.width > 0 && gridRect.height > 0
+            ? { left: gridRect.left, top: gridRect.top, width: gridRect.width, height: gridRect.height }
+            : { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height };
+        const visibleDomain: [number, number] = xDomain ?? [plotRect.left, plotRect.left + plotRect.width];
+        const lineX = pixelXAtTime(touchOverlay.time, plotRect, visibleDomain) - containerRect.left;
+        return {
+            time: touchOverlay.time,
+            relTouchX: touchOverlay.touchX - containerRect.left,
+            relTouchY: touchOverlay.touchY - containerRect.top,
+            lineX,
+            lineTop: plotRect.top - containerRect.top,
+            lineHeight: plotRect.height,
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [touchOverlay, xDomain]);
+
+    // Chart data point nearest to the overlay time (used for the tooltip payload).
+    const touchOverlayDataPoint = useMemo(() => {
+        if (!touchOverlayGeom || data.length === 0) return null;
+        const target = touchOverlayGeom.time;
+        let low = 0;
+        let high = data.length - 1;
+        while (high - low > 1) {
+            const mid = (low + high) >> 1;
+            if (data[mid].time <= target) low = mid;
+            else high = mid;
+        }
+        const lowDist = Math.abs(data[low].time - target);
+        const highDist = Math.abs(data[high].time - target);
+        return data[highDist < lowDist ? high : low];
+    }, [touchOverlayGeom, data]);
 
     return (
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
@@ -1239,6 +1456,45 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                         )}
                     </ComposedChart>
                 </ResponsiveContainer>
+                {touchOverlayGeom && (
+                    <>
+                        <div
+                            aria-hidden
+                            className="absolute pointer-events-none"
+                            style={{
+                                left: touchOverlayGeom.lineX,
+                                top: touchOverlayGeom.lineTop,
+                                width: 1,
+                                height: touchOverlayGeom.lineHeight,
+                                background: 'repeating-linear-gradient(to bottom, #f6c4d7 0 4px, transparent 4px 8px)',
+                            }}
+                        />
+                        {touchOverlayDataPoint && (
+                            <div
+                                className="absolute pointer-events-none z-10"
+                                style={{
+                                    left: touchOverlayGeom.relTouchX + 12,
+                                    top: Math.max(0, touchOverlayGeom.relTouchY - 8),
+                                    transform: touchOverlayGeom.relTouchX > (chartContainerRef.current?.clientWidth ?? 0) - 160
+                                        ? 'translateX(-100%)'
+                                        : undefined,
+                                }}
+                            >
+                                <CustomTooltip
+                                    active={true}
+                                    payload={[{ payload: touchOverlayDataPoint }]}
+                                    label={touchOverlayGeom.time}
+                                    t={t}
+                                    lang={lang}
+                                    aaLabel={aaLabel}
+                                    aaUnit={aaUnit}
+                                    aaColor={aaColor}
+                                    aaShowPersonal={aaPersonalized}
+                                />
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
         </div>
     );
