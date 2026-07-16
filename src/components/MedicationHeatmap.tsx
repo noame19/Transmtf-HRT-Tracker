@@ -293,7 +293,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     if (totalWeeks === 0) return null;
 
     return (
-        <div className="glass-card rounded-2xl relative overflow-hidden xl:h-[340px] xl:overflow-hidden xl:flex xl:flex-col" ref={containerRef}>
+        <div className="glass-card rounded-2xl relative overflow-hidden md:flex md:flex-col md:h-80 xl:h-[340px] xl:overflow-hidden" ref={containerRef}>
             {/* Title row — icon + title on left, zoom buttons on the right.
              *  Visually mirrors ResultChart's chart card header so the two
              *  sections read as a matched pair. */}
@@ -356,7 +356,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
              *  In compact mode (e.g. side-by-side with ResultChart on desktop)
              *  the KPI stack lives BELOW the grid because there's no horizontal
              *  room for both. */}
-            <div className="px-3 md:px-4 py-3 md:py-4 xl:flex-1 xl:min-h-0">
+            <div className="px-3 md:px-4 py-3 md:py-4 md:flex-1 md:min-h-0">
                 <div className={compact
                     ? 'flex flex-col gap-3'
                     : 'flex flex-col md:flex-row md:items-stretch gap-3'
@@ -508,7 +508,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                  *  in normal mode (≥md), or a 3-column row below the grid in
                  *  compact mode (heatmap rendered in a narrow column). */}
                 <div className={compact
-                    ? 'grid grid-cols-3 gap-2 w-full xl:mt-auto xl:flex-none'
+                    ? 'grid grid-cols-3 gap-2 w-full md:mt-auto md:flex-none'
                     : 'grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch'
                 }>
                     <KpiCard

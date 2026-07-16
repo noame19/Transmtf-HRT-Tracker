@@ -1104,7 +1104,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
             <div
                 ref={chartContainerRef}
-                className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2"
+                className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 xl:h-[340px] w-full touch-none relative select-none px-2 pb-2"
                 style={{ touchAction: 'none', overscrollBehavior: 'contain', cursor: isDragging ? 'grabbing' : 'crosshair' }}
                 onMouseDown={handleMouseDown}
             >
