@@ -999,17 +999,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         commitDomain(clampDomain([start, end]));
     };
 
-    if (!sim || sim.timeH.length === 0) return (
-        <div className="h-72 md:h-96 flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
-            <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
-            <p className="text-sm font-medium">{t('timeline.empty')}</p>
-        </div>
-    );
-
-    const hasPersonalModel = hasE2Personal;
-
     // Geometry for the touch overlay: vertical line + tooltip box anchored to
     // the curve time (not the finger x). Recomputed on xDomain / touch change.
+    // NOTE: must stay ABOVE the empty-state early return below to keep the
+    // hook order stable across renders — otherwise React throws
+    // "Rendered more hooks than during the previous render" when data arrives.
     const touchOverlayGeom = useMemo(() => {
         if (!touchOverlay) return null;
         const containerRect = chartContainerRef.current?.getBoundingClientRect();
@@ -1047,6 +1041,15 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const highDist = Math.abs(data[high].time - target);
         return data[highDist < lowDist ? high : low];
     }, [touchOverlayGeom, data]);
+
+    if (!sim || sim.timeH.length === 0) return (
+        <div className="h-72 md:h-96 flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
+            <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
+            <p className="text-sm font-medium">{t('timeline.empty')}</p>
+        </div>
+    );
+
+    const hasPersonalModel = hasE2Personal;
 
     return (
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
