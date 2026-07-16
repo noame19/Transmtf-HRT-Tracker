@@ -293,9 +293,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     if (totalWeeks === 0) return null;
 
     return (
-        /* 原来只在 xl+ 才填高度（固定 340px）。现在 md+ 就跟随父级高度填满
-         * 视口剩余空间，让平板/桌面布局里两个卡片等高、且跟视口精确对齐。 */
-        <div className="glass-card rounded-2xl relative overflow-hidden md:h-full md:overflow-hidden md:flex md:flex-col" ref={containerRef}>
+        <div className="glass-card rounded-2xl relative overflow-hidden xl:h-[340px] xl:overflow-hidden xl:flex xl:flex-col" ref={containerRef}>
             {/* Title row — icon + title on left, zoom buttons on the right.
              *  Visually mirrors ResultChart's chart card header so the two
              *  sections read as a matched pair. */}
@@ -358,7 +356,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
              *  In compact mode (e.g. side-by-side with ResultChart on desktop)
              *  the KPI stack lives BELOW the grid because there's no horizontal
              *  room for both. */}
-            <div className="px-3 md:px-4 py-3 md:py-4 md:flex-1 md:min-h-0">
+            <div className="px-3 md:px-4 py-3 md:py-4 xl:flex-1 xl:min-h-0">
                 <div className={compact
                     ? 'flex flex-col gap-3'
                     : 'flex flex-col md:flex-row md:items-stretch gap-3'
