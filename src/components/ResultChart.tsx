@@ -6,6 +6,15 @@ import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, ComposedChart, Scatter
 } from 'recharts';
+import {
+    clampDomain as clampDomainUtil,
+    panDomain,
+    zoomDomainAt,
+    hitTestCurves,
+    timeAtPixel,
+    type CurveSeries,
+    type PlotRect,
+} from '../utils/chartGesture';
 
 interface SimCI {
     timeH: number[];
@@ -317,6 +326,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     const initializedRef = useRef(false);
     const pendingDomainRef = useRef<[number, number] | null>(null);
     const rafUpdateRef = useRef<number | null>(null);
+    const chartContainerRef = useRef<HTMLDivElement | null>(null);
+    const dragStateRef = useRef<{ startX: number; plotRect: PlotRect } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
     const MAX_RENDER_POINTS = 1200;
@@ -640,26 +652,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     }, [data, minTime, maxTime, now]);
 
     const clampDomain = useCallback((domain: [number, number]): [number, number] => {
-        const width = domain[1] - domain[0];
-        // Enforce min zoom (e.g. 1 day) and max zoom (total range)
-        const MIN_ZOOM = 24 * 3600 * 1000;
-        const MAX_ZOOM = Math.max(maxTime - minTime, MIN_ZOOM);
-
-        let newWidth = Math.max(MIN_ZOOM, Math.min(width, MAX_ZOOM));
-        let newStart = domain[0];
-        let newEnd = newStart + newWidth;
-
-        // Clamp to data bounds
-        if (newStart < minTime) {
-            newStart = minTime;
-            newEnd = newStart + newWidth;
-        }
-        if (newEnd > maxTime) {
-            newEnd = maxTime;
-            newStart = newEnd - newWidth;
-        }
-
-        return [newStart, newEnd];
+        return clampDomainUtil(domain, {
+            minTime,
+            maxTime,
+            minZoom: 24 * 3600 * 1000, // 1 day
+        });
     }, [minTime, maxTime]);
 
     const commitDomain = useCallback((next: [number, number]) => {
@@ -689,6 +686,131 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             }
         };
     }, []);
+
+    // Shared bounds for chart-gesture utilities (pan, zoom, hit-test).
+    const domainBounds = useMemo(() => ({
+        minTime,
+        maxTime,
+        minZoom: 24 * 3600 * 1000, // 1 day
+    }), [minTime, maxTime]);
+
+    // Resolve the actual plotting rectangle from the rendered Recharts SVG.
+    // Using the cartesian grid's bounding box avoids hand-estimated axis widths.
+    const getPlotRect = useCallback((): PlotRect | null => {
+        const container = chartContainerRef.current;
+        if (!container) return null;
+        const grid = container.querySelector('.recharts-cartesian-grid');
+        const rect = (grid as SVGGraphicsElement | null)?.getBoundingClientRect?.();
+        const containerRect = container.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+            return {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
+            };
+        }
+        // Fallback when grid isn't laid out yet (first render / no data).
+        return {
+            left: containerRect.left,
+            top: containerRect.top,
+            width: containerRect.width,
+            height: containerRect.height,
+        };
+    }, []);
+
+    // Visible curves for hit-testing (E2 left axis, CPA right axis when present).
+    const curveSeries = useMemo<CurveSeries[]>(() => {
+        const yLeft = yDomainLeft;
+        const yRight = yDomainRight;
+        const series: CurveSeries[] = [];
+        if (typeof yLeft[0] === 'number' && typeof yLeft[1] === 'number') {
+            const yd: [number, number] = [yLeft[0] as number, yLeft[1] as number];
+            const e2Pts = data
+                .filter((p) => typeof p.concE2 === 'number' && Number.isFinite(p.concE2))
+                .map((p) => ({ time: p.time, value: p.concE2 as number }));
+            if (e2Pts.length > 0) series.push({ points: e2Pts, yDomain: yd });
+            if (hasE2Personal) {
+                const personalPts = data
+                    .filter((p) => typeof p.concPersonal === 'number' && Number.isFinite(p.concPersonal))
+                    .map((p) => ({ time: p.time, value: p.concPersonal as number }));
+                if (personalPts.length > 0) series.push({ points: personalPts, yDomain: yd });
+            }
+        }
+        if (hasCPADoses && typeof yRight[0] === 'number' && typeof yRight[1] === 'number') {
+            const yd: [number, number] = [yRight[0] as number, yRight[1] as number];
+            const cpaPts = data
+                .filter((p) => typeof p.concCPA === 'number' && Number.isFinite(p.concCPA))
+                .map((p) => ({ time: p.time, value: p.concCPA as number }));
+            if (cpaPts.length > 0) series.push({ points: cpaPts, yDomain: yd });
+            if (hasPersonalCpaModel && aaPersonalized) {
+                const personalCpaPts = data
+                    .filter((p) => typeof p.concPersonalCPA === 'number' && Number.isFinite(p.concPersonalCPA))
+                    .map((p) => ({ time: p.time, value: p.concPersonalCPA as number }));
+                if (personalCpaPts.length > 0) series.push({ points: personalCpaPts, yDomain: yd });
+            }
+        }
+        return series;
+    }, [data, yDomainLeft, yDomainRight, hasE2Personal, hasCPADoses, hasPersonalCpaModel, aaPersonalized]);
+
+    // Mouse wheel — anchored zoom around cursor time.
+    const handleWheel = useCallback((e: WheelEvent) => {
+        if (!xDomain) return;
+        // Don't hijack ctrl/cmd + wheel (browser zoom).
+        if (e.ctrlKey || e.metaKey) return;
+        e.preventDefault();
+        const plotRect = getPlotRect();
+        if (!plotRect || plotRect.width <= 0) return;
+        const anchorTime = timeAtPixel(e.clientX, plotRect, xDomain);
+        // Wheel up (negative deltaY) zooms in (smaller domain), wheel down zooms out.
+        const zoomFactor = e.deltaY < 0 ? 1 / 1.2 : 1.2;
+        scheduleDomainUpdate(zoomDomainAt(xDomain, anchorTime, zoomFactor, domainBounds));
+    }, [xDomain, domainBounds, getPlotRect, scheduleDomainUpdate]);
+
+    // Bind wheel listener natively so we can use passive: false and preventDefault.
+    useEffect(() => {
+        const node = chartContainerRef.current;
+        if (!node) return;
+        node.addEventListener('wheel', handleWheel, { passive: false });
+        return () => {
+            node.removeEventListener('wheel', handleWheel);
+        };
+    }, [handleWheel]);
+
+    // Mouse drag — pan when the cursor starts on blank space, leave hover-tooltip
+    // intact when it starts on (or very near) a visible curve.
+    const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        if (!xDomain || e.button !== 0) return;
+        const plotRect = getPlotRect();
+        if (!plotRect || plotRect.width <= 0) return;
+        // If the press lands on a curve, defer to the Recharts hover tooltip.
+        const hit = hitTestCurves(e.clientX, e.clientY, plotRect, xDomain, curveSeries, 16);
+        if (hit) return;
+        dragStateRef.current = { startX: e.clientX, plotRect };
+        setIsDragging(true);
+        e.preventDefault();
+    }, [xDomain, curveSeries, getPlotRect]);
+
+    useEffect(() => {
+        if (!isDragging) return;
+        const onMove = (e: MouseEvent) => {
+            const state = dragStateRef.current;
+            if (!state || !xDomain) return;
+            const dx = e.clientX - state.startX;
+            state.startX = e.clientX;
+            scheduleDomainUpdate(panDomain(xDomain, dx, state.plotRect.width, domainBounds));
+        };
+        const onUp = () => {
+            setIsDragging(false);
+            dragStateRef.current = null;
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, [isDragging, xDomain, domainBounds, scheduleDomainUpdate]);
 
     const zoomToDuration = (days: number) => {
         const duration = days * 24 * 3600 * 1000;
@@ -760,7 +882,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                 </div>
             </div>
 
-            <div className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2">
+            <div
+                ref={chartContainerRef}
+                className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2"
+                style={{ touchAction: 'none', overscrollBehavior: 'contain', cursor: isDragging ? 'grabbing' : 'crosshair' }}
+                onMouseDown={handleMouseDown}
+            >
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 0, left: 10 }}>
                         <defs>
