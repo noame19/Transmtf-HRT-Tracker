@@ -311,24 +311,59 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   return (
     <>
       <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
-        {/* Desktop: merged last-dose card occupies the LEFT 1/3 column and
-          *  the concentration card (the primary KPI) occupies the right 2/3
-          *  via md:col-span-2 of a 3-column grid. Mobile: stacked column.
-          *  md:items-stretch keeps the left card equal-height so it aligns
-          *  with the tall concentration card's bottom. */}
+        {/* Desktop: merged last-dose card occupies the LEFT 2/3
+          *  (md:col-span-2 of a 3-column grid), and the concentration card
+          *  (the primary KPI) occupies the right 1/3 column. Mobile: stacked
+          *  column. md:items-stretch keeps both cards equal-height so they
+          *  align with the tall concentration card's bottom. */}
         <div className="grid md:grid-cols-3 gap-2.5 md:gap-4 md:items-stretch">
 
-          {/* Combined dose card — last E2 (left column) + last anti-androgen
-            *  (right column) merged into a single card. Occupies the LEFT
-            *  1/3 column on desktop; stretches to the concentration card's
-            *  height via md:items-stretch. The two-column data layout
-            *  mirrors the concentration card's "E2 vs AA" split so the row
-            *  reads as four parallel data points (dose last-taken ↔ current
-            *  concentration). */}
-          <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
+          {/* Combined dose card — last anti-androgen (left column) + last
+            *  estradiol dose (right column) merged into a single card.
+            *  Occupies the LEFT 2/3 column on desktop; stretches to the
+            *  concentration card's height via md:items-stretch. The two-
+            *  column data layout mirrors the concentration card's
+            *  "E2 vs AA" split so the row reads as four parallel data
+            *  points (dose last-taken ↔ current concentration). */}
+          <div className="md:col-span-2 glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
 
-              {/* Left column — last estradiol dose (non-oral). */}
+              {/* Left column — last anti-androgen dose (CPA / bicalutamide). */}
+              <div className="flex items-start gap-2">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  <Pill size={16} style={{ color: '#3b82f6' }} />
+                </div>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.last_antiandrogen')}
+                  </p>
+                  {lastAntiandrogenDose ? (
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
+                      </p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                        {lastAntiandrogenDose.ester}
+                      </span>
+                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                  )}
+                  {nextAntiandrogenDueStr && (
+                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                      style={{ color: '#3b82f6' }}>
+                      {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Right column — last estradiol dose (non-oral). */}
               <div className="flex flex-col">
                 {/* Top row: icon + label + route badge + time-ago */}
                 <div className="flex items-start gap-3">
@@ -384,7 +419,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
                 {/* Bottom-aligned extra info (sublingual hold time / θ).
                   *  mt-auto pushes the block to the column's bottom so it
-                  *  aligns with the right column's content edge when both
+                  *  aligns with the left column's content edge when both
                   *  columns are flex-col inside the stretched grid row.
                   *  Priority mirrors DoseFormModal: tier wins over θ for
                   *  stale data. */}
@@ -409,47 +444,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   );
                 })()}
               </div>
-
-              {/* Right column — last anti-androgen dose (CPA / bicalutamide). */}
-              <div className="flex items-start gap-2">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                  <Pill size={16} style={{ color: '#3b82f6' }} />
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.last_antiandrogen')}
-                  </p>
-                  {lastAntiandrogenDose ? (
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
-                      </p>
-                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                        {lastAntiandrogenDose.ester}
-                      </span>
-                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                  )}
-                  {nextAntiandrogenDueStr && (
-                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
-                      style={{ color: '#3b82f6' }}>
-                      {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
 
           {/* Main level card — concentration (E2 + AA). Primary KPI for the
-            *  whole overview; occupies the right 2/3 (md:col-span-2 of 3). */}
-          <div className="md:col-span-2 glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
+            *  whole overview; occupies the right 1/3 column. */}
+          <div className="glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
             style={{
               background: isDark
                 ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
