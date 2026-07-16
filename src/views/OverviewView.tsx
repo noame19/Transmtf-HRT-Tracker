@@ -70,14 +70,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const [shareImageOpen, setShareImageOpen] = useState(false);
   const h = currentTime.getTime() / 3600000;
 
-  // xl 同栏横排断点（≥1280px）：把"宽窄信号"传给 MedicationHeatmap，让
-  // 紧凑态切换到 KPI 列在网格下方的布局，避免在窄列里 3 KPI 横挤把网格挤压。
-  // SSR/首屏用 false 兜底（服务端没 window），useEffect 首跑再校正。
-  const [isXl, setIsXl] = useState(false);
+  // 同栏横排断点（≥768px，与顶部 header 的 md:grid-cols-2 对齐）：把"宽窄
+  // 信号"传给 MedicationHeatmap，让紧凑态切换到 KPI 列在网格下方的布局，
+  // 避免在窄列里 3 KPI 横挤把网格挤压。平板与大屏因此呈现一致的"上下左右
+  // 四块"布局。SSR/首屏用 false 兜底（服务端没 window），useEffect 首跑再校正。
+  const [isTwoCol, setIsTwoCol] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mql = window.matchMedia('(min-width: 1280px)');
-    const update = () => setIsXl(mql.matches);
+    const mql = window.matchMedia('(min-width: 768px)');
+    const update = () => setIsTwoCol(mql.matches);
     update();
     mql.addEventListener('change', update);
     return () => mql.removeEventListener('change', update);
@@ -662,13 +663,14 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
         style={{ overscrollBehaviorX: 'none' }}>
         {/*
-         * 桌面端（xl 断点 ≥1280px）把血药浓度图（2/3 宽）和用药日历热力图
-         * （1/3 宽）排到同一行；窄屏恢复为上下堆叠。
+         * md 断点（≥768px，与顶部 header 对齐）把血药浓度图（2/3 宽）和用药
+         * 日历热力图（1/3 宽）排到同一行；窄屏（手机）恢复为上下堆叠。平板与
+         * 大屏因此呈现一致的"上下左右四块"布局。
          * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
          * KPI 把 1/3 宽的网格挤到不可读。
          */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2 min-w-0">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2 min-w-0">
             <ResultChart
               sim={simulation}
               events={events}
@@ -684,12 +686,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           {/* Medication calendar heatmap — rendered after the blood-concentration
            *  chart so the visual narrative goes "concentration now → history
            *  of when doses actually landed". Pure client-side, no data fetch. */}
-          <div className="xl:col-span-1 min-w-0">
+          <div className="md:col-span-1 min-w-0">
             <MedicationHeatmap
               events={events}
               plans={plans}
               today={currentTime}
-              compact={isXl}
+              compact={isTwoCol}
             />
           </div>
         </div>
