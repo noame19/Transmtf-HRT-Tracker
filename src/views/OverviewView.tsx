@@ -1,14 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Pill, Sticker, ShieldAlert } from 'lucide-react';
+import { Activity, Info, Camera, Syringe, Pill, Droplet, Sticker } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
 import MedicationHeatmap from '../components/MedicationHeatmap';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
-import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
 import { Plan } from '../../types';
-import { formatNextDue, nextDueAfter, dueMomentsInRange, pickPrimaryEnabledPlan } from '../utils/planSchedule';
+import { drugCategoryOf, formatNextDue, nextDueAfter, pickPrimaryEnabledPlan } from '../utils/planSchedule';
+
+/** Convert hex color string to "r,g,b" for use in rgba() */
+function hexToRgb(hex: string): string {
+  const h = hex.replace('#', '');
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
 
 interface SimCI {
     timeH: number[];
@@ -48,14 +55,6 @@ function interpAt(timeH: number[], values: number[], h: number): number {
   return isFinite(v) ? v : 0;
 }
 
-/** True iff two Dates fall on the same local calendar day. Used to drive
- *  the "due today" cute glow + corner ping animation on the reminder tile. */
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
-}
-
 const OverviewView: React.FC<OverviewViewProps> = ({
   events,
   labResults,
@@ -67,7 +66,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   onEditEvent,
 }) => {
   const { t, lang } = useTranslation();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const [shareImageOpen, setShareImageOpen] = useState(false);
   const h = currentTime.getTime() / 3600000;
 
@@ -101,6 +100,9 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
   // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
   // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
+  // Declared here (not lower in the file) because lastE2DoseStr's useMemo below
+  // references it — `const` arrow functions are hoisted into the TDZ until their
+  // definition runs, so a useMemo defined earlier would throw at first render.
   const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const rawLevel = useMemo(() => {
@@ -165,6 +167,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return null;
   }, [hasPersonalAaModel, aaCI, simCI, h]);
 
+  const currentCI68 = useMemo(() => {
+    if (!hasPersonalModel) return null;
+    if (!simCI!.ci68Low?.length || simCI!.ci68Low.length !== simCI!.timeH.length) return null;
+    const lo = interpAt(simCI!.timeH, simCI!.ci68Low, h);
+    const hi = interpAt(simCI!.timeH, simCI!.ci68High, h);
+    if (lo > 0 && hi > 0 && hi > lo) return { lo, hi };
+    return null;
+  }, [hasPersonalModel, simCI, h]);
+
   // Latest anti-androgen dose (any route, ester ∈ {CPA, BICA}). Skips events
   // scheduled in the future so a batch-imported plan or a manually post-dated
   // entry doesn't pretend to be "the last dose" on the homepage.
@@ -211,7 +222,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   }, [lastE2Dose]);
 
   /**
-   * Compute "next due" for the two reminder tiles.
+   * Compute "next due" for the two side cards.
    *
    * Pick the "primary" enabled plan in each drug category (most-recently-
    * updated wins on ties) and resolve its earliest upcoming moment against
@@ -239,7 +250,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return primary ? nextDueAfter(primary, currentTime) : null;
   }, [plans, currentTime]);
 
-  /** Localized "下次 本周三" / "Next Mon" / etc. for the reminder-tile headline. */
+  /** Localized "下次 本周三" / "Next Mon" / etc. for the side-card subtitle. */
   const nextAntiandrogenDueStr = useMemo<string | null>(
     () => nextAntiandrogenDue ? formatNextDue(nextAntiandrogenDue, currentTime, t, lang) : null,
     [nextAntiandrogenDue, currentTime, t, lang],
@@ -248,12 +259,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     () => nextE2Due ? formatNextDue(nextE2Due, currentTime, t, lang) : null,
     [nextE2Due, currentTime, t, lang],
   );
-
-  /** Drives the "due today" cute-glow + corner ping on each reminder tile.
-   *  Compares calendar day (not wall-clock instant) so a 23:55 due and a
-   *  00:05 next moment correctly both count as "today" before midnight. */
-  const isAADueToday = !!nextAntiandrogenDue && isSameDay(nextAntiandrogenDue, currentTime);
-  const isE2DueToday = !!nextE2Due && isSameDay(nextE2Due, currentTime);
 
   // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
   // when older than ~30 days so old-record context stays readable.
@@ -280,24 +285,19 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       { month: 'short', day: 'numeric' });
   };
 
-  // E2 status pill — same 6-state decision as the chart's reference band.
-  // Each state maps to a `.status-pill.state-{key}` class in index.html so the
-  // tint/border come from the design system (light/dark variants in CSS).
-  const getLevelState = (conc: number): { key: string; label: string } | null => {
-    if (conc <= 0) return null;
-    if (conc > 300) return { key: 'state-high', label: 'status.level.high' };
-    if (conc >= 100 && conc <= 200) return { key: 'state-mtf', label: 'status.level.mtf' };
-    if (conc >= 70 && conc <= 300) return { key: 'state-luteal', label: 'status.level.luteal' };
-    if (conc >= 30 && conc < 70) return { key: 'state-follicular', label: 'status.level.follicular' };
-    if (conc >= 8 && conc < 30) return { key: 'state-male', label: 'status.level.male' };
-    return { key: 'state-low', label: 'status.level.low' };
+  const getLevelStatus = (conc: number) => {
+    if (conc > 300) return { label: 'status.level.high', color: 'var(--accent-600)', bg: 'var(--bg-soft-rose)', border: 'var(--border-soft-rose)' };
+    if (conc >= 100 && conc <= 200) return { label: 'status.level.mtf', color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(5,150,105,0.15)' : '#ecfdf5', border: isDark ? 'rgba(5,150,105,0.3)' : '#a7f3d0' };
+    if (conc >= 70 && conc <= 300) return { label: 'status.level.luteal', color: isDark ? '#60a5fa' : '#2563eb', bg: isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff', border: isDark ? 'rgba(37,99,235,0.3)' : '#bfdbfe' };
+    if (conc >= 30 && conc < 70) return { label: 'status.level.follicular', color: isDark ? '#818cf8' : '#4f46e5', bg: isDark ? 'rgba(79,70,229,0.15)' : '#eef2ff', border: isDark ? 'rgba(79,70,229,0.3)' : '#c7d2fe' };
+    if (conc >= 8 && conc < 30) return { label: 'status.level.male', color: 'var(--text-secondary)', bg: 'var(--bg-card-hover)', border: 'var(--border-primary)' };
+    return { label: 'status.level.low', color: isDark ? '#fbbf24' : '#d97706', bg: isDark ? 'rgba(217,119,6,0.15)' : '#fffbeb', border: isDark ? 'rgba(217,119,6,0.3)' : '#fde68a' };
   };
-  const currentStatus = useMemo(() => getLevelState(currentLevel), [currentLevel]);
 
-  // Anti-androgen dynamic color (kept from the original KPI card) — varies by
-  // primary compound + dark mode. Inline-styled on top of `.dynamic-aa` so the
-  // CSS class still drives layout while the user gets the per-compound hue.
-  const aaColor = primaryAASpec?.color ?? (isDark ? '#c084fc' : '#9333ea');
+  const currentStatus = useMemo(() => {
+    if (currentLevel > 0) return getLevelStatus(currentLevel);
+    return null;
+  }, [currentLevel, isDark]);
 
   const formatHeadlineE2 = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
   // Format an anti-androgen value for the headline, auto-scaling ng/mL → µg/mL.
@@ -307,276 +307,393 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     const text = value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
     return { value: text, unit };
   };
-  const headline = formatHeadlineAA(currentAA, primaryAASpec);
-  const fmt = (v: number) => primaryAASpec
-    ? formatAntiandrogenConc(v, primaryAASpec)
-    : { value: v, unit: 'ng/mL' as const };
-  const fmtText = (v: number) => {
-    const { value } = fmt(v);
-    return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
-  };
-  const aaLabel = primaryAA ?? 'CPA';
-  const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
-
-  // ── Insight stats — drives the right-column "intelligent insights" card ──
-  // 1) targetHitRate: fraction of last-30-days simulated E2 samples that
-  //    landed inside the luteal reference band [70, 300] pg/mL. Prefers the
-  //    personal-calibrated simCI when available so the metric reflects the
-  //    user's lab-tuned PK rather than population PK. null when no sim.
-  // 2) complianceRate: per-plan expected due moments in current month vs
-  //    matching DoseEvents within ±60min of each due. Requires at least one
-  //    enabled plan to compute — null otherwise.
-  // 3) insightTip: dynamic 1-line message driven by currentLevel / currentAA.
-  const { targetHitRate, complianceRate, insightTip } = useMemo(() => {
-    // (1) target hit rate
-    const useSimCI = !!simCI && simCI.e2Adjusted.length === simCI.timeH.length;
-    const timeH = useSimCI ? simCI!.timeH : simulation?.timeH;
-    const values = useSimCI ? simCI!.e2Adjusted : simulation?.e2Adjusted;
-    let hitRate: number | null = null;
-    if (timeH?.length && values?.length) {
-      const windowStart = h - 30 * 24;
-      let hit = 0, total = 0;
-      for (let i = 0; i < timeH.length; i++) {
-        if (timeH[i] < windowStart) continue;
-        const v = values[i];
-        if (v > 0 && v < 5000) {
-          total++;
-          if (v >= 70 && v <= 300) hit++;
-        }
-      }
-      if (total > 0) hitRate = Math.round((hit / total) * 1000) / 10;
-    }
-
-    // (2) plan-based compliance
-    let compl: number | null = null;
-    if (plans && plans.length > 0) {
-      const monthStart = new Date(currentTime.getFullYear(), currentTime.getMonth(), 1);
-      const monthEnd = new Date(currentTime.getFullYear(), currentTime.getMonth() + 1, 1);
-      let expected = 0, matched = 0;
-      for (const p of plans) {
-        if (!p.enabled) continue;
-        const dues = dueMomentsInRange(p, monthStart, monthEnd);
-        expected += dues.length;
-        for (const d of dues) {
-          const dMs = d.getTime();
-          const satisfied = events.some((e) =>
-            e.ester === p.ester
-            && e.route === p.route
-            && Math.abs(e.timeH * 3600000 - dMs) <= 60 * 60 * 1000
-          );
-          if (satisfied) matched++;
-        }
-      }
-      if (expected > 0) compl = Math.round((matched / expected) * 1000) / 10;
-    }
-
-    // (3) dynamic tip
-    let tip: string;
-    if (currentLevel > 200) {
-      tip = '💡 当前雌二醇浓度偏高，建议关注是否需要调整剂量或延长给药间隔。';
-    } else if (currentLevel > 0 && currentLevel < 70) {
-      tip = '💡 当前雌二醇浓度偏低，建议按时服药或与医师讨论剂量调整。';
-    } else if (currentAA > 0) {
-      tip = '💡 当前体内雌二醇稳态分布良好，抗雄靶点阻断处于深度覆盖阶段。';
-    } else {
-      tip = '💡 添加用药记录后将自动生成智能洞察分析。';
-    }
-
-    return { targetHitRate: hitRate, complianceRate: compl, insightTip: tip };
-  }, [simulation, simCI, plans, events, currentTime, h, currentLevel, currentAA]);
 
   return (
     <>
-      <div className="overview-container animate-in page-forward-glass">
+      <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+        {/* Desktop: merged last-dose card occupies the LEFT 1/2 column and
+          *  the concentration card (the primary KPI) occupies the right 1/2
+          *  column. Mobile: stacked column. md:items-stretch keeps both
+          *  cards equal-height so they align with the tall concentration
+          *  card's bottom. */}
+        <div className="grid md:grid-cols-2 gap-2.5 md:gap-4 md:items-stretch">
 
-        {/* ── Header — two-column grid: combined-reminder-card + KPI card ── */}
-        <header className="overview-header">
-          <div className="header-grid">
+          {/* Combined dose card — last anti-androgen (left column) + last
+            *  estradiol dose (right column) merged into a single card.
+            *  Occupies the LEFT 1/2 column on desktop; stretches to the
+            *  concentration card's height via md:items-stretch. The two-
+            *  column data layout mirrors the concentration card's
+            *  "E2 vs AA" split so the row reads as four parallel data
+            *  points (dose last-taken ↔ current concentration). */}
+          <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
 
-            {/* Combined reminder card — next AA + next E2. Drives the
-              *  cute-glow + corner ping when its plan is due today. */}
-            <div className="combined-reminder-card">
-              <div className="reminder-sub-grid">
-
-                {/* AA reminder tile (抗雄药下次用药) */}
-                <div className={`reminder-tile ${isAADueToday ? 'due-today-active-aa' : ''}`}>
-                  <div className="tile-icon-wrapper aa-accent">
-                    <Pill size={18} />
-                    {isAADueToday && <span className="cute-dot-ping-aa" />}
-                  </div>
-                  <div className="tile-content">
-                    <span className="tile-label">{t('overview.last_antiandrogen')}</span>
-                    {nextAntiandrogenDueStr ? (
-                      <>
-                        <div className="tile-main-time" style={{ color: '#3b82f6' }}>
-                          {nextAntiandrogenDueStr} {nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}
-                        </div>
-                        {lastAntiandrogenDose && (
-                          <div className="tile-sub-info">
-                            {t('overview.last_dose')}: <span>{formatDoseMG(lastAntiandrogenDose.doseMG)} mg</span> · {formatTimeAgo(lastAntiandrogenDose.timeH)}
-                          </div>
-                        )}
-                      </>
-                    ) : lastAntiandrogenDose ? (
-                      <div className="tile-main-time" style={{ color: 'var(--text-primary)' }}>
-                        {formatDoseMG(lastAntiandrogenDose.doseMG)} mg
-                      </div>
-                    ) : (
-                      <div className="tile-main-time empty">--</div>
-                    )}
-                  </div>
+              {/* Left column — last anti-androgen dose (CPA / bicalutamide). */}
+              <div className="flex items-start gap-2">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                  <Pill size={16} style={{ color: '#3b82f6' }} />
                 </div>
-
-                {/* E2 reminder tile (雌二醇下次用药) */}
-                <div className={`reminder-tile ${isE2DueToday ? 'due-today-active-e2' : ''}`}>
-                  <div className="tile-icon-wrapper e2-accent">
-                    <Sticker size={18} />
-                    {isE2DueToday && <span className="cute-dot-ping-e2" />}
-                  </div>
-                  <div className="tile-content">
-                    <span className="tile-label">{t('overview.last_e2')}</span>
-                    {nextE2DueStr ? (
-                      <>
-                        <div className="tile-main-time" style={{ color: 'var(--accent-500)' }}>
-                          {nextE2DueStr} {nextE2Due ? formatTime(nextE2Due) : ''}
-                        </div>
-                        {lastE2Dose && (
-                          <div className="tile-sub-info">
-                            {t('overview.last_dose')}: <span>{lastE2DoseStr}</span> · {formatTimeAgo(lastE2Dose.timeH)}
-                          </div>
-                        )}
-                      </>
-                    ) : lastE2Dose ? (
-                      <div className="tile-main-time" style={{ color: 'var(--text-primary)' }}>
-                        {lastE2DoseStr}
-                      </div>
-                    ) : (
-                      <div className="tile-main-time empty">--</div>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* Concentration KPI card — E2 + AA headline + status pill.
-              *  glass-highlight ::after overlay from the global glass system
-              *  layers a soft 135° white sheen on top of the card. */}
-            <div className="concentration-glass-kpi glass-highlight">
-              <div className="kpi-top-row">
-                <div className="kpi-badge">
-                  <Activity size={12} className="icon" />
-                  <span>{t('status.estimate')}</span>
-                  {hasPersonalModel && (
-                    <span className="personal-tag">{t('chart.personal_model')}</span>
-                  )}
-                </div>
-              </div>
-              <div className="kpi-main-body">
-                <div className="kpi-col">
-                  <span className="section-label theme-accent">E2</span>
-                  <div className="headline-wrapper">
-                    <span className={`headline-value e2 ${currentLevel > 0 ? '' : 'empty'}`}>
-                      {currentLevel > 0 ? formatHeadlineE2(currentLevel) : '--'}
-                    </span>
-                    <span className="headline-unit e2">pg/mL</span>
-                  </div>
-                  {currentStatus && (
-                    <div className={`status-pill ${currentStatus.key}`}>
-                      <span className="label">{t(currentStatus.label)}</span>
+                <div className="leading-tight min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
+                    {t('overview.last_antiandrogen')}
+                  </p>
+                  {lastAntiandrogenDose ? (
+                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
+                      </p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                        {lastAntiandrogenDose.ester}
+                      </span>
+                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
+                      </span>
                     </div>
+                  ) : (
+                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                  )}
+                  {nextAntiandrogenDueStr && (
+                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                      style={{ color: '#3b82f6' }}>
+                      {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
+                    </p>
                   )}
                 </div>
-                <div className="kpi-col">
-                  <span className="section-label dynamic-aa" style={{ color: aaColor }}>{aaLabel}</span>
-                  <div className="headline-wrapper">
-                    <span className={`headline-value dynamic-aa ${currentAA > 0 ? '' : 'empty'}`}
-                      style={{ color: aaColor }}>
-                      {currentAA > 0 ? headline.value : '--'}
-                    </span>
-                    <span className="headline-unit dynamic-aa"
-                      style={{ color: aaColor, opacity: 0.7 }}>{headline.unit}</span>
+              </div>
+
+              {/* Right column — last estradiol dose (non-oral). */}
+              <div className="flex flex-col">
+                {/* Top row: icon + label + route badge + time-ago */}
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
+                    style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
+                    {lastE2Dose
+                      ? (
+                        lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
+                        : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
+                        : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                      )
+                      : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
+                    }
                   </div>
-                  <div className="ci-row">
-                    <span className="ci-label">{t('chart.cpa_pop_range')}</span>
-                    {currentAACI && primaryAASpec ? (
-                      <span className="ci-value" style={{ color: aaColor }}>
-                        {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
-                        <span style={{ fontSize: '0.55rem', opacity: 0.7, marginLeft: '0.15rem' }}>
-                          {fmt(currentAACI.hi).unit}
+                  <div className="leading-tight min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                        {t('overview.last_e2')}
+                      </p>
+                      {lastE2Dose && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                          {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
                         </span>
-                      </span>
+                      )}
+                    </div>
+                    {lastE2Dose ? (
+                      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
+                        <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                          {lastE2DoseStr}
+                        </p>
+                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
+                          {lastE2Dose.ester}
+                        </span>
+                        <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                          {`${formatTimeAgo(lastE2Dose.timeH)} ${formatTime(new Date(lastE2Dose.timeH * 3600000))}`}
+                        </span>
+                      </div>
                     ) : (
-                      <span className="ci-value">--</span>
+                      <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
+                    )}
+                    {nextE2DueStr && (
+                      <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
+                        style={{ color: 'var(--accent-500)' }}>
+                        {`${t('overview.next_due')} ${nextE2DueStr} ${nextE2Due ? formatTime(nextE2Due) : ''}`}
+                      </p>
                     )}
                   </div>
-                  {currentAA > 0 && (
-                    <div className="ci-row" style={{ marginTop: '0.25rem' }}>
-                      <span className="ci-label" style={{ fontStyle: 'italic' }}>{t(noteKey)}</span>
+                </div>
+
+                {/* Bottom-aligned extra info (sublingual hold time / θ).
+                  *  mt-auto pushes the block to the column's bottom so it
+                  *  aligns with the left column's content edge when both
+                  *  columns are flex-col inside the stretched grid row.
+                  *  Priority mirrors DoseFormModal: tier wins over θ for
+                  *  stale data. */}
+                {lastE2Dose && lastE2Dose.route === Route.sublingual && (() => {
+                  const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
+                  const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
+                  let extraText: string | null = null;
+                  if (tierRaw !== undefined) {
+                    const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
+                    extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
+                  } else if (theta !== undefined && Number.isFinite(theta)) {
+                    extraText = `θ ${theta.toFixed(2)}`;
+                  }
+                  if (!extraText) return null;
+                  return (
+                    <div className="mt-auto pt-2 md:pt-3 border-t shrink-0"
+                      style={{ borderColor: 'var(--border-secondary)' }}>
+                      <p className="text-[10px] md:text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
+                        {t('field.sl_duration')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{extraText}</span>
+                      </p>
                     </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Main level card — concentration (E2 + AA). Primary KPI for the
+            *  whole overview; occupies the right 1/2 column. */}
+          <div className="glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
+            style={{
+              background: isDark
+                ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.06), var(--bg-card))`,
+            }}>
+            <div className="flex items-center mb-3">
+              <h1 className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] md:text-xs font-semibold border"
+                style={{
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-secondary)',
+                  borderColor: 'var(--border-primary)',
+                }}>
+                <Activity size={14} style={{ color: 'var(--text-tertiary)' }} />
+                {t('status.estimate')}
+                {hasPersonalModel && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                    style={{
+                      background: 'var(--bg-soft-rose)',
+                      color: 'var(--accent-500)',
+                      border: `1px solid var(--border-soft-rose)`,
+                    }}>
+                    {t('chart.personal_model')}
+                  </span>
+                )}
+              </h1>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* E2 Display */}
+              <div className="space-y-1">
+                <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
+                  style={{ color: 'var(--accent-400)' }}>
+                  E2
+                </div>
+                <div className="flex items-end gap-2">
+                  {currentLevel > 0 ? (
+                    <>
+                      <span className="text-4xl md:text-5xl font-black tracking-tight"
+                        style={{ color: 'var(--accent-500)' }}>
+                        {formatHeadlineE2(currentLevel)}
+                      </span>
+                      <span className="text-sm md:text-base font-bold mb-1"
+                        style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                    </>
+                  ) : (
+                    <span className="text-4xl md:text-5xl font-black tracking-tight"
+                      style={{ color: 'var(--text-tertiary)' }}>
+                      --
+                    </span>
                   )}
                 </div>
-              </div>
-            </div>
-
-          </div>
-        </header>
-
-        {/* ── Main — chart + widgets column (heatmap + insights) ── */}
-        <main className="overview-main">
-          <div className="main-responsive-dashboard">
-            <div className="chart-cell-container">
-              <ResultChart
-                sim={simulation}
-                events={events}
-                onPointClick={onEditEvent}
-                labResults={labResults}
-                simCI={simCI}
-                baselineE2PGmL={baselineE2PGmL}
-                nowH={h}
-                onShareImage={() => setShareImageOpen(true)}
-              />
-            </div>
-            <div className="widgets-column-container">
-              <div className="heatmap-cell-container">
-                <MedicationHeatmap
-                  events={events}
-                  plans={plans}
-                  today={currentTime}
-                  compact={isXl}
-                />
-              </div>
-              <div className="insights-cell-container">
-                <div className="insight-card-glass">
-                  <div className="insight-header">
-                    <span className="insight-title">
-                      <ShieldAlert size={13} className="text-teal-400" />
-                      {t('overview.insights.title')}
+                {currentCI && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide"
+                      style={{ color: 'var(--accent-300)' }}>95% CI</span>
+                    <span className="text-[11px] font-semibold"
+                      style={{ color: 'var(--accent-400)' }}>
+                      {currentCI.lo.toFixed(0)} – {currentCI.hi.toFixed(0)}
+                      <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
                     </span>
-                    <span className="insight-tag">智能模型</span>
                   </div>
-                  <div className="insight-stats-grid">
-                    <div className="stat-box">
-                      <span className="stat-lbl">{t('overview.insights.target_hit_rate')}</span>
-                      <span className="stat-val text-emerald-400">
-                        {targetHitRate !== null ? `${targetHitRate}%` : '--'}
-                      </span>
-                    </div>
-                    <div className="stat-box">
-                      <span className="stat-lbl">{t('overview.insights.compliance')}</span>
-                      <span className="stat-val" style={{ color: 'var(--text-primary)' }}>
-                        {complianceRate !== null ? `${complianceRate}%` : '--'}
-                      </span>
-                    </div>
+                )}
+                {currentCI68 && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide"
+                      style={{ color: 'var(--accent-300)' }}>{t('chart.ci68_band')}</span>
+                    <span className="text-[11px] font-semibold"
+                      style={{ color: 'var(--accent-400)' }}>
+                      {currentCI68.lo.toFixed(0)} – {currentCI68.hi.toFixed(0)}
+                      <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                    </span>
                   </div>
-                  <p className="insight-tip-text">{insightTip}</p>
-                </div>
+                )}
+                {personalLevel !== null && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide"
+                      style={{ color: 'var(--accent-300)' }}>
+                      {t('chart.personal_model')}
+                    </span>
+                    <span className="text-[10px] font-semibold" style={{ color: 'var(--accent-500)' }}>
+                      {personalLevel.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
+                {hasPersonalModel && rawLevel > 0 && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Raw</span>
+                    <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      {rawLevel.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
+                {!hasDoseHistory && baselineLevel !== null && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold text-teal-400 uppercase tracking-wide">Baseline</span>
+                    <span className="text-[10px] font-semibold text-teal-500">
+                      {baselineLevel.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
+                {hasDoseHistory && !hasPersonalModel && baselineE2PGmL != null && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold text-teal-400 uppercase tracking-wide">Endogenous</span>
+                    <span className="text-[10px] font-semibold text-teal-500">
+                      {baselineE2PGmL.toFixed(1)} pg/mL
+                    </span>
+                  </div>
+                )}
+                {currentStatus && (
+                  <div className="px-2.5 py-1 rounded-lg border flex items-center gap-1.5 mt-1 w-fit"
+                    style={{
+                      background: currentStatus.bg,
+                      borderColor: currentStatus.border,
+                    }}>
+                    <Info size={10} style={{ color: currentStatus.color }} />
+                    <span className="text-[9px] md:text-[10px] font-bold" style={{ color: currentStatus.color }}>
+                      {t(currentStatus.label)}
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {/* Anti-androgen Display (CPA / bicalutamide, auto-unit) */}
+              {(() => {
+                const aaLabel = primaryAA ?? 'CPA';
+                const aaColor = primaryAASpec?.color ?? (isDark ? '#c084fc' : '#9333ea');
+                const headline = formatHeadlineAA(currentAA, primaryAASpec);
+                const fmt = (v: number) => primaryAASpec
+                  ? formatAntiandrogenConc(v, primaryAASpec)
+                  : { value: v, unit: 'ng/mL' as const };
+                const fmtText = (v: number) => {
+                  const { value } = fmt(v);
+                  return value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2);
+                };
+                const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
+                return (
+              <div className="space-y-1">
+                <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
+                  style={{ color: aaColor }}>
+                  {aaLabel}
+                </div>
+                <div className="flex items-end gap-2">
+                  {currentAA > 0 ? (
+                    <>
+                      <span className="text-4xl md:text-5xl font-black tracking-tight"
+                        style={{ color: aaColor }}>
+                        {headline.value}
+                      </span>
+                      <span className="text-sm md:text-base font-bold mb-1"
+                        style={{ color: aaColor, opacity: 0.7 }}>{headline.unit}</span>
+                    </>
+                  ) : (
+                    <span className="text-4xl md:text-5xl font-black tracking-tight"
+                      style={{ color: 'var(--text-tertiary)' }}>
+                      --
+                    </span>
+                  )}
+                </div>
+                {hasPersonalAaModel && currentAA > 0 && (
+                  <>
+                    {currentAACI && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wide"
+                          style={{ color: aaColor, opacity: 0.8 }}>{t('chart.cpa_pop_range')}</span>
+                        <span className="text-[11px] font-semibold"
+                          style={{ color: aaColor }}>
+                          {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
+                          <span className="text-[9px] font-normal ml-0.5"
+                            style={{ color: aaColor, opacity: 0.8 }}>{fmt(currentAACI.hi).unit}</span>
+                        </span>
+                      </div>
+                    )}
+                    {primaryAASpec?.adherenceFromE2 && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wide"
+                          style={{ color: aaColor, opacity: 0.8 }}>
+                          {t('chart.cpa_adherence')}
+                        </span>
+                        {personalAA !== null && (
+                          <span className="text-[10px] font-semibold"
+                            style={{ color: aaColor }}>
+                            {fmtText(personalAA)} {fmt(personalAA).unit}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {rawAA > 0 && rawAA !== personalAA && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Base</span>
+                        <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                          {fmtText(rawAA)} {fmt(rawAA).unit}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {currentAA > 0 && (
+                  <div className="mt-1 text-[9px] leading-tight italic" style={{ color: 'var(--text-tertiary)' }}>
+                    {t(noteKey)}
+                  </div>
+                )}
+              </div>
+                );
+              })()}
             </div>
           </div>
-        </main>
 
-      </div>
+        </div>
+      </header>
+
+      <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
+        style={{ overscrollBehaviorX: 'none' }}>
+        {/*
+         * 桌面端（xl 断点 ≥1280px）把血药浓度图（2/3 宽）和用药日历热力图
+         * （1/3 宽）排到同一行；窄屏恢复为上下堆叠。
+         * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
+         * KPI 把 1/3 宽的网格挤到不可读。
+         */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="xl:col-span-2 min-w-0">
+            <ResultChart
+              sim={simulation}
+              events={events}
+              onPointClick={onEditEvent}
+              labResults={labResults}
+              simCI={simCI}
+              baselineE2PGmL={baselineE2PGmL}
+              nowH={h}
+              onShareImage={() => setShareImageOpen(true)}
+            />
+          </div>
+
+          {/* Medication calendar heatmap — rendered after the blood-concentration
+           *  chart so the visual narrative goes "concentration now → history
+           *  of when doses actually landed". Pure client-side, no data fetch. */}
+          <div className="xl:col-span-1 min-w-0">
+            <MedicationHeatmap
+              events={events}
+              plans={plans}
+              today={currentTime}
+              compact={isXl}
+            />
+          </div>
+        </div>
+      </main>
 
       <ShareImageModal
         isOpen={shareImageOpen}
