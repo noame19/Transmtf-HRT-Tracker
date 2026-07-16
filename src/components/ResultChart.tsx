@@ -1043,7 +1043,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     }, [touchOverlayGeom, data]);
 
     if (!sim || sim.timeH.length === 0) return (
-        <div className="h-72 md:h-96 flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
+        /* 空态也走 md:h-full，跟有数据时卡片高度一致，避免"加载数据时突然
+         * 撑高"的视觉跳变。 */
+        <div className="h-72 md:h-full flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
             <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
             <p className="text-sm font-medium">{t('timeline.empty')}</p>
         </div>
@@ -1052,7 +1054,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     const hasPersonalModel = hasE2Personal;
 
     return (
-        <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col">
+        /* md+ 时撑满父级高度（来自 OverviewView 的 col-span wrapper），
+         * 让图表区占满剩余视口，不再用 lg:h-96 这种固定像素值。 */
+        <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col md:h-full">
             <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-secondary)]">
                 <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif', color: 'var(--text-primary)' }}>
                     <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-[var(--border-icon-pink)]">
@@ -1104,7 +1108,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
             <div
                 ref={chartContainerRef}
-                className="h-[36vh] min-h-[200px] max-h-[420px] md:h-80 lg:h-96 w-full touch-none relative select-none px-2 pb-2"
+                /* 移动端用 vh 兜底（保持原行为）；md+ 改用 flex-1，由父级高度
+                 * 决定图表区尺寸，跟随视口自适应，不再写死 md:h-80 / lg:h-96。 */
+                className="h-[36vh] min-h-[200px] max-h-[420px] md:flex-1 md:min-h-0 w-full touch-none relative select-none px-2 pb-2"
                 style={{ touchAction: 'none', overscrollBehavior: 'contain', cursor: isDragging ? 'grabbing' : 'crosshair' }}
                 onMouseDown={handleMouseDown}
             >

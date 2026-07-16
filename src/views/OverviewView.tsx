@@ -310,8 +310,11 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   };
 
   return (
-    <>
-      <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+    /* md+ 容器转 flex column，让 header（KPI 区）自然高度、main 占据剩余视口高度。
+     * 配合 ResultChart / MedicationHeatmap 内部的 h-full + flex-1，
+     * 让"血药浓度图 + 用药日历"两卡在平板/桌面精确填满视口剩余空间。 */
+    <div className="md:flex md:flex-col md:h-full">
+      <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4 shrink-0">
         {/* Desktop: merged last-dose card occupies the LEFT 1/2 column and
           *  the concentration card (the primary KPI) occupies the right 1/2
           *  column. Mobile: stacked column. md:items-stretch keeps both
@@ -660,7 +663,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
       </header>
 
-      <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
+      <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl flex-1 min-h-0 md:flex md:flex-col"
         style={{ overscrollBehaviorX: 'none' }}>
         {/*
          * md 断点（≥768px，与顶部 header 对齐）把血药浓度图（2/3 宽）和用药
@@ -668,9 +671,12 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          * 大屏因此呈现一致的"上下左右四块"布局。
          * 热力图在窄列里启用 compact=KPI 列在网格下方而非右侧，避免 3 张
          * KPI 把 1/3 宽的网格挤到不可读。
+         *
+         * md+ 时 grid 自身 flex-1 + min-h-0：占据 main 剩余高度，让两列卡
+         * 片有精确可填的高度（而非自然内容高度）。
          */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 min-w-0">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:flex-1 md:min-h-0">
+          <div className="md:col-span-2 min-w-0 md:flex md:flex-col md:min-h-0">
             <ResultChart
               sim={simulation}
               events={events}
@@ -686,7 +692,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           {/* Medication calendar heatmap — rendered after the blood-concentration
            *  chart so the visual narrative goes "concentration now → history
            *  of when doses actually landed". Pure client-side, no data fetch. */}
-          <div className="md:col-span-1 min-w-0">
+          <div className="md:col-span-1 min-w-0 md:flex md:flex-col md:min-h-0">
             <MedicationHeatmap
               events={events}
               plans={plans}
@@ -706,7 +712,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         simCI={simCI}
         baselineE2PGmL={baselineE2PGmL}
       />
-    </>
+    </div>
   );
 };
 
