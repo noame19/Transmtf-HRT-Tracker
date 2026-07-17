@@ -143,6 +143,7 @@ export const TRANSLATIONS_BASE = {
         "reminder.banner.skip_confirm.body": "将跳过今日原有计划，原计划不会顺延。强烈影响身体激素状态，您确定吗？",
         "reminder.modal.scheduled_at": "计划服药时间 · {time}",
         "reminder.modal.close": "关闭",
+        "reminder.confirm.aria_pending_suffix": "，再点一次确认",
 
         "compliance.banner.title": "用药方式与计划不符",
         "compliance.banner.compact": "最近 {history} 与计划 {plan} 不一致，请核对修正用药计划。",
@@ -1040,6 +1041,7 @@ export const TRANSLATIONS_BASE = {
         "reminder.banner.skip_confirm.body": "Today's scheduled dose will be skipped and the plan will not roll forward. This strongly affects your hormonal state — are you sure?",
         "reminder.modal.scheduled_at": "Scheduled dose time · {time}",
         "reminder.modal.close": "Close",
+        "reminder.confirm.aria_pending_suffix": ", tap again to confirm",
 
         "compliance.banner.title": "Actual doses don't match plan",
         "compliance.banner.compact": "Recent {history} doesn't match the planned {plan}. Please review and correct the plan.",
@@ -2300,6 +2302,7 @@ export const TRANSLATIONS = {
         "overview.due.day_after": "後天",
         "overview.due.this_weekday": "本{day}",
         "overview.due.next_weekday": "下{day}",
+        "reminder.confirm.aria_pending_suffix": "，再點一次確認",
     },
 
     en: {
@@ -2772,5 +2775,6 @@ export const TRANSLATIONS = {
 
         "error.invalidDate": "無効な日付。",
         "error.patch_remove_before_apply": "除去時刻は貼付時刻より後にしてください。",
+        "reminder.confirm.aria_pending_suffix": "、もう一度タップで確認",
     },
 } as const;
