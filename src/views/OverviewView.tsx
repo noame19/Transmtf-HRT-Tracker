@@ -17,12 +17,16 @@ function hexToRgb(hex: string): string {
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 }
 
-// 顶部两卡按药物分类的配色（用户指定，照搬 mockup）：左栏=当前浓度色，
-// 右栏=下次计划色。E2 一组暖/紫，抗雄一组蓝/绿，冷暖区分「现值 vs 计划」。
-const E2_CONC_COLOR = '#FF7C80';  // rgb(255,124,128) E2 当前浓度
-const E2_PLAN_COLOR = '#9999FF';  // rgb(153,153,255) E2 下次计划
-const AA_CONC_COLOR = '#00B0F0';  // rgb(0,176,240)  抗雄当前浓度
-const AA_PLAN_COLOR = '#02CB90';  // rgb(2,203,144)  抗雄下次计划
+// 顶部两卡按药物分类的配色（用户在 DevTools 微调后定稿）。
+// 左栏 当前浓度：
+const E2_CONC_COLOR = '#F1405D';   // E2 浓度主文字(标签/副标题/数值/CI)
+const E2_CONC_SOFT  = '#FF7C80';   // E2 浓度弱化(单位 + 卡片渐变底)
+const AA_CONC_COLOR = '#00B0F0';   // 抗雄浓度(全部文字 + 渐变底)
+// 右栏 用药时间/下次计划（两卡统一）：
+const PLAN_MAIN = '#8A61E6';       // 计划主文字(下次计划/药名/大号时间/相对日)
+const PLAN_SOFT = '#9999FF';       // 上次用药行 + 顶部分隔线
+const PLAN_BADGE = '#02CB90';      // 途径徽章(绿)
+const PLAN_HOLD_GRAY = '#868686';  // 含服时长(灰)
 
 interface SimCI {
     timeH: number[];
@@ -327,20 +331,20 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     }
     if (!extraText) return null;
     return (
-      <p className="text-[10px] md:text-xs font-medium truncate mt-1" style={{ color: E2_PLAN_COLOR, opacity: 0.85 }}>
+      <p className="text-[10px] md:text-xs font-medium truncate mt-1" style={{ color: PLAN_HOLD_GRAY }}>
         {t('field.sl_duration')}: <span className="font-semibold">{extraText}</span>
       </p>
     );
   })();
 
   // 右栏「用药时间」：下次计划(药名+剂量+途径) → 大号时间 → 上次用药。
-  // color = 该分类的「计划色」。holdExtra 仅 E2 舌下时传入。
+  // 两卡统一配色：主文字 PLAN_MAIN(紫)、途径徽章 PLAN_BADGE(绿)、上次行
+  // PLAN_SOFT(浅紫)、含服时长 PLAN_HOLD_GRAY(灰)。holdExtra 仅 E2 舌下时传入。
   const renderDoseTime = (
     plan: Plan | null,
     nextDue: Date | null,
     nextDueStr: string | null,
     lastDose: DoseEvent | null,
-    color: string,
     holdExtra?: React.ReactNode,
   ): React.ReactNode => {
     const drugName = plan
@@ -351,39 +355,39 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       <div className="flex flex-col min-w-0">
         {/* 下次计划标题 + 途径徽章 */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] md:text-xs font-bold" style={{ color }}>
+          <span className="text-[10px] md:text-xs font-bold" style={{ color: PLAN_MAIN }}>
             {t('overview.next_plan', '下次计划')}
           </span>
           {routeText && (
             <span className="text-[9px] font-bold px-1 py-0.5 rounded"
-              style={{ background: `rgba(${hexToRgb(color)},0.14)`, color }}>
+              style={{ background: `rgba(${hexToRgb(PLAN_BADGE)},0.14)`, color: PLAN_BADGE }}>
               {routeText}
             </span>
           )}
         </div>
         {/* 药名 + 剂量 */}
         {plan ? (
-          <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color, opacity: 0.9 }}>
+          <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color: PLAN_MAIN, opacity: 0.9 }}>
             {drugName} {formatDoseMG(plan.doseMG)}mg
           </p>
         ) : (
-          <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color, opacity: 0.6 }}>—</p>
+          <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>
         )}
         {/* 大号时间 + 相对日 */}
         <div className="flex items-end gap-1.5 mt-1">
           {nextDue ? (
             <>
-              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color }}>
+              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
                 {formatTime(nextDue)}
               </span>
               {nextDueStr && (
-                <span className="text-sm md:text-base font-bold mb-0.5" style={{ color, opacity: 0.75 }}>
+                <span className="text-sm md:text-base font-bold mb-0.5" style={{ color: PLAN_MAIN, opacity: 0.75 }}>
                   {nextDueStr}
                 </span>
               )}
             </>
           ) : (
-            <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color, opacity: 0.45 }}>
+            <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN, opacity: 0.45 }}>
               --:--
             </span>
           )}
@@ -392,7 +396,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         <div className="mt-auto pt-2">
           {lastDose && (
             <p className="text-[10px] md:text-xs font-medium pt-2 border-t truncate"
-              style={{ color, opacity: 0.75, borderColor: `rgba(${hexToRgb(color)},0.25)` }}>
+              style={{ color: PLAN_SOFT, opacity: 0.9, borderColor: `rgba(${hexToRgb(PLAN_SOFT)},0.6)` }}>
               {t('overview.last_short', '上次')} {formatTimeAgo(lastDose.timeH)} {formatTime(new Date(lastDose.timeH * 3600000))}
             </p>
           )}
@@ -415,8 +419,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           <div className="glass-card glass-highlight rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col"
             style={{
               background: isDark
-                ? `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_COLOR)},0.10), var(--bg-card))`
-                : `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_COLOR)},0.05), var(--bg-card))`,
+                ? `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_SOFT)},0.14), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_SOFT)},0.09), var(--bg-card))`,
             }}>
             <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
               {/* 左栏 — E2 当前浓度(排布沿用原卡,重新配色) */}
@@ -434,7 +438,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   )}
                 </div>
                 <p className="text-[9px] md:text-[10px] font-medium leading-tight"
-                  style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>
+                  style={{ color: E2_CONC_COLOR, opacity: 1 }}>
                   {t('status.estimate')}
                 </p>
                 <div className="flex items-end gap-2">
@@ -445,7 +449,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         {formatHeadlineE2(currentLevel)}
                       </span>
                       <span className="text-sm md:text-base font-bold mb-1"
-                        style={{ color: E2_CONC_COLOR, opacity: 0.7 }}>pg/mL</span>
+                        style={{ color: E2_CONC_SOFT, opacity: 0.7 }}>pg/mL</span>
                     </>
                   ) : (
                     <span className="text-4xl md:text-5xl font-black tracking-tight"
@@ -526,7 +530,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               </div>
 
               {/* 右栏 — E2 用药时间 */}
-              {renderDoseTime(primaryE2Plan, nextE2Due, nextE2DueStr, lastE2Dose, E2_PLAN_COLOR, e2HoldExtra)}
+              {renderDoseTime(primaryE2Plan, nextE2Due, nextE2DueStr, lastE2Dose, e2HoldExtra)}
             </div>
           </div>
 
@@ -534,8 +538,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           <div className="glass-card glass-highlight rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col"
             style={{
               background: isDark
-                ? `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.10), var(--bg-card))`
-                : `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.05), var(--bg-card))`,
+                ? `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.14), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.09), var(--bg-card))`,
             }}>
             <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
               {/* 左栏 — 抗雄当前浓度 */}
@@ -627,7 +631,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 );
               })()}
               {/* 右栏 — 抗雄用药时间 */}
-              {renderDoseTime(primaryAntiandrogenPlan, nextAntiandrogenDue, nextAntiandrogenDueStr, lastAntiandrogenDose, AA_PLAN_COLOR)}
+              {renderDoseTime(primaryAntiandrogenPlan, nextAntiandrogenDue, nextAntiandrogenDueStr, lastAntiandrogenDose)}
             </div>
           </div>
 
