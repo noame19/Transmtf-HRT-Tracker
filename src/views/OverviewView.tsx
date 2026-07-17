@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Info, Camera, Syringe, Pill, Droplet, Sticker } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import ResultChart from '../components/ResultChart';
@@ -16,6 +16,13 @@ function hexToRgb(hex: string): string {
   const n = parseInt(h, 16);
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 }
+
+// 顶部两卡按药物分类的配色（用户指定，照搬 mockup）：左栏=当前浓度色，
+// 右栏=下次计划色。E2 一组暖/紫，抗雄一组蓝/绿，冷暖区分「现值 vs 计划」。
+const E2_CONC_COLOR = '#FF7C80';  // rgb(255,124,128) E2 当前浓度
+const E2_PLAN_COLOR = '#9999FF';  // rgb(153,153,255) E2 下次计划
+const AA_CONC_COLOR = '#00B0F0';  // rgb(0,176,240)  抗雄当前浓度
+const AA_PLAN_COLOR = '#02CB90';  // rgb(2,203,144)  抗雄下次计划
 
 interface SimCI {
     timeH: number[];
@@ -66,7 +73,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   onEditEvent,
 }) => {
   const { t, lang } = useTranslation();
-  const { isDark, colors } = useTheme();
+  const { isDark } = useTheme();
   const [shareImageOpen, setShareImageOpen] = useState(false);
   const h = currentTime.getTime() / 3600000;
 
@@ -101,9 +108,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
   // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
   // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
-  // Declared here (not lower in the file) because lastE2DoseStr's useMemo below
-  // references it — `const` arrow functions are hoisted into the TDZ until their
-  // definition runs, so a useMemo defined earlier would throw at first render.
+  // Declared early so callers above the return (renderDoseTime 等) can reference it.
   const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const rawLevel = useMemo(() => {
@@ -211,17 +216,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return latest;
   }, [events, h]);
 
-  // Pre-format the E2 dose display string for the meta row. Patch route shows
-  // µg/d, all others show plain mg — same convention the DoseEvent list uses.
-  const lastE2DoseStr = useMemo<string>(() => {
-    if (!lastE2Dose) return '';
-    const rate = lastE2Dose.extras?.[ExtraKey.releaseRateUGPerDay];
-    if (lastE2Dose.route === Route.patchApply && rate) {
-      return `${rate} µg/d`;
-    }
-    return `${formatDoseMG(lastE2Dose.doseMG)} mg`;
-  }, [lastE2Dose]);
-
   /**
    * Compute "next due" for the two side cards.
    *
@@ -259,6 +253,16 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const nextE2DueStr = useMemo<string | null>(
     () => nextE2Due ? formatNextDue(nextE2Due, currentTime, t, lang) : null,
     [nextE2Due, currentTime, t, lang],
+  );
+
+  // 主启用计划(每个药物分类一条)——右栏「下次计划」要显示药名/剂量/途径。
+  const primaryE2Plan = useMemo<Plan | null>(
+    () => (plans ? pickPrimaryEnabledPlan(plans, 'estrogen') : null),
+    [plans],
+  );
+  const primaryAntiandrogenPlan = useMemo<Plan | null>(
+    () => (plans ? pickPrimaryEnabledPlan(plans, 'anti_androgen') : null),
+    [plans],
   );
 
   // Relative-time formatter ("3h 前", "2d ago"). Falls back to absolute date
@@ -309,190 +313,139 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     return { value: text, unit };
   };
 
+  // E2 舌下含服时长(标准档 / θ)——迁到 E2 卡右栏底部。仅舌下时显示。
+  const e2HoldExtra: React.ReactNode = (() => {
+    if (!(lastE2Dose && lastE2Dose.route === Route.sublingual)) return null;
+    const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
+    const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
+    let extraText: string | null = null;
+    if (tierRaw !== undefined) {
+      const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
+      extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
+    } else if (theta !== undefined && Number.isFinite(theta)) {
+      extraText = `θ ${theta.toFixed(2)}`;
+    }
+    if (!extraText) return null;
+    return (
+      <p className="text-[10px] md:text-xs font-medium truncate mt-1" style={{ color: E2_PLAN_COLOR, opacity: 0.85 }}>
+        {t('field.sl_duration')}: <span className="font-semibold">{extraText}</span>
+      </p>
+    );
+  })();
+
+  // 右栏「用药时间」：下次计划(药名+剂量+途径) → 大号时间 → 上次用药。
+  // color = 该分类的「计划色」。holdExtra 仅 E2 舌下时传入。
+  const renderDoseTime = (
+    plan: Plan | null,
+    nextDue: Date | null,
+    nextDueStr: string | null,
+    lastDose: DoseEvent | null,
+    color: string,
+    holdExtra?: React.ReactNode,
+  ): React.ReactNode => {
+    const drugName = plan
+      ? t(`ester.${plan.ester}`).replace(/\s*[（(][^）)]*[)）]\s*/g, '')
+      : null;
+    const routeText = plan ? (t(`plan.route.${plan.route}`) || t(`route.${plan.route}`)) : null;
+    return (
+      <div className="flex flex-col min-w-0">
+        {/* 下次计划标题 + 途径徽章 */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] md:text-xs font-bold" style={{ color }}>
+            {t('overview.next_plan', '下次计划')}
+          </span>
+          {routeText && (
+            <span className="text-[9px] font-bold px-1 py-0.5 rounded"
+              style={{ background: `rgba(${hexToRgb(color)},0.14)`, color }}>
+              {routeText}
+            </span>
+          )}
+        </div>
+        {/* 药名 + 剂量 */}
+        {plan ? (
+          <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color, opacity: 0.9 }}>
+            {drugName} {formatDoseMG(plan.doseMG)}mg
+          </p>
+        ) : (
+          <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color, opacity: 0.6 }}>—</p>
+        )}
+        {/* 大号时间 + 相对日 */}
+        <div className="flex items-end gap-1.5 mt-1">
+          {nextDue ? (
+            <>
+              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color }}>
+                {formatTime(nextDue)}
+              </span>
+              {nextDueStr && (
+                <span className="text-sm md:text-base font-bold mb-0.5" style={{ color, opacity: 0.75 }}>
+                  {nextDueStr}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color, opacity: 0.45 }}>
+              --:--
+            </span>
+          )}
+        </div>
+        {/* 底部：上次用药 + 含服时长，mt-auto 贴卡片底 */}
+        <div className="mt-auto pt-2">
+          {lastDose && (
+            <p className="text-[10px] md:text-xs font-medium pt-2 border-t truncate"
+              style={{ color, opacity: 0.75, borderColor: `rgba(${hexToRgb(color)},0.25)` }}>
+              {t('overview.last_short', '上次')} {formatTimeAgo(lastDose.timeH)} {formatTime(new Date(lastDose.timeH * 3600000))}
+            </p>
+          )}
+          {holdExtra}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
-        {/* Desktop: merged last-dose card occupies the LEFT 1/2 column and
-          *  the concentration card (the primary KPI) occupies the right 1/2
-          *  column. Mobile: stacked column. md:items-stretch keeps both
-          *  cards equal-height so they align with the tall concentration
-          *  card's bottom. */}
+        {/* 按药物分类的两张卡：E2 卡 + 抗雄卡。每卡左栏=当前浓度、右栏=
+          *  用药时间(下次计划+大号时间+上次用药)。桌面并排,md:items-stretch
+          *  两卡等高;窄屏堆叠。 */}
         <div className="grid md:grid-cols-2 gap-2.5 md:gap-4 md:items-stretch">
 
-          {/* Combined dose card — last anti-androgen (left column) + last
-            *  estradiol dose (right column) merged into a single card.
-            *  Occupies the LEFT 1/2 column on desktop; stretches to the
-            *  concentration card's height via md:items-stretch. The two-
-            *  column data layout mirrors the concentration card's
-            *  "E2 vs AA" split so the row reads as four parallel data
-            *  points (dose last-taken ↔ current concentration). */}
-          <div className="glass-card rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
-
-              {/* Left column — last anti-androgen dose (CPA / bicalutamide). */}
-              <div className="flex items-start gap-2">
-                <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                  style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                  <Pill size={16} style={{ color: '#3b82f6' }} />
-                </div>
-                <div className="leading-tight min-w-0 flex-1">
-                  <p className="text-[10px] md:text-xs font-semibold truncate" style={{ color: 'var(--text-secondary)' }}>
-                    {t('overview.last_antiandrogen')}
-                  </p>
-                  {lastAntiandrogenDose ? (
-                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                      <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                        {`${formatDoseMG(lastAntiandrogenDose.doseMG)} mg`}
-                      </p>
-                      <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                        {lastAntiandrogenDose.ester}
-                      </span>
-                      <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                        {formatTimeAgo(lastAntiandrogenDose.timeH)}
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                  )}
-                  {nextAntiandrogenDueStr && (
-                    <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
-                      style={{ color: '#3b82f6' }}>
-                      {`${t('overview.next_due')} ${nextAntiandrogenDueStr} ${nextAntiandrogenDue ? formatTime(nextAntiandrogenDue) : ''}`}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Right column — last estradiol dose (non-oral). */}
-              <div className="flex flex-col">
-                {/* Top row: icon + label + route badge + time-ago */}
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center border shrink-0"
-                    style={{ background: 'var(--bg-card-hover)', borderColor: 'var(--border-primary)' }}>
-                    {lastE2Dose
-                      ? (
-                        lastE2Dose.route === Route.injection ? <Syringe size={16} className="text-pink-400 md:w-5 md:h-5" />
-                        : lastE2Dose.route === Route.sublingual ? <Pill size={16} className="text-teal-500 md:w-5 md:h-5" />
-                        : lastE2Dose.route === Route.gel ? <Droplet size={16} className="text-cyan-500 md:w-5 md:h-5" />
-                        : lastE2Dose.route === Route.patchApply ? <Sticker size={16} className="text-orange-500 md:w-5 md:h-5" />
-                        : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
-                      )
-                      : <Syringe size={16} style={{ color: 'var(--text-tertiary)' }} />
-                    }
-                  </div>
-                  <div className="leading-tight min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-[11px] md:text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                        {t('overview.last_e2')}
-                      </p>
-                      {lastE2Dose && (
-                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                          {t(`plan.route.${lastE2Dose.route}`) || t(`route.${lastE2Dose.route}`)}
-                        </span>
-                      )}
-                    </div>
-                    {lastE2Dose ? (
-                      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0 mt-0.5 min-w-0">
-                        <p className="text-sm md:text-base font-bold font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
-                          {lastE2DoseStr}
-                        </p>
-                        <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
-                          style={{ background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)' }}>
-                          {lastE2Dose.ester}
-                        </span>
-                        <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
-                          {`${formatTimeAgo(lastE2Dose.timeH)} ${formatTime(new Date(lastE2Dose.timeH * 3600000))}`}
-                        </span>
-                      </div>
-                    ) : (
-                      <p className="text-base md:text-lg font-bold" style={{ color: 'var(--text-tertiary)' }}>--</p>
-                    )}
-                    {nextE2DueStr && (
-                      <p className="text-[10px] md:text-xs font-semibold mt-1 truncate"
-                        style={{ color: 'var(--accent-500)' }}>
-                        {`${t('overview.next_due')} ${nextE2DueStr} ${nextE2Due ? formatTime(nextE2Due) : ''}`}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bottom-aligned extra info (sublingual hold time / θ).
-                  *  mt-auto pushes the block to the column's bottom so it
-                  *  aligns with the left column's content edge when both
-                  *  columns are flex-col inside the stretched grid row.
-                  *  Priority mirrors DoseFormModal: tier wins over θ for
-                  *  stale data. */}
-                {lastE2Dose && lastE2Dose.route === Route.sublingual && (() => {
-                  const theta = lastE2Dose.extras?.[ExtraKey.sublingualTheta];
-                  const tierRaw = lastE2Dose.extras?.[ExtraKey.sublingualTier];
-                  let extraText: string | null = null;
-                  if (tierRaw !== undefined) {
-                    const idx = Math.min(SL_TIER_ORDER.length - 1, Math.max(0, Math.round(tierRaw)));
-                    extraText = t(`sl.mode.${SL_TIER_ORDER[idx]}`);
-                  } else if (theta !== undefined && Number.isFinite(theta)) {
-                    extraText = `θ ${theta.toFixed(2)}`;
-                  }
-                  if (!extraText) return null;
-                  return (
-                    <div className="mt-auto pt-2 md:pt-3 border-t shrink-0"
-                      style={{ borderColor: 'var(--border-secondary)' }}>
-                      <p className="text-[10px] md:text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
-                        {t('field.sl_duration')}: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{extraText}</span>
-                      </p>
-                    </div>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* Main level card — concentration (E2 + AA). Primary KPI for the
-            *  whole overview; occupies the right 1/2 column. */}
-          <div className="glass-card glass-highlight glass-accent rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden"
+          {/* ── E2 卡：左栏=当前浓度(沿用原排布,重新配色)，右栏=用药时间
+            *  (下次计划+大号时间+上次用药)。按药物分类合并「现值」与「计划」。 */}
+          <div className="glass-card glass-highlight rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col"
             style={{
               background: isDark
-                ? `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.12), var(--bg-card))`
-                : `linear-gradient(135deg, rgba(${hexToRgb(colors[500])},0.06), var(--bg-card))`,
+                ? `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_COLOR)},0.10), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(E2_CONC_COLOR)},0.05), var(--bg-card))`,
             }}>
-            <div className="flex items-center mb-3">
-              <h1 className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] md:text-xs font-semibold border"
-                style={{
-                  background: 'var(--bg-card)',
-                  color: 'var(--text-secondary)',
-                  borderColor: 'var(--border-primary)',
-                }}>
-                <Activity size={14} style={{ color: 'var(--text-tertiary)' }} />
-                {t('status.estimate')}
-                {hasPersonalModel && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
-                    style={{
-                      background: 'var(--bg-soft-rose)',
-                      color: 'var(--accent-500)',
-                      border: `1px solid var(--border-soft-rose)`,
-                    }}>
-                    {t('chart.personal_model')}
+            <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
+              {/* 左栏 — E2 当前浓度(排布沿用原卡,重新配色) */}
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
+                    style={{ color: E2_CONC_COLOR }}>
+                    E2
                   </span>
-                )}
-              </h1>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {/* E2 Display */}
-              <div className="space-y-1">
-                <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
-                  style={{ color: 'var(--accent-400)' }}>
-                  E2
+                  {hasPersonalModel && (
+                    <span className="px-1 py-0.5 rounded-full text-[8px] font-bold"
+                      style={{ background: `rgba(${hexToRgb(E2_CONC_COLOR)},0.14)`, color: E2_CONC_COLOR }}>
+                      {t('chart.personal_model')}
+                    </span>
+                  )}
                 </div>
+                <p className="text-[9px] md:text-[10px] font-medium leading-tight"
+                  style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>
+                  {t('status.estimate')}
+                </p>
                 <div className="flex items-end gap-2">
                   {currentLevel > 0 ? (
                     <>
                       <span className="text-4xl md:text-5xl font-black tracking-tight"
-                        style={{ color: 'var(--accent-500)' }}>
+                        style={{ color: E2_CONC_COLOR }}>
                         {formatHeadlineE2(currentLevel)}
                       </span>
                       <span className="text-sm md:text-base font-bold mb-1"
-                        style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                        style={{ color: E2_CONC_COLOR, opacity: 0.7 }}>pg/mL</span>
                     </>
                   ) : (
                     <span className="text-4xl md:text-5xl font-black tracking-tight"
@@ -504,32 +457,32 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 {currentCI && (
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[9px] font-bold uppercase tracking-wide"
-                      style={{ color: 'var(--accent-300)' }}>95% CI</span>
+                      style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>95% CI</span>
                     <span className="text-[11px] font-semibold"
-                      style={{ color: 'var(--accent-400)' }}>
+                      style={{ color: E2_CONC_COLOR }}>
                       {currentCI.lo.toFixed(0)} – {currentCI.hi.toFixed(0)}
-                      <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                      <span className="text-[9px] font-normal ml-0.5" style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>pg/mL</span>
                     </span>
                   </div>
                 )}
                 {currentCI68 && (
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[9px] font-bold uppercase tracking-wide"
-                      style={{ color: 'var(--accent-300)' }}>{t('chart.ci68_band')}</span>
+                      style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>{t('chart.ci68_band')}</span>
                     <span className="text-[11px] font-semibold"
-                      style={{ color: 'var(--accent-400)' }}>
+                      style={{ color: E2_CONC_COLOR }}>
                       {currentCI68.lo.toFixed(0)} – {currentCI68.hi.toFixed(0)}
-                      <span className="text-[9px] font-normal ml-0.5" style={{ color: 'var(--accent-300)' }}>pg/mL</span>
+                      <span className="text-[9px] font-normal ml-0.5" style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>pg/mL</span>
                     </span>
                   </div>
                 )}
                 {personalLevel !== null && (
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[9px] font-bold uppercase tracking-wide"
-                      style={{ color: 'var(--accent-300)' }}>
+                      style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>
                       {t('chart.personal_model')}
                     </span>
-                    <span className="text-[10px] font-semibold" style={{ color: 'var(--accent-500)' }}>
+                    <span className="text-[10px] font-semibold" style={{ color: E2_CONC_COLOR }}>
                       {personalLevel.toFixed(1)} pg/mL
                     </span>
                   </div>
@@ -572,10 +525,23 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 )}
               </div>
 
-              {/* Anti-androgen Display (CPA / bicalutamide, auto-unit) */}
+              {/* 右栏 — E2 用药时间 */}
+              {renderDoseTime(primaryE2Plan, nextE2Due, nextE2DueStr, lastE2Dose, E2_PLAN_COLOR, e2HoldExtra)}
+            </div>
+          </div>
+
+          {/* ── 抗雄卡：左栏=当前浓度(沿用原排布,重新配色)，右栏=用药时间 ── */}
+          <div className="glass-card glass-highlight rounded-2xl px-4 md:px-5 py-4 md:py-5 relative overflow-hidden flex flex-col"
+            style={{
+              background: isDark
+                ? `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.10), var(--bg-card))`
+                : `linear-gradient(135deg, rgba(${hexToRgb(AA_CONC_COLOR)},0.05), var(--bg-card))`,
+            }}>
+            <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
+              {/* 左栏 — 抗雄当前浓度 */}
               {(() => {
                 const aaLabel = primaryAA ?? 'CPA';
-                const aaColor = primaryAASpec?.color ?? (isDark ? '#c084fc' : '#9333ea');
+                const aaColor = AA_CONC_COLOR;
                 const headline = formatHeadlineAA(currentAA, primaryAASpec);
                 const fmt = (v: number) => primaryAASpec
                   ? formatAntiandrogenConc(v, primaryAASpec)
@@ -586,11 +552,17 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 };
                 const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
                 return (
-              <div className="space-y-1">
-                <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
-                  style={{ color: aaColor }}>
-                  {aaLabel}
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
+                    style={{ color: aaColor }}>
+                    {aaLabel}
+                  </span>
                 </div>
+                <p className="text-[9px] md:text-[10px] font-medium leading-tight"
+                  style={{ color: aaColor, opacity: 0.75 }}>
+                  {t('status.estimate')}
+                </p>
                 <div className="flex items-end gap-2">
                   {currentAA > 0 ? (
                     <>
@@ -654,6 +626,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               </div>
                 );
               })()}
+              {/* 右栏 — 抗雄用药时间 */}
+              {renderDoseTime(primaryAntiandrogenPlan, nextAntiandrogenDue, nextAntiandrogenDueStr, lastAntiandrogenDose, AA_PLAN_COLOR)}
             </div>
           </div>
 
