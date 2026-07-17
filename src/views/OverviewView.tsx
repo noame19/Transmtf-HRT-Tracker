@@ -425,11 +425,9 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
               {/* 左栏 — E2 当前浓度(排布沿用原卡,重新配色) */}
               <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
-                    style={{ color: E2_CONC_COLOR }}>
-                    E2
-                  </span>
+                <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
+                  style={{ color: E2_CONC_COLOR }}>
+                  <span>{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
                   {hasPersonalModel && (
                     <span className="px-1 py-0.5 rounded-full text-[8px] font-bold"
                       style={{ background: `rgba(${hexToRgb(E2_CONC_COLOR)},0.14)`, color: E2_CONC_COLOR }}>
@@ -437,10 +435,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-[9px] md:text-[10px] font-medium leading-tight"
-                  style={{ color: E2_CONC_COLOR, opacity: 1 }}>
-                  {t('status.estimate')}
-                </p>
                 <div className="flex items-end gap-2">
                   {currentLevel > 0 ? (
                     <>
@@ -557,16 +551,10 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
                 return (
               <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider"
-                    style={{ color: aaColor }}>
-                    {aaLabel}
-                  </span>
+                <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
+                  style={{ color: aaColor }}>
+                  <span>{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
                 </div>
-                <p className="text-[9px] md:text-[10px] font-medium leading-tight"
-                  style={{ color: aaColor, opacity: 0.75 }}>
-                  {t('status.estimate')}
-                </p>
                 <div className="flex items-end gap-2">
                   {currentAA > 0 ? (
                     <>

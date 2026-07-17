@@ -25,7 +25,8 @@ export const TRANSLATIONS_BASE = {
         "theme.rose": "玫瑰红",
         "theme.teal": "青碧色",
 
-        "status.estimate": "当前估算血药浓度",
+        "status.estimate": "估算血药浓度",
+        "status.estimate_prefix": "当前",
         "status.weight": "体重",
 
         "overview.total_doses": "总用药次数",
@@ -923,7 +924,8 @@ export const TRANSLATIONS_BASE = {
         "theme.rose": "Rose",
         "theme.teal": "Teal",
 
-        "status.estimate": "Current Estimated Level",
+        "status.estimate": "Estimated Level",
+        "status.estimate_prefix": "Current",
         "status.weight": "Weight",
 
         "overview.total_doses": "Total Doses",
@@ -1811,7 +1813,8 @@ export const TRANSLATIONS = {
         "nav.aria_primary": "主導覽列",
         "nav.aria_mobile": "底部導覽列",
 
-        "status.estimate": "目前估算濃度",
+        "status.estimate": "估算濃度",
+        "status.estimate_prefix": "目前",
         "status.weight": "體重",
 
         "status.level.male": "男性參考範圍",
@@ -2320,7 +2323,8 @@ export const TRANSLATIONS = {
         "nav.aria_primary": "メインナビゲーション",
         "nav.aria_mobile": "ボトムナビゲーション",
 
-        "status.estimate": "現在の推定濃度",
+        "status.estimate": "推定濃度",
+        "status.estimate_prefix": "現在の",
         "status.weight": "体重",
 
         "status.level.male": "男性参考範囲",
