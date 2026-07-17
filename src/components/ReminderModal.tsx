@@ -3,6 +3,8 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { Bell, Check, X, FastForward, SkipForward } from 'lucide-react';
 import { Plan } from '../../types';
 import type { PendingReminder } from './ReminderBanner';
+import { ConfirmButton } from './ConfirmButton';
+import { useConfirmButton } from '../hooks/useConfirmButton';
 
 interface ReminderModalProps {
     isOpen: boolean;
@@ -55,6 +57,7 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
     onDelay1d, onDelay2d,
 }) => {
     const { t } = useTranslation();
+    const { pending: confirmPending, request, reset } = useConfirmButton();
 
     // While the modal is open, block body scroll so the rest of the app
     // (which is dimmed behind the backdrop) can't be scrolled away.
@@ -64,6 +67,12 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = prev; };
     }, [isOpen]);
+
+    // Clear any "再点一次确认" pending state when the modal closes, so a
+    // reopened modal always starts fresh.
+    useEffect(() => {
+        if (!isOpen) reset();
+    }, [isOpen, reset]);
 
     if (!isOpen || !pending || !plan) return null;
 
@@ -158,15 +167,13 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
 
                 {/* Footer — state-dependent action buttons */}
                 <div className="px-6 pb-6 pt-2 flex flex-col gap-2.5">
-                    <button
-                        type="button"
-                        onClick={onConfirm}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-white rounded-2xl transition btn-press-glass glass-btn-primary"
-                        aria-label={t('reminder.banner.confirm_on_time') || '已服用'}
-                    >
-                        <Check size={18} />
-                        <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
-                    </button>
+                    <ConfirmButton
+                        label={t('reminder.banner.confirm_on_time') || '已服用'}
+                        onClick={() => request('confirm', { onTrigger: onConfirm })}
+                        pending={confirmPending === 'confirm'}
+                        icon={<Check size={18} />}
+                        className="w-full px-4 py-3 text-sm"
+                    />
                     {isLate && onSkip && (
                         <button
                             type="button"
@@ -189,34 +196,20 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                       *  up on today and want to restart from tomorrow (late).
                       *  "跳过本次" stays late-only because skipping within
                       *  the on_time window would be self-defeating. */}
-                    <button
-                        type="button"
-                        onClick={onDelay1d}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
-                    >
-                        <FastForward size={18} />
-                        <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onDelay2d}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
-                    >
-                        <FastForward size={18} />
-                        <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
-                    </button>
+                    <ConfirmButton
+                        label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
+                        onClick={() => request('delay1d', { onTrigger: onDelay1d })}
+                        pending={confirmPending === 'delay1d'}
+                        icon={<FastForward size={18} />}
+                        className="w-full px-4 py-3 text-sm"
+                    />
+                    <ConfirmButton
+                        label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
+                        onClick={() => request('delay2d', { onTrigger: onDelay2d })}
+                        pending={confirmPending === 'delay2d'}
+                        icon={<FastForward size={18} />}
+                        className="w-full px-4 py-3 text-sm"
+                    />
                 </div>
             </div>
 
