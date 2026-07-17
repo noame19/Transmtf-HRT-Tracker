@@ -175,20 +175,32 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
                         className="w-full px-4 py-3 text-sm"
                     />
                     {isLate && onSkip && (
-                        <button
-                            type="button"
-                            onClick={onSkip}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold rounded-2xl transition btn-press-glass"
+                        <ConfirmButton
+                            label={t('reminder.banner.skip') || '跳过本次'}
+                            onClick={() => request('skip', { onTrigger: onSkip })}
+                            pending={confirmPending === 'skip'}
+                            icon={<SkipForward size={18} />}
+                            className="w-full px-4 py-3 text-sm"
+                        />
+                    )}
+                    {isLate && onSkip && confirmPending === 'skip' && (
+                        <div
+                            className="text-sm leading-relaxed px-2 py-2 rounded-xl"
                             style={{
-                                background: 'var(--bg-card)',
-                                color: 'var(--text-primary)',
-                                border: '1px solid var(--border-primary)',
+                                background: 'rgba(244, 63, 94, 0.06)',
+                                color: 'var(--text-soft-rose)',
+                                animation: 'skipWarnIn 200ms ease-out',
                             }}
-                            aria-label={t('reminder.banner.skip') || '跳过本次'}
+                            role="note"
                         >
-                            <SkipForward size={18} />
-                            <span>{t('reminder.banner.skip') || '跳过本次'}</span>
-                        </button>
+                            {t('reminder.banner.skip_confirm.body') || '将跳过今日原有计划,原计划不会顺延。强烈影响身体激素状态,您确定吗?'}
+                            <style>{`
+                                @keyframes skipWarnIn {
+                                    from { opacity: 0; transform: translateY(-6px); }
+                                    to   { opacity: 1; transform: translateY(0); }
+                                }
+                            `}</style>
+                        </div>
                     )}
                     {/* Delay buttons render in BOTH states (on_time + late):
                       *  the user might be ready to take the dose but want
