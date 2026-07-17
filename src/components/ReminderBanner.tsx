@@ -2,6 +2,8 @@ import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { Bell, AlertTriangle, Check, FastForward, SkipForward } from 'lucide-react';
 import { Plan } from '../../types';
+import { ConfirmButton } from './ConfirmButton';
+import { useConfirmButton } from '../hooks/useConfirmButton';
 
 export type PendingReminderState = 'on_time' | 'late';
 
@@ -51,6 +53,8 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
     permissionDenied, onOpenPermissionSettings,
 }) => {
     const { t } = useTranslation();
+    // 4 个按钮共用一个状态机(同一时刻只有一个 pending),别名避免与 props.pending 冲突
+    const { pending: confirmPending, request } = useConfirmButton();
 
     // 1. Permission denied — informational amber banner.
     if (permissionDenied) {
@@ -131,63 +135,41 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
               *  shouldn't ask the user to make a 4-way decision before
               *  they've even seen the notification. */}
             <div className="flex flex-wrap items-center gap-2">
-                <button
-                    onClick={() => onConfirm(when)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-white text-xs font-bold btn-press-glass glass-btn-primary"
-                    aria-label={t('reminder.banner.confirm_on_time') || '已服用'}
-                >
-                    <Check size={14} />
-                    <span>{t('reminder.banner.confirm_on_time') || '已服用'}</span>
-                </button>
+                <ConfirmButton
+                    label={t('reminder.banner.confirm_on_time') || '已服用'}
+                    onClick={() => request('confirm', { onTrigger: () => onConfirm(when) })}
+                    pending={confirmPending === 'confirm'}
+                    icon={<Check size={14} />}
+                    className="px-3 py-2 h-10 text-xs"
+                />
 
                 {onSkip && (
-                    <button
+                    <ConfirmButton
+                        label={t('reminder.banner.skip') || '跳过本次'}
                         onClick={onSkip}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            // Soft-rose border for visual warning — "skip" is
-                            // a destructive action and shouldn't blend in.
-                            border: '1px solid var(--border-soft-rose)',
-                        }}
-                        aria-label={t('reminder.banner.skip') || '跳过本次'}
-                    >
-                        <SkipForward size={14} />
-                        <span>{t('reminder.banner.skip') || '跳过本次'}</span>
-                    </button>
+                        icon={<SkipForward size={14} />}
+                        className="px-3 py-2 h-10 text-xs"
+                    />
                 )}
 
                 {onDelay1d && (
-                    <button
-                        onClick={() => onDelay1d(matchedPlan.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
-                    >
-                        <FastForward size={14} />
-                        <span>{t('reminder.banner.delay_1d') || '计划推迟 1 天'}</span>
-                    </button>
+                    <ConfirmButton
+                        label={t('reminder.banner.delay_1d') || '计划推迟 1 天'}
+                        onClick={() => request('delay1d', { onTrigger: () => onDelay1d(matchedPlan.id) })}
+                        pending={confirmPending === 'delay1d'}
+                        icon={<FastForward size={14} />}
+                        className="px-3 py-2 h-10 text-xs"
+                    />
                 )}
 
                 {onDelay2d && (
-                    <button
-                        onClick={() => onDelay2d(matchedPlan.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                        aria-label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
-                    >
-                        <FastForward size={14} />
-                        <span>{t('reminder.banner.delay_2d') || '计划推迟 2 天'}</span>
-                    </button>
+                    <ConfirmButton
+                        label={t('reminder.banner.delay_2d') || '计划推迟 2 天'}
+                        onClick={() => request('delay2d', { onTrigger: () => onDelay2d(matchedPlan.id) })}
+                        pending={confirmPending === 'delay2d'}
+                        icon={<FastForward size={14} />}
+                        className="px-3 py-2 h-10 text-xs"
+                    />
                 )}
             </div>
         </div>
