@@ -632,6 +632,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     } | null>(null);
     // Re-render trigger for CSS-var-dependent options (dark mode toggle).
     const [themeTick, setThemeTick] = useState(0);
+    // Current visible X-axis range (timestamp ms). null = full range / not yet known.
+    // When the visible window is narrow enough (< 2 days), the X-axis labels switch
+    // from "MMM d" to "MMM d HH:mm" so the user can read intra-day time.
+    const [xZoomRange, setXZoomRange] = useState<[number, number] | null>(null);
 
     const isEmpty = !sim || sim.timeH.length === 0;
 
@@ -648,9 +652,21 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const observer = new MutationObserver(() => setThemeTick(t => t + 1));
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
+        // Track current dataZoom range so the X-axis label formatter can switch
+        // from "MMM d" to "MMM d HH:mm" when zoomed in to < 2 days visible.
+        const onDataZoom = (params: any) => {
+            const batch = (params && params.batch) || [];
+            const xZoom = batch.find((b: any) => 'xAxisIndex' in b ? b.xAxisIndex === 0 : true) || batch[0];
+            if (xZoom && typeof xZoom.startValue === 'number' && typeof xZoom.endValue === 'number') {
+                setXZoomRange([xZoom.startValue, xZoom.endValue]);
+            }
+        };
+        instance.on('dataZoom', onDataZoom);
+
         return () => {
             window.removeEventListener('resize', onResize);
             observer.disconnect();
+            instance.off('dataZoom', onDataZoom);
             instance.dispose();
             chartInstanceRef.current = null;
         };
@@ -689,8 +705,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         maxTime,
         cssColors,
         lang,
+        xZoomRange,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL, hasE2Personal, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI, aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight, minTime, maxTime, cssColors, lang]);
+    }), [data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL, hasE2Personal, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI, aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight, minTime, maxTime, cssColors, lang, xZoomRange]);
 
     // Apply option to chart instance.
     useEffect(() => {
@@ -941,6 +958,9 @@ interface BuildOptionInput {
     maxTime: number;
     cssColors: { grid: string; axisTick: string; textPrimary: string; textSecondary: string; textTertiary: string; bgCard: string };
     lang: string;
+    // Current visible X-axis range (timestamp ms). null = full range / not yet known.
+    // When range < 2 days, X-axis labels switch from "MMM d" to "MMM d HH:mm".
+    xZoomRange: [number, number] | null;
 }
 
 function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
@@ -948,12 +968,21 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL,
         hasPersonalModel, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI,
         aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight,
-        minTime, maxTime, cssColors, lang,
+        minTime, maxTime, cssColors, lang, xZoomRange,
     } = input;
 
     const xAxisMin = minTime;
     const xAxisMax = maxTime;
-    const dateFormatter = (val: number) => formatDate(new Date(val), lang);
+    // Switch X-axis label format based on visible window:
+    //   < 2 days  → "MMM d HH:mm" (intra-day precision)
+    //   >= 2 days → "MMM d"       (date precision)
+    const showTime = !!xZoomRange && (xZoomRange[1] - xZoomRange[0]) < 2 * 24 * 3600 * 1000;
+    const dateFormatter = (val: number) => {
+        const d = new Date(val);
+        return showTime
+            ? `${formatDate(d, lang)} ${formatTime(d)}`
+            : formatDate(d, lang);
+    };
 
     const series: any[] = [];
 
