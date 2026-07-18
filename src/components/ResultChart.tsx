@@ -696,29 +696,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, []);
 
-    // Default initial zoom = 1W centered on `now`. Skipped when:
-    //   - chart not initialized
-    //   - data not loaded yet (isEmpty)
-    //   - data range smaller than 1W (zoomToDuration clamps automatically)
-    //   - user has already applied any zoom (startValue already set in option)
-    // We probe chart.getOption() for an existing startValue rather than using
-    // a boolean ref, so that strict-mode double-mount (which disposes and
-    // recreates the chart) still re-applies the default zoom on the new instance.
-    useEffect(() => {
-        const chart = chartInstanceRef.current;
-        if (!chart || isEmpty) return;
-        const opt = chart.getOption();
-        const dataZoom = (opt.dataZoom as any[]) || [];
-        const xZoom = dataZoom.find((z: any) => z.xAxisIndex === 0);
-        if (xZoom && typeof xZoom.startValue === 'number') return;
-        const duration = 7 * 24 * 3600 * 1000;
-        const center = now;
-        const start = Math.max(minTime, center - duration / 2);
-        const end = Math.min(maxTime, start + duration);
-        const finalStart = Math.max(minTime, end - duration);
-        chart.dispatchAction({ type: 'dataZoom', startValue: finalStart, endValue: end });
-    }, [isEmpty, now, minTime, maxTime]);
-
     // Resolve CSS-var colors (re-runs on dark-mode toggle).
     const cssColors = useMemo(() => ({
         grid: resolveCssVar('--border-secondary', '#e5e7eb'),
@@ -729,6 +706,19 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         bgCard: resolveCssVar('--bg-card', '#ffffff'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [themeTick]);
+
+    // Default initial X-axis range = 1W centered on `now`, clamped to the data
+    // window. Used by buildChartOption when xZoomRange is null (i.e. before the
+    // first dataZoom event fires) so every setOption call carries startValue/
+    // endValue, preventing the chart from snapping back to the full range.
+    const defaultXZoomRange = useMemo<[number, number]>(() => {
+        const duration = 7 * 24 * 3600 * 1000;
+        const center = now;
+        const start = Math.max(minTime, center - duration / 2);
+        const end = Math.min(maxTime, start + duration);
+        const finalStart = Math.max(minTime, end - duration);
+        return [finalStart, end];
+    }, [now, minTime, maxTime]);
 
     // Build the full ECharts option. Memoize on every visual dep.
     const option = useMemo(() => buildChartOption({
@@ -753,8 +743,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         cssColors,
         lang,
         xZoomRange,
+        defaultRange: defaultXZoomRange,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL, hasE2Personal, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI, aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight, minTime, maxTime, cssColors, lang, xZoomRange]);
+    }), [data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL, hasE2Personal, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI, aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight, minTime, maxTime, cssColors, lang, xZoomRange, defaultXZoomRange]);
 
     // Apply option to chart instance.
     useEffect(() => {
@@ -1137,6 +1128,9 @@ interface BuildOptionInput {
     // Current visible X-axis range (timestamp ms). null = full range / not yet known.
     // When range < 2 days, X-axis labels switch from "MMM d" to "MMM d HH:mm".
     xZoomRange: [number, number] | null;
+    // Initial X-axis range used when xZoomRange is null (e.g. before first
+    // dataZoom event fires). Default = 1W centered on `now`, clamped to data range.
+    defaultRange: [number, number];
 }
 
 function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
@@ -1144,7 +1138,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL,
         hasPersonalModel, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI,
         aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight,
-        minTime, maxTime, cssColors, lang, xZoomRange,
+        minTime, maxTime, cssColors, lang, xZoomRange, defaultRange,
     } = input;
 
     const xAxisMin = minTime;
@@ -1539,6 +1533,15 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         axisPointer: { show: false },
     };
 
+    // dataZoom startValue/endValue: prefer the user's current zoom (driven by
+    // dataZoom event into xZoomRange), fall back to defaultRange (initial 1W
+    // centered on `now`). Writing these into the option directly — instead of
+    // applying via dispatchAction — ensures every setOption call carries the
+    // visible range, so the chart doesn't snap back to the full window when
+    // option rebuilds after a zoom change.
+    const visibleStart = xZoomRange ? xZoomRange[0] : defaultRange[0];
+    const visibleEnd = xZoomRange ? xZoomRange[1] : defaultRange[1];
+
     return {
         renderer: ECHART_THEME.renderer,
         animation: true,
@@ -1585,6 +1588,8 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
             {
                 type: 'inside',
                 xAxisIndex: 0,
+                startValue: visibleStart,
+                endValue: visibleEnd,
                 zoomOnMouseWheel: true,
                 moveOnMouseMove: true,
                 moveOnMouseWheel: false,
