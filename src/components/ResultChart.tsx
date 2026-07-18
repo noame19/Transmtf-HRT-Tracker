@@ -696,6 +696,29 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, []);
 
+    // Default initial zoom = 1W centered on `now`. Skipped when:
+    //   - chart not initialized
+    //   - data not loaded yet (isEmpty)
+    //   - data range smaller than 1W (zoomToDuration clamps automatically)
+    //   - user has already applied any zoom (startValue already set in option)
+    // We probe chart.getOption() for an existing startValue rather than using
+    // a boolean ref, so that strict-mode double-mount (which disposes and
+    // recreates the chart) still re-applies the default zoom on the new instance.
+    useEffect(() => {
+        const chart = chartInstanceRef.current;
+        if (!chart || isEmpty) return;
+        const opt = chart.getOption();
+        const dataZoom = (opt.dataZoom as any[]) || [];
+        const xZoom = dataZoom.find((z: any) => z.xAxisIndex === 0);
+        if (xZoom && typeof xZoom.startValue === 'number') return;
+        const duration = 7 * 24 * 3600 * 1000;
+        const center = now;
+        const start = Math.max(minTime, center - duration / 2);
+        const end = Math.min(maxTime, start + duration);
+        const finalStart = Math.max(minTime, end - duration);
+        chart.dispatchAction({ type: 'dataZoom', startValue: finalStart, endValue: end });
+    }, [isEmpty, now, minTime, maxTime]);
+
     // Resolve CSS-var colors (re-runs on dark-mode toggle).
     const cssColors = useMemo(() => ({
         grid: resolveCssVar('--border-secondary', '#e5e7eb'),
