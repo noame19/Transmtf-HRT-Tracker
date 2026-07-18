@@ -551,15 +551,15 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             includeBase(baselineE2PGmL);
         }
 
-        // Lower bound = baseMin directly so the minimum E2 data point never sits
-        // outside the Y axis. niceFloor(0.85) was making nice axis labels but
-        // cropping troughs (e.g. baseMin=88 → niceFloor=100, so 88 was clipped).
-        // We trade tick aesthetics for data integrity — ECharts auto-picks ticks
-        // that look reasonable even when the bound isn't a "nice" number.
+        // Fixed padding (10% on each side) so the axis always tracks visible
+        // data without niceFloor/niceCeil step jumps that previously clipped
+        // troughs or pinned the upper bound to a far-away "nice" value.
+        // ECharts auto-picks ticks; even when the bounds aren't round numbers,
+        // it produces reasonable 50/100/150-style step labels.
         const minVal = hasBase ? baseMin : 0;
-        const padded = Math.max(E2_AXIS_FALLBACK_MAX, basePeak * 1.12);
-        const lower = minVal > 0 ? minVal : 0;
-        let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
+        const padded = basePeak > 0 ? basePeak * 1.1 : E2_AXIS_FALLBACK_MAX;
+        const lower = minVal > 0 ? minVal * 0.9 : 0;
+        let upper = padded;
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
     }, [data, labPoints, baselineE2PGmL, hasE2Personal, xZoomRange]);
@@ -580,8 +580,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             includeBase(d.concCPA);
             includeBase(d.concPersonalCPA);
         }
-        const padded = Math.max(CPA_AXIS_FALLBACK_MAX, basePeak * 1.12);
-        return [0, niceCeil(padded, CPA_AXIS_FALLBACK_MAX)];
+        // Match yDomainLeft policy: fixed 10% upper padding instead of
+        // niceCeil, so upper tracks the visible data smoothly.
+        const padded = basePeak > 0 ? basePeak * 1.1 : CPA_AXIS_FALLBACK_MAX;
+        return [0, padded];
     }, [data, xZoomRange]);
 
     const nowPoint = useMemo(() => {
