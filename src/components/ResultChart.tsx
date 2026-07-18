@@ -1,23 +1,18 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { SimulationResult, DoseEvent, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl } from '../../logic';
-import { Activity, RotateCcw, Info, FlaskConical, Camera } from 'lucide-react';
 import {
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceDot, Area, ComposedChart, Scatter
-} from 'recharts';
-import {
-    clampDomain as clampDomainUtil,
-    panDomain,
-    zoomDomainAt,
-    hitTestCurves,
-    nearestPoint,
-    pixelXAtTime,
-    timeAtPixel,
-    type CurveSeries,
-    type CurvePoint,
-    type PlotRect,
-} from '../utils/chartGesture';
+    SimulationResult, DoseEvent, interpolateConcentration_E2,
+    interpolateCompoundConcentration, isAntiandrogen, isE2Family,
+    pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl
+} from '../../logic';
+import { Activity, RotateCcw, Camera, FlaskConical } from 'lucide-react';
+import * as echarts from 'echarts';
+import { ECHART_THEME, LAB_FLASK_PATH, aaBandFill, resolveCssVar } from './ResultChart.theme';
+
+// ============================================================
+// Types (unchanged from Recharts version)
+// ============================================================
 
 interface SimCI {
     timeH: number[];
@@ -45,6 +40,11 @@ interface ChartPoint {
     cpaCi95Band?: number;
     cpaCi95High?: number;
 }
+
+// ============================================================
+// Series helpers (unchanged from Recharts version — still needed
+// for downsampling and hover lookup)
+// ============================================================
 
 function pointExtrema(d: ChartPoint): { min: number; max: number } {
     let min = Number.POSITIVE_INFINITY;
@@ -84,7 +84,6 @@ function downsampleSeries(series: ChartPoint[], maxPoints = 600): ChartPoint[] {
 
     if (interiorCount === 0) return [first, last];
 
-    // Keep up to two representative points (min/max) per bucket.
     const maxBuckets = Math.max(1, Math.floor((maxPoints - 2) / 2));
     const bucketCount = Math.min(maxBuckets, interiorCount);
     const sampled: ChartPoint[] = [first];
@@ -165,9 +164,30 @@ function interpAt(timeH: number[], values: number[], h: number): number | undefi
     return Number.isFinite(v) ? v : undefined;
 }
 
+/** Binary search for nearest data index by time (used for hover tooltip lookup). */
+function nearestIndex(data: ChartPoint[], time: number): number {
+    if (data.length === 0) return -1;
+    if (time <= data[0].time) return 0;
+    if (time >= data[data.length - 1].time) return data.length - 1;
+    let lo = 0;
+    let hi = data.length - 1;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (data[mid].time <= time) lo = mid;
+        else hi = mid;
+    }
+    const lowDist = Math.abs(data[lo].time - time);
+    const highDist = Math.abs(data[hi].time - time);
+    return highDist < lowDist ? hi : lo;
+}
+
+// ============================================================
+// CustomTooltip (unchanged from Recharts version — React DOM floating card)
+// ============================================================
+
 const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUnit = 'ng/mL', aaColor = '#8b5cf6', aaShowPersonal = true }: any) => {
     if (active && payload && payload.length) {
-        // If it's a lab result point
+        // Lab result point
         if (payload[0].payload.isLabResult) {
             const data = payload[0].payload;
             return (
@@ -255,7 +275,6 @@ const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUni
                         <span className="text-[10px] font-bold" style={{ color: aaColor, opacity: 0.7 }}>{aaUnit}</span>
                     </div>
                 )}
-                {/* Population CI for non-personalized compounds (BICA): no "personal" label. */}
                 {!aaShowPersonal && concCPA > 0 && cpaCiLow !== undefined && cpaCiHigh !== undefined && (
                     <div className="flex items-center gap-1 ml-1 mt-0.5">
                         <span className="text-[8px] font-bold uppercase w-12" style={{ color: 'var(--text-tertiary)' }}>{t('chart.cpa_pop_range')}</span>
@@ -291,7 +310,11 @@ const CustomTooltip = ({ active, payload, label, t, lang, aaLabel = 'CPA', aaUni
     return null;
 };
 
-const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH, onPointClick, onShareImage }: {
+// ============================================================
+// ResultChart (ECharts Canvas wrapper)
+// ============================================================
+
+interface ResultChartProps {
     sim: SimulationResult | null;
     events: DoseEvent[];
     labResults?: LabResult[];
@@ -300,55 +323,23 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     nowH?: number;
     onPointClick: (e: DoseEvent) => void;
     onShareImage?: () => void;
-}) => {
-    // The single anti-androgen plotted on the right axis = the most recently
-    // dosed one (CPA and BICA are alternatives with ~1000× different scales).
-    // `nowH` is passed reactively so the choice updates as planned doses cross
-    // the current time; falls back to render-time clock if not provided.
+}
+
+const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH, onPointClick, onShareImage }: ResultChartProps) => {
     const primaryAA = useMemo<Ester | null>(
         () => pickPrimaryAntiandrogen(events, nowH ?? Date.now() / 3600000),
         [events, nowH]
     );
     const aaSpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
-    const hasCPADoses = !!primaryAA; // "has anti-androgen on right axis"
-    // Display unit + scale: native is ng/mL; bicalutamide (large) shows as µg/mL.
+    const hasCPADoses = !!primaryAA;
     const aaUnit: 'ng/mL' | 'ug/mL' = primaryAA === Ester.BICA ? 'ug/mL' : 'ng/mL';
     const aaScale = aaUnit === 'ug/mL' ? 1 / 1000 : 1;
-    const aaColor = aaSpec?.color ?? '#8b5cf6';
+    const aaColor = aaSpec?.color ?? ECHART_THEME.aaFallback;
     const aaLabel = primaryAA ?? 'CPA';
-    // Only compounds that inherit E2 adherence (CPA) get an individualized
-    // "personal" curve/label. BICA is population-only, so it shows its raw curve
-    // plus a population CI band, never a "personal model" dashed line.
     const aaPersonalized = !!aaSpec?.adherenceFromE2;
-    // "E2 personal model active" = a real post-dose calibration exists. This is
-    // distinct from `!!simCI`: simCI may be present purely to carry the
-    // anti-androgen population CI (E2 arrays empty) when there are no E2 labs.
     const hasE2Personal = !!simCI && simCI.e2Adjusted.length > 0;
     const { t, lang } = useTranslation();
-    const [xDomain, setXDomain] = useState<[number, number] | null>(null);
-    const initializedRef = useRef(false);
-    const pendingDomainRef = useRef<[number, number] | null>(null);
-    const rafUpdateRef = useRef<number | null>(null);
-    const chartContainerRef = useRef<HTMLDivElement | null>(null);
-    const dragStateRef = useRef<{ startX: number; plotRect: PlotRect } | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
-    // Touch gesture state machine: idle → {pan | inspect} → pinch → idle.
-    const touchStateRef = useRef<{
-        mode: 'idle' | 'pan' | 'inspect' | 'pinch';
-        panLastX?: number;
-        inspectLastX?: number;
-        inspectLastY?: number;
-        inspectLastTime?: number;
-        pinchInitialDistance?: number;
-        pinchInitialDomain?: [number, number];
-        pinchAnchorTime?: number;
-    }>({ mode: 'idle' });
-    const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-    const [touchOverlay, setTouchOverlay] = useState<{
-        time: number;
-        touchX: number;
-        touchY: number;
-    } | null>(null);
+
     const E2_AXIS_FALLBACK_MAX = 10;
     const CPA_AXIS_FALLBACK_MAX = 1;
     const MAX_RENDER_POINTS = 1200;
@@ -362,7 +353,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         return step * base;
     };
 
-    const formatAxisTick = (raw: any): string => {
+    const formatAxisTick = (raw: number | string): string => {
         const n = Number(raw);
         if (!Number.isFinite(n) || n < 0) return '0';
         if (n >= 100) return `${Math.round(n)}`;
@@ -381,7 +372,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         return step * base;
     };
 
-    // Build CI lookup map for fast time-based access
     const aaCISeries = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
     const hasPersonalCpaModel = !!aaCISeries && !!simCI && aaCISeries.adjusted.length === simCI.timeH.length;
     const hasPersonalCpaCI = !!aaCISeries && !!simCI &&
@@ -417,10 +407,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
     const rawData = useMemo<ChartPoint[]>(() => {
         if (!sim || sim.timeH.length === 0) return [];
-        // Apply endogenous baseline offset to the raw E2 curve when no personal
-        // model is active (i.e. no post-dose lab results processed yet). This
-        // makes the chart visually consistent with the "drug + endogenous" value
-        // shown in the headline card.
         const hasPersonalModelCurve = hasE2Personal;
         const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
             ? baselineE2PGmL
@@ -428,12 +414,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
         return sim.timeH.map((t, i) => {
             const timeMs = t * 3600000;
-            // E2: raw simulation (no calibrationFn; personal model curve shows the calibrated view)
-            const baseE2 = sim.concPGmL_E2[i] + baseShift; // pg/mL (+ endogenous if no personal model)
+            const baseE2 = sim.concPGmL_E2[i] + baseShift;
             const aaSeries = primaryAA ? sim.byCompound?.[primaryAA] : undefined;
-            const rawCPA_ngmL = (aaSeries ? aaSeries.values[i] : 0) * aaScale; // display unit
+            const rawCPA_ngmL = (aaSeries ? aaSeries.values[i] : 0) * aaScale;
 
-            // Personal model CI data (from OU-Kalman calibration)
             const ciEntry = ciMap?.get(t);
             const ci95Low = ciEntry?.ci95Low;
             const ci95High = ciEntry?.ci95High;
@@ -443,11 +427,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             const concPersonalCPA = ciEntry?.cpaAdj;
             const cpaCi95Low = ciEntry?.cpaCi95Low;
             const cpaCi95High = ciEntry?.cpaCi95High;
-            // ci95Band = ci95High - ci95Low for stacked Area rendering
             const ci95Band = (ci95Low !== undefined && ci95High !== undefined)
                 ? Math.max(0, ci95High - ci95Low)
                 : undefined;
-            // ci68Band = ci68High - ci68Low (inner, tighter band)
             const ci68Band = (ci68Low !== undefined && ci68High !== undefined)
                 ? Math.max(0, ci68High - ci68Low)
                 : undefined;
@@ -457,10 +439,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
             return {
                 time: timeMs,
-                concE2: baseE2,          // pg/mL, raw (reference curve)
-                concCPA: rawCPA_ngmL,    // ng/mL, raw (reference curve)
-                concPersonal,            // personal model E2 (pg/mL)
-                concPersonalCPA,         // personal model CPA (ng/mL)
+                concE2: baseE2,
+                concCPA: rawCPA_ngmL,
+                concPersonal,
+                concPersonalCPA,
                 ci95Low,
                 ci95Band,
                 ci95High,
@@ -488,17 +470,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         }));
     }, [labResults]);
 
-    // Build dose event scatter points for marking on the chart
     const dosePoints = useMemo(() => {
         if (!sim || !events || events.length === 0) return [];
-        // Only E2-family doses are plotted on the E2 concentration curve.
-        // Anti-androgens (CPA / BICA) carry their own byCompound track and a
-        // dedicated primaryAA series; plotting them as pink E2 dots would
-        // mislead. PROG has no validated E2 mapping — it must not be drawn
-        // here at all.
         return events.filter(e => isE2Family(e.ester)).map(e => {
             const timeMs = e.timeH * 3600000;
-            // Interpolate E2 at dose time for y-position
             const concE2Raw = interpolateConcentration_E2(sim, e.timeH);
             const hasPersonalModelCurve = hasE2Personal;
             const baseShift = (!hasPersonalModelCurve && baselineE2PGmL && baselineE2PGmL > 0)
@@ -527,13 +502,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, [rawData, data]);
 
-    // Compute left-axis Y domain from visible E2-related series in current viewport.
-    // CI is included but bounded relative to the base curve, to avoid squeezing curves to the floor.
-    const yDomainLeft = useMemo((): [number, number | string] => {
-        const visibleMin = xDomain ? xDomain[0] : minTime;
-        const visibleMax = xDomain ? xDomain[1] : maxTime;
-        // Use downsampled data during interactive sliding to reduce per-frame cost.
-        const source = data;
+    // Y axis domains (unchanged from Recharts version)
+    const yDomainLeft = useMemo((): [number, number] => {
         let basePeak = 0;
         let baseMin = Number.POSITIVE_INFINITY;
         let ciPeakRaw = 0;
@@ -551,16 +521,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             if (v > ciPeakRaw) ciPeakRaw = v;
         };
 
-        for (const d of source) {
-            if (d.time < visibleMin || d.time > visibleMax) continue;
+        for (const d of data) {
             includeBase(d.concE2);
             includeBase(d.concPersonal);
             includeCi(d.ci95High);
         }
         for (const l of labPoints) {
-            if (l.time >= visibleMin && l.time <= visibleMax) includeBase(l.conc);
+            includeBase(l.conc);
         }
-        // Ensure the endogenous baseline reference line is always within the axis range.
         if (!hasE2Personal && baselineE2PGmL && baselineE2PGmL > 0) {
             includeBase(baselineE2PGmL);
         }
@@ -569,18 +537,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 20) : E2_AXIS_FALLBACK_MAX;
         const ciPeak = Math.min(ciPeakRaw, ciCap);
         const peak = Math.max(basePeak, ciPeak, E2_AXIS_FALLBACK_MAX);
-        const padded = Math.max(E2_AXIS_FALLBACK_MAX, peak * 1.12); // 12% headroom
+        const padded = Math.max(E2_AXIS_FALLBACK_MAX, peak * 1.12);
         const lower = minVal > 0 ? niceFloor(minVal * 0.85, 0) : 0;
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
-    }, [data, labPoints, xDomain, minTime, maxTime, simCI, baselineE2PGmL]);
+    }, [data, labPoints, simCI, baselineE2PGmL, hasE2Personal]);
 
-    // Compute right-axis Y domain from visible CPA-related series in current viewport.
-    const yDomainRight = useMemo((): [number, number | string] => {
-        const visibleMin = xDomain ? xDomain[0] : minTime;
-        const visibleMax = xDomain ? xDomain[1] : maxTime;
-        const source = data;
+    const yDomainRight = useMemo((): [number, number] => {
         let basePeak = 0;
         let ciPeakRaw = 0;
 
@@ -594,8 +558,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             if (v > ciPeakRaw) ciPeakRaw = v;
         };
 
-        for (const d of source) {
-            if (d.time < visibleMin || d.time > visibleMax) continue;
+        for (const d of data) {
             includeBase(d.concCPA);
             includeBase(d.concPersonalCPA);
             includeCi(d.cpaCi95High);
@@ -603,9 +566,9 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 0.2) : CPA_AXIS_FALLBACK_MAX;
         const ciPeak = Math.min(ciPeakRaw, ciCap);
         const peak = Math.max(basePeak, ciPeak, CPA_AXIS_FALLBACK_MAX);
-        const padded = Math.max(CPA_AXIS_FALLBACK_MAX, peak * 1.12); // 12% headroom
+        const padded = Math.max(CPA_AXIS_FALLBACK_MAX, peak * 1.12);
         return [0, niceCeil(padded, CPA_AXIS_FALLBACK_MAX)];
-    }, [data, xDomain, minTime, maxTime]);
+    }, [data]);
 
     const nowPoint = useMemo(() => {
         if (!sim || data.length === 0) return null;
@@ -633,8 +596,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
         if (!hasE2 && !hasCPA) return null;
 
-        // Apply the same baseline shift used in rawData so the "now" dot is
-        // consistent with the underlying curve.
         const baseShift = (!hasE2Personal && baselineE2PGmL && baselineE2PGmL > 0)
             ? baselineE2PGmL
             : 0;
@@ -642,8 +603,8 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
         return {
             time: now,
-            concE2,                            // pg/mL, raw (+ endogenous offset if needed)
-            concCPA: hasCPA ? concCPA * aaScale : 0,     // display unit (ng/mL or µg/mL)
+            concE2,
+            concCPA: hasCPA ? concCPA * aaScale : 0,
             concPersonal,
             ci95Low,
             ci95High,
@@ -655,406 +616,193 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, [sim, simCI, data, now, hasPersonalCpaModel, hasPersonalCpaCI, baselineE2PGmL, primaryAA, aaCISeries, aaScale]);
 
-    // Slider helpers for quick panning (helps mobile users)
-    // Initialize view: center on "now" with a reasonable window (e.g. 14 days)
+    // ============================================================
+    // ECharts integration
+    // ============================================================
+
+    const chartRef = useRef<HTMLDivElement>(null);
+    const chartInstanceRef = useRef<echarts.ECharts | null>(null);
+    const [hoverState, setHoverState] = useState<{
+        time: number;
+        relX: number;
+        relY: number;
+        dataPoint: ChartPoint;
+        isLab: boolean;
+        labPoint?: { time: number; conc: number; originalValue: number; originalUnit: string; id: string };
+    } | null>(null);
+    // Re-render trigger for CSS-var-dependent options (dark mode toggle).
+    const [themeTick, setThemeTick] = useState(0);
+
+    const isEmpty = !sim || sim.timeH.length === 0;
+
+    // Init ECharts once on mount, dispose on unmount.
     useEffect(() => {
-        if (!initializedRef.current && data.length > 0) {
-            const initialWindow = 7 * 24 * 3600 * 1000; // 1 week
-            const start = Math.max(minTime, now - initialWindow / 2);
-            const end = Math.min(maxTime, start + initialWindow);
+        if (!chartRef.current) return;
+        const instance = echarts.init(chartRef.current, undefined, { renderer: 'canvas' });
+        chartInstanceRef.current = instance;
 
-            // Adjust if end is clamped
-            const finalStart = Math.max(minTime, end - initialWindow);
+        const onResize = () => instance.resize();
+        window.addEventListener('resize', onResize);
 
-            setXDomain([finalStart, end]);
-            initializedRef.current = true;
-        }
-    }, [data, minTime, maxTime, now]);
+        // Observe <html> class changes for dark-mode re-render of CSS-var colors.
+        const observer = new MutationObserver(() => setThemeTick(t => t + 1));
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
-    const clampDomain = useCallback((domain: [number, number]): [number, number] => {
-        return clampDomainUtil(domain, {
-            minTime,
-            maxTime,
-            minZoom: 24 * 3600 * 1000, // 1 day
-        });
-    }, [minTime, maxTime]);
-
-    const commitDomain = useCallback((next: [number, number]) => {
-        setXDomain(prev => {
-            if (prev && prev[0] === next[0] && prev[1] === next[1]) return prev;
-            return next;
-        });
-    }, []);
-
-    const scheduleDomainUpdate = useCallback((next: [number, number]) => {
-        pendingDomainRef.current = next;
-        if (rafUpdateRef.current !== null) return;
-        rafUpdateRef.current = window.requestAnimationFrame(() => {
-            rafUpdateRef.current = null;
-            const pending = pendingDomainRef.current;
-            pendingDomainRef.current = null;
-            if (!pending) return;
-            commitDomain(pending);
-        });
-    }, [commitDomain]);
-
-    useEffect(() => {
         return () => {
-            if (rafUpdateRef.current !== null) {
-                window.cancelAnimationFrame(rafUpdateRef.current);
-                rafUpdateRef.current = null;
-            }
+            window.removeEventListener('resize', onResize);
+            observer.disconnect();
+            instance.dispose();
+            chartInstanceRef.current = null;
         };
     }, []);
 
-    // Shared bounds for chart-gesture utilities (pan, zoom, hit-test).
-    const domainBounds = useMemo(() => ({
+    // Resolve CSS-var colors (re-runs on dark-mode toggle).
+    const cssColors = useMemo(() => ({
+        grid: resolveCssVar('--border-secondary', '#e5e7eb'),
+        axisTick: resolveCssVar('--text-tertiary', '#9ca3af'),
+        textPrimary: resolveCssVar('--text-primary', '#111827'),
+        textSecondary: resolveCssVar('--text-secondary', '#4b5563'),
+        textTertiary: resolveCssVar('--text-tertiary', '#9ca3af'),
+        bgCard: resolveCssVar('--bg-card', '#ffffff'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [themeTick]);
+
+    // Build the full ECharts option. Memoize on every visual dep.
+    const option = useMemo(() => buildChartOption({
+        data,
+        labPoints,
+        dosePoints,
+        nowPoint,
+        now,
+        baselineE2PGmL: baselineE2PGmL ?? null,
+        hasPersonalModel: hasE2Personal,
+        hasCPADoses,
+        hasPersonalCpaModel,
+        hasPersonalCpaCI,
+        aaPersonalized,
+        aaColor,
+        aaLabel,
+        aaUnit,
+        yDomainLeft,
+        yDomainRight,
         minTime,
         maxTime,
-        minZoom: 24 * 3600 * 1000, // 1 day
-    }), [minTime, maxTime]);
-
-    // Resolve the actual plotting rectangle from the rendered Recharts SVG.
-    // Using the cartesian grid's bounding box avoids hand-estimated axis widths.
-    const getPlotRect = useCallback((): PlotRect | null => {
-        const container = chartContainerRef.current;
-        if (!container) return null;
-        const grid = container.querySelector('.recharts-cartesian-grid');
-        const rect = (grid as SVGGraphicsElement | null)?.getBoundingClientRect?.();
-        const containerRect = container.getBoundingClientRect();
-        if (rect && rect.width > 0 && rect.height > 0) {
-            return {
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height,
-            };
-        }
-        // Fallback when grid isn't laid out yet (first render / no data).
-        return {
-            left: containerRect.left,
-            top: containerRect.top,
-            width: containerRect.width,
-            height: containerRect.height,
-        };
-    }, []);
-
-    // Visible curves for hit-testing (E2 left axis, CPA right axis when present).
-    const curveSeries = useMemo<CurveSeries[]>(() => {
-        const yLeft = yDomainLeft;
-        const yRight = yDomainRight;
-        const series: CurveSeries[] = [];
-        if (typeof yLeft[0] === 'number' && typeof yLeft[1] === 'number') {
-            const yd: [number, number] = [yLeft[0] as number, yLeft[1] as number];
-            const e2Pts = data
-                .filter((p) => typeof p.concE2 === 'number' && Number.isFinite(p.concE2))
-                .map((p) => ({ time: p.time, value: p.concE2 as number }));
-            if (e2Pts.length > 0) series.push({ points: e2Pts, yDomain: yd });
-            if (hasE2Personal) {
-                const personalPts = data
-                    .filter((p) => typeof p.concPersonal === 'number' && Number.isFinite(p.concPersonal))
-                    .map((p) => ({ time: p.time, value: p.concPersonal as number }));
-                if (personalPts.length > 0) series.push({ points: personalPts, yDomain: yd });
-            }
-        }
-        if (hasCPADoses && typeof yRight[0] === 'number' && typeof yRight[1] === 'number') {
-            const yd: [number, number] = [yRight[0] as number, yRight[1] as number];
-            const cpaPts = data
-                .filter((p) => typeof p.concCPA === 'number' && Number.isFinite(p.concCPA))
-                .map((p) => ({ time: p.time, value: p.concCPA as number }));
-            if (cpaPts.length > 0) series.push({ points: cpaPts, yDomain: yd });
-            if (hasPersonalCpaModel && aaPersonalized) {
-                const personalCpaPts = data
-                    .filter((p) => typeof p.concPersonalCPA === 'number' && Number.isFinite(p.concPersonalCPA))
-                    .map((p) => ({ time: p.time, value: p.concPersonalCPA as number }));
-                if (personalCpaPts.length > 0) series.push({ points: personalCpaPts, yDomain: yd });
-            }
-        }
-        return series;
-    }, [data, yDomainLeft, yDomainRight, hasE2Personal, hasCPADoses, hasPersonalCpaModel, aaPersonalized]);
-
-    // Mouse wheel — anchored zoom around cursor time.
-    const handleWheel = useCallback((e: WheelEvent) => {
-        if (!xDomain) return;
-        // Don't hijack ctrl/cmd + wheel (browser zoom).
-        if (e.ctrlKey || e.metaKey) return;
-        e.preventDefault();
-        const plotRect = getPlotRect();
-        if (!plotRect || plotRect.width <= 0) return;
-        const anchorTime = timeAtPixel(e.clientX, plotRect, xDomain);
-        // Wheel up (negative deltaY) zooms in (smaller domain), wheel down zooms out.
-        const zoomFactor = e.deltaY < 0 ? 1 / 1.2 : 1.2;
-        scheduleDomainUpdate(zoomDomainAt(xDomain, anchorTime, zoomFactor, domainBounds));
-    }, [xDomain, domainBounds, getPlotRect, scheduleDomainUpdate]);
-
-    // Bind wheel listener natively so we can use passive: false and preventDefault.
-    useEffect(() => {
-        const node = chartContainerRef.current;
-        if (!node) return;
-        node.addEventListener('wheel', handleWheel, { passive: false });
-        return () => {
-            node.removeEventListener('wheel', handleWheel);
-        };
-    }, [handleWheel]);
-
-    // Mouse drag — pan when the cursor starts on blank space, leave hover-tooltip
-    // intact when it starts on (or very near) a visible curve.
-    const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-        if (!xDomain || e.button !== 0) return;
-        const plotRect = getPlotRect();
-        if (!plotRect || plotRect.width <= 0) return;
-        // If the press lands on a curve, defer to the Recharts hover tooltip.
-        const hit = hitTestCurves(e.clientX, e.clientY, plotRect, xDomain, curveSeries, 16);
-        if (hit) return;
-        dragStateRef.current = { startX: e.clientX, plotRect };
-        setIsDragging(true);
-        e.preventDefault();
-    }, [xDomain, curveSeries, getPlotRect]);
-
-    useEffect(() => {
-        if (!isDragging) return;
-        const onMove = (e: MouseEvent) => {
-            const state = dragStateRef.current;
-            if (!state || !xDomain) return;
-            const dx = e.clientX - state.startX;
-            state.startX = e.clientX;
-            scheduleDomainUpdate(panDomain(xDomain, dx, state.plotRect.width, domainBounds));
-        };
-        const onUp = () => {
-            setIsDragging(false);
-            dragStateRef.current = null;
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        return () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-    }, [isDragging, xDomain, domainBounds, scheduleDomainUpdate]);
-
-    // -------- Touch gestures --------
-    // Single-finger on a curve → inspect (vertical line + tooltip that follows).
-    // Single-finger on blank → pan.
-    // Two fingers → pinch zoom anchored at the midpoint time. After the second
-    // finger lifts we deliberately do NOT reinterpret the remaining finger as a
-    // pan/inspect gesture; the user must lift all fingers and start over.
-    const TOUCH_TOLERANCE_PX = 24;
-
-    const updateTouchesFromList = (list: TouchList, remove: boolean) => {
-        for (let i = 0; i < list.length; i++) {
-            const t = list[i];
-            if (remove) {
-                activeTouchesRef.current.delete(t.identifier);
-            } else {
-                activeTouchesRef.current.set(t.identifier, { x: t.clientX, y: t.clientY });
-            }
-        }
-    };
-
-    const handleTouchStart = useCallback((e: TouchEvent) => {
-        updateTouchesFromList(e.changedTouches, false);
-        e.preventDefault();
-        const touches = [...activeTouchesRef.current.values()];
-        const plotRect = getPlotRect();
-        if (!plotRect || touches.length === 0 || !xDomain) return;
-
-        if (touches.length === 1) {
-            const t0 = touches[0];
-            const hit = hitTestCurves(t0.x, t0.y, plotRect, xDomain, curveSeries, TOUCH_TOLERANCE_PX);
-            if (hit) {
-                touchStateRef.current = {
-                    mode: 'inspect',
-                    inspectLastX: t0.x,
-                    inspectLastY: t0.y,
-                    inspectLastTime: hit.time,
-                };
-                setTouchOverlay({ time: hit.time, touchX: t0.x, touchY: t0.y });
-            } else {
-                touchStateRef.current = {
-                    mode: 'pan',
-                    panLastX: t0.x,
-                };
-                setTouchOverlay(null);
-            }
-        } else if (touches.length >= 2) {
-            // Second finger arrived — switch to pinch and drop any inspect overlay.
-            const [p0, p1] = touches;
-            const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-            if (distance <= 0 || !xDomain) return;
-            const midX = (p0.x + p1.x) / 2;
-            const anchorTime = timeAtPixel(midX, plotRect, xDomain);
-            touchStateRef.current = {
-                mode: 'pinch',
-                pinchInitialDistance: distance,
-                pinchInitialDomain: [xDomain[0], xDomain[1]],
-                pinchAnchorTime: anchorTime,
-            };
-            setTouchOverlay(null);
-        }
-    }, [xDomain, curveSeries, domainBounds, getPlotRect]);
-
-    const handleTouchMove = useCallback((e: TouchEvent) => {
-        // Sync the moved fingers' current positions back into the active set so
-        // pinch distance / pan delta stay accurate.
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const t = e.changedTouches[i];
-            const existing = activeTouchesRef.current.get(t.identifier);
-            if (existing) {
-                existing.x = t.clientX;
-                existing.y = t.clientY;
-            }
-        }
-        e.preventDefault();
-        const state = touchStateRef.current;
-        const touches = [...activeTouchesRef.current.values()];
-        const plotRect = getPlotRect();
-        if (!plotRect || touches.length === 0) return;
-
-        if (state.mode === 'inspect' && touches.length === 1 && xDomain) {
-            const t0 = touches[0];
-            const hit = hitTestCurves(t0.x, t0.y, plotRect, xDomain, curveSeries, TOUCH_TOLERANCE_PX);
-            if (hit) {
-                touchStateRef.current.inspectLastTime = hit.time;
-                touchStateRef.current.inspectLastX = t0.x;
-                touchStateRef.current.inspectLastY = t0.y;
-                setTouchOverlay({ time: hit.time, touchX: t0.x, touchY: t0.y });
-            }
-        } else if (state.mode === 'pan' && touches.length === 1 && state.panLastX != null && xDomain) {
-            const t0 = touches[0];
-            const dx = t0.x - state.panLastX;
-            state.panLastX = t0.x;
-            scheduleDomainUpdate(panDomain(xDomain, dx, plotRect.width, domainBounds));
-        } else if (state.mode === 'pinch' && touches.length >= 2) {
-            const [p0, p1] = touches;
-            const distance = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-            if (
-                distance <= 0
-                || !state.pinchInitialDistance
-                || !state.pinchInitialDomain
-                || state.pinchAnchorTime == null
-            ) return;
-            const factor = distance / state.pinchInitialDistance;
-            const next = zoomDomainAt(state.pinchInitialDomain, state.pinchAnchorTime, factor, domainBounds);
-            scheduleDomainUpdate(next);
-            // Make pinch continuous: treat each frame as the new baseline so the
-            // chart follows the fingers smoothly instead of snapping back.
-            state.pinchInitialDistance = distance;
-            state.pinchInitialDomain = next;
-            const midX = (p0.x + p1.x) / 2;
-            state.pinchAnchorTime = timeAtPixel(midX, plotRect, next);
-        }
-    }, [xDomain, curveSeries, domainBounds, getPlotRect, scheduleDomainUpdate]);
-
-    const handleTouchEnd = useCallback((e: TouchEvent) => {
-        updateTouchesFromList(e.changedTouches, true);
-        const state = touchStateRef.current;
-        const remaining = activeTouchesRef.current.size;
-
-        if (state.mode === 'pinch') {
-            // Per design: do NOT reinterpret the remaining finger. Stay frozen in
-            // pinch (effectively no-op) until every finger lifts, then go idle.
-            if (remaining === 0) {
-                touchStateRef.current = { mode: 'idle' };
-            }
-        } else if (state.mode === 'inspect') {
-            // Keep the last overlay on screen so the user can still read it after
-            // releasing. Only new touches / explicit clear will dismiss it.
-            touchStateRef.current = { mode: 'idle' };
-        } else if (state.mode === 'pan') {
-            touchStateRef.current = { mode: 'idle' };
-            setTouchOverlay(null);
-        }
-    }, []);
-
-    const handleTouchCancel = useCallback(() => {
-        activeTouchesRef.current.clear();
-        touchStateRef.current = { mode: 'idle' };
-        setTouchOverlay(null);
-    }, []);
-
-    // Bind touch listeners natively so we can use passive: false and preventDefault.
-    useEffect(() => {
-        const node = chartContainerRef.current;
-        if (!node) return;
-        const opts = { passive: false } as const;
-        node.addEventListener('touchstart', handleTouchStart, opts);
-        node.addEventListener('touchmove', handleTouchMove, opts);
-        node.addEventListener('touchend', handleTouchEnd, opts);
-        node.addEventListener('touchcancel', handleTouchCancel, opts);
-        return () => {
-            node.removeEventListener('touchstart', handleTouchStart);
-            node.removeEventListener('touchmove', handleTouchMove);
-            node.removeEventListener('touchend', handleTouchEnd);
-            node.removeEventListener('touchcancel', handleTouchCancel);
-        };
-    }, [handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
-
-    const zoomToDuration = (days: number) => {
-        const duration = days * 24 * 3600 * 1000;
-        const currentCenter = xDomain ? (xDomain[0] + xDomain[1]) / 2 : now;
-        const targetCenter = (now >= minTime && now <= maxTime) ? now : currentCenter;
-
-        const start = targetCenter - duration / 2;
-        const end = targetCenter + duration / 2;
-        commitDomain(clampDomain([start, end]));
-    };
-
-    // Geometry for the touch overlay: vertical line + tooltip box anchored to
-    // the curve time (not the finger x). Recomputed on xDomain / touch change.
-    // NOTE: must stay ABOVE the empty-state early return below to keep the
-    // hook order stable across renders — otherwise React throws
-    // "Rendered more hooks than during the previous render" when data arrives.
-    const touchOverlayGeom = useMemo(() => {
-        if (!touchOverlay) return null;
-        const containerRect = chartContainerRef.current?.getBoundingClientRect();
-        if (!containerRect) return null;
-        const grid = chartContainerRef.current?.querySelector('.recharts-cartesian-grid') as SVGGraphicsElement | null;
-        const gridRect = grid?.getBoundingClientRect?.();
-        const plotRect: PlotRect = gridRect && gridRect.width > 0 && gridRect.height > 0
-            ? { left: gridRect.left, top: gridRect.top, width: gridRect.width, height: gridRect.height }
-            : { left: containerRect.left, top: containerRect.top, width: containerRect.width, height: containerRect.height };
-        const visibleDomain: [number, number] = xDomain ?? [plotRect.left, plotRect.left + plotRect.width];
-        const lineX = pixelXAtTime(touchOverlay.time, plotRect, visibleDomain) - containerRect.left;
-        return {
-            time: touchOverlay.time,
-            relTouchX: touchOverlay.touchX - containerRect.left,
-            relTouchY: touchOverlay.touchY - containerRect.top,
-            lineX,
-            lineTop: plotRect.top - containerRect.top,
-            lineHeight: plotRect.height,
-        };
+        cssColors,
+        lang,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [touchOverlay, xDomain]);
+    }), [data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL, hasE2Personal, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI, aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight, minTime, maxTime, cssColors, lang]);
 
-    // Chart data point nearest to the overlay time (used for the tooltip payload).
-    const touchOverlayDataPoint = useMemo(() => {
-        if (!touchOverlayGeom || data.length === 0) return null;
-        const target = touchOverlayGeom.time;
-        let low = 0;
-        let high = data.length - 1;
-        while (high - low > 1) {
-            const mid = (low + high) >> 1;
-            if (data[mid].time <= target) low = mid;
-            else high = mid;
-        }
-        const lowDist = Math.abs(data[low].time - target);
-        const highDist = Math.abs(data[high].time - target);
-        return data[highDist < lowDist ? high : low];
-    }, [touchOverlayGeom, data]);
+    // Apply option to chart instance.
+    useEffect(() => {
+        const chart = chartInstanceRef.current;
+        if (!chart) return;
+        chart.setOption(option, { notMerge: false, lazyUpdate: true });
+    }, [option]);
 
-    if (!sim || sim.timeH.length === 0) return (
-        <div className="h-72 md:h-80 xl:h-[340px] flex flex-col items-center justify-center glass-card rounded-2xl p-8" style={{ color: 'var(--text-tertiary)' }}>
-            <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
-            <p className="text-sm font-medium">{t('timeline.empty')}</p>
-        </div>
-    );
+    // Wire up axisPointer event for our React DOM tooltip overlay.
+    useEffect(() => {
+        const chart = chartInstanceRef.current;
+        if (!chart) return;
+
+        const handler = (params: any) => {
+            if (isEmpty) {
+                setHoverState(null);
+                return;
+            }
+            const xInfo = params.axesInfo?.find((a: any) => a.axisDim === 'x');
+            const time = xInfo?.value;
+            if (typeof time !== 'number') {
+                setHoverState(null);
+                return;
+            }
+            const containerRect = chartRef.current?.getBoundingClientRect();
+            if (!containerRect) {
+                setHoverState(null);
+                return;
+            }
+
+            // Check if cursor is over a lab point (within tolerance).
+            const LAB_HIT_TOLERANCE_MS = 24 * 3600 * 1000;
+            let matchedLab: typeof labPoints[number] | undefined;
+            for (const lp of labPoints) {
+                if (Math.abs(lp.time - time) < LAB_HIT_TOLERANCE_MS) {
+                    matchedLab = lp;
+                    break;
+                }
+            }
+
+            const px = chart.convertToPixel({ xAxisIndex: 0 }, time);
+            if (typeof px !== 'number' || !Number.isFinite(px)) {
+                setHoverState(null);
+                return;
+            }
+
+            if (matchedLab) {
+                const py = chart.convertToPixel({ yAxisIndex: 0 }, matchedLab.conc);
+                setHoverState({
+                    time,
+                    relX: px,
+                    relY: typeof py === 'number' ? py : 0,
+                    dataPoint: { time: matchedLab.time, concE2: matchedLab.conc, isLabResult: true } as ChartPoint,
+                    isLab: true,
+                    labPoint: matchedLab,
+                });
+                return;
+            }
+
+            // Find nearest data point in `data` for the tooltip payload.
+            const idx = nearestIndex(data, time);
+            if (idx < 0) {
+                setHoverState(null);
+                return;
+            }
+            const point = data[idx];
+            const py = chart.convertToPixel({ yAxisIndex: 0 }, point.concE2 ?? 0);
+            setHoverState({
+                time,
+                relX: px,
+                relY: typeof py === 'number' ? py : 0,
+                dataPoint: point,
+                isLab: false,
+            });
+        };
+
+        chart.on('updateAxisPointer', handler);
+        return () => { chart.off('updateAxisPointer', handler); };
+    }, [data, labPoints, isEmpty]);
+
+    // Zoom helpers (1M / 1W / reset) — dispatch dataZoom action with start/end timestamps.
+    const zoomToDuration = useCallback((days: number) => {
+        const chart = chartInstanceRef.current;
+        if (!chart || isEmpty) return;
+        const duration = days * 24 * 3600 * 1000;
+        const center = now;
+        const start = Math.max(minTime, center - duration / 2);
+        const end = Math.min(maxTime, start + duration);
+        const finalStart = Math.max(minTime, end - duration);
+        chart.dispatchAction({ type: 'dataZoom', startValue: finalStart, endValue: end });
+    }, [now, minTime, maxTime, isEmpty]);
 
     const hasPersonalModel = hasE2Personal;
 
+    // Compute tooltip placement: prefer right of cursor, flip left if near edge.
+    const tooltipPlacement = useMemo(() => {
+        if (!hoverState || !chartRef.current) return { left: 0, top: 0, flipX: false };
+        const containerWidth = chartRef.current.clientWidth;
+        const left = hoverState.relX + 12;
+        const flipX = left + 160 > containerWidth;
+        return {
+            left: flipX ? Math.max(0, hoverState.relX - 12) : left,
+            top: Math.max(0, hoverState.relY - 8),
+            flipX,
+        };
+    }, [hoverState]);
+
     return (
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col md:h-80 xl:h-[340px]">
+            {/* Header (unchanged from Recharts version) */}
             <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 border-b border-[var(--border-secondary)]">
-                <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif', color: 'var(--text-primary)' }}>
+                <h2 className="text-sm md:text-base font-semibold tracking-tight flex items-center gap-2" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: 'var(--text-primary)' }}>
                     <span className="inline-flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-xl border border-[var(--border-icon-pink)]">
                         <Activity size={16} className="text-[#f6c4d7] md:w-5 md:h-5" />
                     </span>
@@ -1080,9 +828,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                         </button>
                         <div className="w-px h-4 self-center mx-1" style={{ background: 'var(--border-primary)' }}></div>
                         <button
-                            onClick={() => {
-                                zoomToDuration(7);
-                            }}
+                            onClick={() => { zoomToDuration(7); }}
                             className="p-1.5 rounded-lg hover:bg-[var(--bg-card)] transition-all" style={{ color: 'var(--text-secondary)' }}
                         >
                             <RotateCcw size={14} className="md:w-4 md:h-4" />
@@ -1102,405 +848,571 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                 </div>
             </div>
 
-            <div
-                ref={chartContainerRef}
-                className="h-[36vh] min-h-[200px] md:flex-1 md:min-h-0 w-full touch-none relative select-none px-2 pb-2"
-                style={{ touchAction: 'none', overscrollBehavior: 'contain', cursor: isDragging ? 'grabbing' : 'crosshair' }}
-                onMouseDown={handleMouseDown}
-            >
-                <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={data} margin={{ top: 28, right: 10, bottom: 0, left: 10 }}>
-                        <defs>
-                            <linearGradient id="colorConc" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#f6c4d7" stopOpacity={0.18}/>
-                                <stop offset="95%" stopColor="#f6c4d7" stopOpacity={0}/>
-                            </linearGradient>
-                            <linearGradient id="colorPersonal" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.12}/>
-                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-secondary)" />
-                        <XAxis
-                            dataKey="time"
-                            type="number"
-                            domain={xDomain || ['auto', 'auto']}
-                            allowDataOverflow={true}
-                            tickFormatter={(ms) => formatDate(new Date(ms), lang)}
-                            tick={{fontSize: 10, fill: 'var(--text-tertiary)', fontWeight: 600}}
-                            minTickGap={48}
-                            axisLine={false}
-                            tickLine={false}
-                            dy={10}
-                        />
-                        <YAxis
-                            yAxisId="left"
-                            dataKey="concE2"
-                            domain={yDomainLeft}
-                            allowDataOverflow={false}
-                            allowDecimals={false}
-                            tickFormatter={formatAxisTick}
-                            tick={{fontSize: 10, fill: '#ec4899', fontWeight: 600}}
-                            axisLine={false}
-                            tickLine={false}
-                            width={50}
-                            label={{ value: 'E2 (pg/mL)', angle: -90, position: 'left', offset: 0, style: { fontSize: 11, fill: '#ec4899', fontWeight: 700, textAnchor: 'middle' } }}
-                        />
-                        {hasCPADoses && (
-                        <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            dataKey="concCPA"
-                            domain={yDomainRight}
-                            tickFormatter={formatAxisTick}
-                            tick={{fontSize: 10, fill: aaColor, fontWeight: 600}}
-                            axisLine={false}
-                            tickLine={false}
-                            width={50}
-                            label={{ value: `${aaLabel} (${aaUnit})`, angle: 90, position: 'right', offset: 0, style: { fontSize: 11, fill: aaColor, fontWeight: 700, textAnchor: 'middle' } }}
-                        />
-                        )}
-                        {/* Hidden right axis when no CPA data — Recharts requires at least one yAxisId="right" */}
-                        {!hasCPADoses && (
-                        <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            hide={true}
-                            domain={[0, 1]}
-                        />
-                        )}
-                        <Tooltip
-                            content={<CustomTooltip t={t} lang={lang} aaLabel={aaLabel} aaUnit={aaUnit} aaColor={aaColor} aaShowPersonal={aaPersonalized} />}
-                            cursor={{ stroke: '#f6c4d7', strokeWidth: 1, strokeDasharray: '4 4' }}
-                            trigger="hover"
-                        />
-                        <ReferenceLine x={now} stroke="#f6c4d7" strokeDasharray="3 3" strokeWidth={1.2} yAxisId="left" />
-                        {/* Endogenous baseline reference line — shown when a pre-dose baseline is
-                            known but no personal model (post-dose learning) is active yet. */}
-                        {!hasPersonalModel && baselineE2PGmL != null && baselineE2PGmL > 0 && (
-                            <ReferenceLine
-                                y={baselineE2PGmL}
-                                yAxisId="left"
-                                stroke="#14b8a6"
-                                strokeDasharray="4 3"
-                                strokeWidth={1.2}
-                                label={{ value: `Endogenous ${baselineE2PGmL.toFixed(1)}`, position: 'insideTopLeft', fontSize: 9, fill: '#14b8a6', fontWeight: 600 }}
-                            />
-                        )}
+            {/* Chart container (always rendered to keep ECharts init working) */}
+            <div className="relative h-[36vh] min-h-[200px] md:flex-1 md:min-h-0 w-full touch-none px-2 pb-2">
+                <div ref={chartRef} className="w-full h-full" />
 
-                        {/* 95% CI band (stacked area: ci95Low base + ci95Band on top) */}
-                        {hasPersonalModel && (
-                            <>
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="ci95Low"
-                                    yAxisId="left"
-                                    stroke="none"
-                                    fill="none"
-                                    stackId="ci"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="ci95Band"
-                                    yAxisId="left"
-                                    stroke="none"
-                                    fill="rgba(244,63,94,0.09)"
-                                    fillOpacity={1}
-                                    stackId="ci"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                            </>
-                        )}
-                        {/* 68% CI band (inner band, darker — rendered above 95%) */}
-                        {hasPersonalModel && (
-                            <>
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="ci68Low"
-                                    yAxisId="left"
-                                    stroke="none"
-                                    fill="none"
-                                    stackId="ci68"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="ci68Band"
-                                    yAxisId="left"
-                                    stroke="none"
-                                    fill="rgba(244,63,94,0.17)"
-                                    fillOpacity={1}
-                                    stackId="ci68"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                            </>
-                        )}
-                        {hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses && (
-                            <>
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="cpaCi95Low"
-                                    yAxisId="right"
-                                    stroke="none"
-                                    fill="none"
-                                    stackId="cpaCi"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                                <Area
-                                    data={data}
-                                    type="monotone"
-                                    dataKey="cpaCi95Band"
-                                    yAxisId="right"
-                                    stroke="none"
-                                    fill={`${aaColor}1A`}
-                                    fillOpacity={1}
-                                    stackId="cpaCi"
-                                    isAnimationActive={false}
-                                    dot={false}
-                                    activeDot={false}
-                                    legendType="none"
-                                />
-                            </>
-                        )}
+                {/* Empty state overlay */}
+                {isEmpty && (
+                    <div
+                        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
+                        style={{ color: 'var(--text-tertiary)' }}
+                    >
+                        <Activity className="w-12 h-12 mb-4" style={{ color: 'var(--text-tertiary)' }} strokeWidth={1.5} />
+                        <p className="text-sm font-medium">{t('timeline.empty')}</p>
+                    </div>
+                )}
 
-                        <Area
-                            data={data}
-                            type="monotone"
-                            dataKey="concE2"
-                            yAxisId="left"
-                            stroke="#f6c4d7"
-                            strokeWidth={2.2}
-                            fillOpacity={0.95}
-                            fill="url(#colorConc)"
-                            isAnimationActive={false}
-                            activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: '#ec4899' }}
-                        />
-                        {hasCPADoses && (
-                        <Area
-                            data={data}
-                            type="monotone"
-                            dataKey="concCPA"
-                            yAxisId="right"
-                            stroke={aaColor}
-                            strokeWidth={2.2}
-                            fillOpacity={0.12}
-                            fill={aaColor}
-                            isAnimationActive={false}
-                            activeDot={{ r: 6, strokeWidth: 3, stroke: '#fff', fill: aaColor }}
-                        />
-                        )}
-
-                        {/* Personal model E2 curve (dashed rose line) */}
-                        {hasPersonalModel && (
-                            <Area
-                                data={data}
-                                type="monotone"
-                                dataKey="concPersonal"
-                                yAxisId="left"
-                                stroke="#f43f5e"
-                                strokeWidth={1.8}
-                                strokeDasharray="5 3"
-                                fill="none"
-                                isAnimationActive={false}
-                                dot={false}
-                                activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#f43f5e' }}
+                {/* Hover tooltip overlay (replaces Recharts Tooltip) */}
+                {hoverState && !isEmpty && (
+                    <div
+                        className="absolute pointer-events-none z-10"
+                        style={{
+                            left: tooltipPlacement.left,
+                            top: tooltipPlacement.top,
+                            transform: tooltipPlacement.flipX ? 'translateX(-100%)' : undefined,
+                        }}
+                    >
+                        {hoverState.isLab && hoverState.labPoint ? (
+                            <CustomTooltip
+                                active={true}
+                                payload={[{
+                                    payload: {
+                                        isLabResult: true,
+                                        originalValue: hoverState.labPoint.originalValue,
+                                        originalUnit: hoverState.labPoint.originalUnit,
+                                        conc: hoverState.labPoint.conc,
+                                    },
+                                }]}
+                                label={hoverState.time}
+                                t={t}
+                                lang={lang}
+                                aaLabel={aaLabel}
+                                aaUnit={aaUnit}
+                                aaColor={aaColor}
+                                aaShowPersonal={aaPersonalized}
+                            />
+                        ) : (
+                            <CustomTooltip
+                                active={true}
+                                payload={[{ payload: hoverState.dataPoint }]}
+                                label={hoverState.time}
+                                t={t}
+                                lang={lang}
+                                aaLabel={aaLabel}
+                                aaUnit={aaUnit}
+                                aaColor={aaColor}
+                                aaShowPersonal={aaPersonalized}
                             />
                         )}
-
-                        {/* Personal model anti-androgen curve (dashed line) —
-                            only for adherence-coupled compounds (CPA), not BICA. */}
-                        {hasPersonalCpaModel && hasCPADoses && aaPersonalized && (
-                            <Area
-                                data={data}
-                                type="monotone"
-                                dataKey="concPersonalCPA"
-                                yAxisId="right"
-                                stroke={aaColor}
-                                strokeWidth={1.8}
-                                strokeDasharray="5 3"
-                                fill="none"
-                                isAnimationActive={false}
-                                dot={false}
-                                activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: aaColor }}
-                            />
-                        )}
-
-                        <Scatter
-                            data={nowPoint ? [nowPoint] : []}
-                            yAxisId="left"
-                            isAnimationActive={false}
-                            shape={({ cx, cy }: any) => {
-                                return (
-                                    <g className="group">
-                                        <circle cx={cx} cy={cy} r={1} fill="transparent" />
-                                        <circle
-                                            cx={cx} cy={cy}
-                                            r={4}
-                                            fill="#bfdbfe"
-                                            stroke="white"
-                                            strokeWidth={1.5}
-                                        />
-                                    </g>
-                                );
-                            }}
-                        />
-                        {hasCPADoses && (
-                        <Scatter
-                            data={nowPoint ? [nowPoint] : []}
-                            yAxisId="right"
-                            isAnimationActive={false}
-                            shape={({ cx, cy }: any) => {
-                                return (
-                                    <g className="group">
-                                        <circle cx={cx} cy={cy} r={1} fill="transparent" />
-                                        <circle
-                                            cx={cx} cy={cy}
-                                            r={4}
-                                            fill={aaColor}
-                                            stroke="white"
-                                            strokeWidth={1.5}
-                                        />
-                                    </g>
-                                );
-                            }}
-                        />
-                        )}
-                        {labPoints.map((point) => (
-                            <ReferenceDot
-                                key={`lab-visible-${point.id}`}
-                                x={point.time}
-                                y={point.conc}
-                                yAxisId="left"
-                                ifOverflow="extendDomain"
-                                isFront={true}
-                                r={9}
-                                shape={({ cx, cy }: any) => {
-                                    const x = cx ?? 0;
-                                    const y = cy ?? 0;
-                                    const iconSize = 10;
-                                    const iconY = y - iconSize / 2 + 1;
-                                    return (
-                                        <g style={{ overflow: 'visible' }}>
-                                            <circle cx={x} cy={y} r={9} fill="#14b8a6" stroke="white" strokeWidth={2} />
-                                            <svg
-                                                x={x - iconSize / 2}
-                                                y={iconY}
-                                                width={iconSize}
-                                                height={iconSize}
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="white"
-                                                strokeWidth={2.25}
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                overflow="visible"
-                                            >
-                                                <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2" />
-                                                <path d="M8.5 2h7" />
-                                                <path d="M7 16h10" />
-                                            </svg>
-                                        </g>
-                                    );
-                                }}
-                            />
-                        ))}
-                        {labPoints.length > 0 && (
-                            <Scatter
-                                data={labPoints}
-                                dataKey="conc"
-                                yAxisId="left"
-                                isAnimationActive={false}
-                                shape={({ cx, cy }: any) => (
-                                    <circle cx={cx} cy={cy} r={10} fill="transparent" />
-                                )}
-                            />
-                        )}
-                        {/* Dose event markers — small dots on the E2 curve */}
-                        {dosePoints.length > 0 && (
-                            <Scatter
-                                data={dosePoints}
-                                dataKey="concE2"
-                                yAxisId="left"
-                                isAnimationActive={false}
-                                shape={({ cx, cy, payload }: any) => (
-                                    <g>
-                                        <circle
-                                            cx={cx}
-                                            cy={cy}
-                                            r={3}
-                                            fill={payload?.ester && isAntiandrogen(payload.ester) ? (ANTIANDROGENS[payload.ester as Ester]?.color ?? '#8b5cf6') : '#ec4899'}
-                                            stroke="white"
-                                            strokeWidth={1.5}
-                                        />
-                                    </g>
-                                )}
-                            />
-                        )}
-                    </ComposedChart>
-                </ResponsiveContainer>
-                {touchOverlayGeom && (
-                    <>
-                        <div
-                            aria-hidden
-                            className="absolute pointer-events-none"
-                            style={{
-                                left: touchOverlayGeom.lineX,
-                                top: touchOverlayGeom.lineTop,
-                                width: 1,
-                                height: touchOverlayGeom.lineHeight,
-                                background: 'repeating-linear-gradient(to bottom, #f6c4d7 0 4px, transparent 4px 8px)',
-                            }}
-                        />
-                        {touchOverlayDataPoint && (
-                            <div
-                                className="absolute pointer-events-none z-10"
-                                style={{
-                                    left: touchOverlayGeom.relTouchX + 12,
-                                    top: Math.max(0, touchOverlayGeom.relTouchY - 8),
-                                    transform: touchOverlayGeom.relTouchX > (chartContainerRef.current?.clientWidth ?? 0) - 160
-                                        ? 'translateX(-100%)'
-                                        : undefined,
-                                }}
-                            >
-                                <CustomTooltip
-                                    active={true}
-                                    payload={[{ payload: touchOverlayDataPoint }]}
-                                    label={touchOverlayGeom.time}
-                                    t={t}
-                                    lang={lang}
-                                    aaLabel={aaLabel}
-                                    aaUnit={aaUnit}
-                                    aaColor={aaColor}
-                                    aaShowPersonal={aaPersonalized}
-                                />
-                            </div>
-                        )}
-                    </>
+                    </div>
                 )}
             </div>
         </div>
     );
 };
+
+// ============================================================
+// buildChartOption — pure function that turns memo data into
+// a full ECharts option object. All visual styling 1:1 with the
+// previous Recharts implementation; values come from
+// ResultChart.theme.ts (ECHART_THEME).
+// ============================================================
+
+interface BuildOptionInput {
+    data: ChartPoint[];
+    labPoints: { time: number; conc: number; originalValue: number; originalUnit: string; isLabResult: true; id: string }[];
+    dosePoints: { time: number; concE2: number; isDoseEvent: true; ester: string }[];
+    nowPoint: { time: number; concE2: number; concCPA: number; concPersonal?: number; ci95Low?: number; ci95High?: number; ci68Low?: number; ci68High?: number; concPersonalCPA?: number; cpaCi95Low?: number; cpaCi95High?: number } | null;
+    now: number;
+    baselineE2PGmL: number | null;
+    hasPersonalModel: boolean;
+    hasCPADoses: boolean;
+    hasPersonalCpaModel: boolean;
+    hasPersonalCpaCI: boolean;
+    aaPersonalized: boolean;
+    aaColor: string;
+    aaLabel: string;
+    aaUnit: 'ng/mL' | 'ug/mL';
+    yDomainLeft: [number, number];
+    yDomainRight: [number, number];
+    minTime: number;
+    maxTime: number;
+    cssColors: { grid: string; axisTick: string; textPrimary: string; textSecondary: string; textTertiary: string; bgCard: string };
+    lang: string;
+}
+
+function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
+    const {
+        data, labPoints, dosePoints, nowPoint, now, baselineE2PGmL,
+        hasPersonalModel, hasCPADoses, hasPersonalCpaModel, hasPersonalCpaCI,
+        aaPersonalized, aaColor, aaLabel, aaUnit, yDomainLeft, yDomainRight,
+        minTime, maxTime, cssColors, lang,
+    } = input;
+
+    const xAxisMin = minTime;
+    const xAxisMax = maxTime;
+    const dateFormatter = (val: number) => formatDate(new Date(val), lang);
+
+    const series: any[] = [];
+
+    // ----- 95% CI band (E2, left axis) — stacked area -----
+    if (hasPersonalModel) {
+        series.push({
+            name: 'ci95Low',
+            type: 'line',
+            stack: 'ci95',
+            yAxisIndex: 0,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { opacity: 0 },
+            data: data.map(d => [d.time, d.ci95Low ?? 0]),
+        });
+        series.push({
+            name: 'ci95Band',
+            type: 'line',
+            stack: 'ci95',
+            yAxisIndex: 0,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { color: ECHART_THEME.ci95Fill },
+            data: data.map(d => [d.time, d.ci95Band ?? 0]),
+        });
+        // 68% CI band — slightly darker, rendered above 95%
+        series.push({
+            name: 'ci68Low',
+            type: 'line',
+            stack: 'ci68',
+            yAxisIndex: 0,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { opacity: 0 },
+            data: data.map(d => [d.time, d.ci68Low ?? 0]),
+        });
+        series.push({
+            name: 'ci68Band',
+            type: 'line',
+            stack: 'ci68',
+            yAxisIndex: 0,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { color: ECHART_THEME.ci68Fill },
+            data: data.map(d => [d.time, d.ci68Band ?? 0]),
+        });
+    }
+
+    // ----- CPA 95% CI band (right axis, conditional) -----
+    if (hasPersonalCpaModel && hasPersonalCpaCI && hasCPADoses) {
+        series.push({
+            name: 'cpaCi95Low',
+            type: 'line',
+            stack: 'cpaCi',
+            yAxisIndex: 1,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { opacity: 0 },
+            data: data.map(d => [d.time, d.cpaCi95Low ?? 0]),
+        });
+        series.push({
+            name: 'cpaCi95Band',
+            type: 'line',
+            stack: 'cpaCi',
+            yAxisIndex: 1,
+            smooth: true,
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            lineStyle: { opacity: 0 },
+            areaStyle: { color: aaBandFill(aaColor) },
+            data: data.map(d => [d.time, d.cpaCi95Band ?? 0]),
+        });
+    }
+
+    // ----- Main E2 curve (left axis) -----
+    series.push({
+        name: 'E2',
+        type: 'line',
+        yAxisIndex: 0,
+        smooth: true,
+        symbol: 'none',
+        showSymbol: false,
+        sampling: 'lttb',
+        data: data.map(d => [d.time, d.concE2 ?? 0]),
+        lineStyle: { color: ECHART_THEME.e2Stroke, width: ECHART_THEME.curveStrokeWidth },
+        areaStyle: {
+            color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                    { offset: 0, color: ECHART_THEME.e2GradientTop },
+                    { offset: 1, color: ECHART_THEME.e2GradientBottom },
+                ],
+            },
+        },
+        emphasis: {
+            focus: 'series',
+            itemStyle: { borderColor: ECHART_THEME.e2ActiveDotStroke, borderWidth: 3, color: ECHART_THEME.e2Accent },
+        },
+    });
+
+    // ----- Main CPA curve (right axis, conditional) -----
+    if (hasCPADoses) {
+        series.push({
+            name: aaLabel,
+            type: 'line',
+            yAxisIndex: 1,
+            smooth: true,
+            symbol: 'none',
+            showSymbol: false,
+            sampling: 'lttb',
+            data: data.map(d => [d.time, d.concCPA ?? 0]),
+            lineStyle: { color: aaColor, width: ECHART_THEME.curveStrokeWidth },
+            areaStyle: {
+                color: {
+                    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                    colorStops: [
+                        { offset: 0, color: aaBandFill(aaColor) },
+                        { offset: 1, color: 'rgba(0,0,0,0)' },
+                    ],
+                },
+            },
+            emphasis: {
+                focus: 'series',
+                itemStyle: { borderColor: '#fff', borderWidth: 3, color: aaColor },
+            },
+        });
+    }
+
+    // ----- Personal model E2 curve (dashed) -----
+    if (hasPersonalModel) {
+        series.push({
+            name: 'E2 Personal',
+            type: 'line',
+            yAxisIndex: 0,
+            smooth: true,
+            symbol: 'none',
+            showSymbol: false,
+            sampling: 'lttb',
+            data: data.map(d => [d.time, d.concPersonal ?? 0]),
+            lineStyle: { color: ECHART_THEME.personalStroke, width: ECHART_THEME.personalStrokeWidth, type: 'dashed' },
+            areaStyle: {
+                color: {
+                    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                    colorStops: [
+                        { offset: 0, color: ECHART_THEME.personalGradientTop },
+                        { offset: 1, color: ECHART_THEME.personalGradientBottom },
+                    ],
+                },
+            },
+            emphasis: {
+                focus: 'series',
+                itemStyle: { borderColor: ECHART_THEME.personalActiveDotStroke, borderWidth: 2, color: ECHART_THEME.personalStroke },
+            },
+        });
+    }
+
+    // ----- Personal model AA curve (dashed, conditional) -----
+    if (hasPersonalCpaModel && hasCPADoses && aaPersonalized) {
+        series.push({
+            name: `${aaLabel} Personal`,
+            type: 'line',
+            yAxisIndex: 1,
+            smooth: true,
+            symbol: 'none',
+            showSymbol: false,
+            sampling: 'lttb',
+            data: data.map(d => [d.time, d.concPersonalCPA ?? 0]),
+            lineStyle: { color: aaColor, width: ECHART_THEME.personalStrokeWidth, type: 'dashed' },
+            emphasis: {
+                focus: 'series',
+                itemStyle: { borderColor: '#fff', borderWidth: 2, color: aaColor },
+            },
+        });
+    }
+
+    // ----- "now" marker dots (left + right axes, conditional) -----
+    if (nowPoint) {
+        if (typeof nowPoint.concE2 === 'number' && Number.isFinite(nowPoint.concE2) && nowPoint.concE2 > 0) {
+            series.push({
+                name: 'Now (E2)',
+                type: 'scatter',
+                yAxisIndex: 0,
+                symbol: 'circle',
+                symbolSize: ECHART_THEME.nowDotSize + 2, // 6 visible + 2 padding
+                itemStyle: { color: ECHART_THEME.nowDotFill, borderColor: ECHART_THEME.nowDotStroke, borderWidth: ECHART_THEME.nowDotStrokeWidth },
+                silent: true,
+                data: [[nowPoint.time, nowPoint.concE2]],
+            });
+        }
+        if (hasCPADoses && typeof nowPoint.concCPA === 'number' && Number.isFinite(nowPoint.concCPA) && nowPoint.concCPA > 0) {
+            series.push({
+                name: `Now (${aaLabel})`,
+                type: 'scatter',
+                yAxisIndex: 1,
+                symbol: 'circle',
+                symbolSize: ECHART_THEME.nowDotSize + 2,
+                itemStyle: { color: aaColor, borderColor: ECHART_THEME.nowDotStroke, borderWidth: ECHART_THEME.nowDotStrokeWidth },
+                silent: true,
+                data: [[nowPoint.time, nowPoint.concCPA]],
+            });
+        }
+    }
+
+    // ----- Lab flask markers (left axis) -----
+    if (labPoints.length > 0) {
+        series.push({
+            name: 'Lab',
+            type: 'scatter',
+            yAxisIndex: 0,
+            symbol: 'circle',
+            symbolSize: ECHART_THEME.labSymbolSize,
+            symbolOffset: [0, 0],
+            itemStyle: {
+                color: ECHART_THEME.labFill,
+                borderColor: ECHART_THEME.labStroke,
+                borderWidth: ECHART_THEME.labStrokeWidth,
+            },
+            label: {
+                show: true,
+                position: 'inside',
+                formatter: () => '⚗', // placeholder; real flask rendered below via markPoint symbol override
+                color: 'transparent',
+            },
+            data: labPoints.map(lp => ({
+                value: [lp.time, lp.conc],
+                originalValue: lp.originalValue,
+                originalUnit: lp.originalUnit,
+                isLabResult: true,
+                id: lp.id,
+            })),
+            z: 5,
+        });
+    }
+
+    // ----- Dose event markers (left axis, E2-family only) -----
+    if (dosePoints.length > 0) {
+        series.push({
+            name: 'Dose',
+            type: 'scatter',
+            yAxisIndex: 0,
+            symbol: 'circle',
+            symbolSize: 7, // 3px radius + 1.5px stroke x2 ≈ 7px overall
+            itemStyle: {
+                color: '#ec4899',
+                borderColor: '#fff',
+                borderWidth: 1.5,
+            },
+            data: dosePoints.map(dp => ({
+                value: [dp.time, dp.concE2],
+                ester: dp.ester,
+            })),
+            z: 4,
+        });
+    }
+
+    // ----- "now" vertical line + baseline reference line + flask overlays -----
+    // Use a hidden "ref" series to anchor markLine + markPoint for flask icons.
+    const refSeries: any[] = [];
+    refSeries.push({
+        name: '__refs',
+        type: 'line',
+        yAxisIndex: 0,
+        data: [],
+        silent: true,
+        animation: false,
+        showInLegend: false,
+        markLine: {
+            symbol: 'none',
+            silent: true,
+            animation: false,
+            label: { show: false },
+            data: [
+                {
+                    xAxis: now,
+                    lineStyle: {
+                        color: ECHART_THEME.nowLineStroke,
+                        type: 'dashed',
+                        width: ECHART_THEME.nowLineWidth,
+                    },
+                },
+                ...(hasPersonalModel || !baselineE2PGmL || baselineE2PGmL <= 0 ? [] : [{
+                    yAxis: baselineE2PGmL,
+                    lineStyle: {
+                        color: ECHART_THEME.baselineStroke,
+                        type: 'dashed',
+                        width: ECHART_THEME.baselineWidth,
+                    },
+                    label: {
+                        show: true,
+                        position: 'insideStartTop',
+                        formatter: `Endogenous ${baselineE2PGmL.toFixed(1)}`,
+                        color: ECHART_THEME.baselineStroke,
+                        fontSize: ECHART_THEME.baselineLabelFontSize,
+                        fontWeight: ECHART_THEME.baselineLabelFontWeight,
+                        backgroundColor: 'transparent',
+                    },
+                }]),
+            ],
+        },
+        markPoint: labPoints.length > 0 ? {
+            symbol: LAB_FLASK_PATH,
+            symbolSize: ECHART_THEME.labSymbolSize,
+            symbolOffset: [0, 0],
+            itemStyle: {
+                color: ECHART_THEME.labFill,
+                borderColor: ECHART_THEME.labStroke,
+                borderWidth: ECHART_THEME.labStrokeWidth,
+            },
+            label: { show: false },
+            data: labPoints.map(lp => ({
+                coord: [lp.time, lp.conc],
+                value: '',
+            })),
+            silent: true,
+            animation: false,
+            z: 6,
+        } : undefined,
+    });
+    series.push(...refSeries);
+
+    // ----- Build Y axes -----
+    const yAxisLeft: any = {
+        type: 'value',
+        name: 'E2 (pg/mL)',
+        nameLocation: 'middle',
+        nameGap: 40,
+        nameRotate: 90,
+        nameTextStyle: { color: ECHART_THEME.e2Accent, fontSize: ECHART_THEME.axisLabelFontSize, fontWeight: ECHART_THEME.axisLabelFontWeight },
+        min: yDomainLeft[0],
+        max: yDomainLeft[1],
+        position: 'left',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: {
+            color: ECHART_THEME.e2Accent,
+            fontSize: ECHART_THEME.axisTickFontSize,
+            fontWeight: ECHART_THEME.axisTickFontWeight,
+            formatter: formatAxisTickForECharts,
+        },
+        splitLine: { show: false },
+    };
+
+    const yAxisRight: any = {
+        type: 'value',
+        name: `${aaLabel} (${aaUnit})`,
+        nameLocation: 'middle',
+        nameGap: 40,
+        nameRotate: 90,
+        nameTextStyle: { color: aaColor, fontSize: ECHART_THEME.axisLabelFontSize, fontWeight: ECHART_THEME.axisLabelFontWeight },
+        min: hasCPADoses ? yDomainRight[0] : 0,
+        max: hasCPADoses ? yDomainRight[1] : 1,
+        position: 'right',
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: hasCPADoses ? {
+            color: aaColor,
+            fontSize: ECHART_THEME.axisTickFontSize,
+            fontWeight: ECHART_THEME.axisTickFontWeight,
+            formatter: formatAxisTickForECharts,
+        } : { show: false },
+        splitLine: { show: false },
+    };
+
+    return {
+        renderer: ECHART_THEME.renderer,
+        animation: true,
+        animationDuration: ECHART_THEME.animationDuration,
+        animationEasing: ECHART_THEME.animationEasing,
+        animationDurationUpdate: ECHART_THEME.animationDurationUpdate,
+        animationEasingUpdate: ECHART_THEME.animationEasingUpdate,
+        // disable hover animation for cleaner experience
+        animationDelay: 0,
+
+        grid: {
+            left: 60,
+            right: hasCPADoses ? 60 : 30,
+            top: 30,
+            bottom: 30,
+            containLabel: false,
+        },
+
+        // We render our own React DOM tooltip; turn off the built-in one.
+        tooltip: { show: false },
+
+        xAxis: {
+            type: 'time',
+            min: xAxisMin,
+            max: xAxisMax,
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: {
+                color: cssColors.axisTick,
+                fontSize: ECHART_THEME.axisTickFontSize,
+                fontWeight: ECHART_THEME.axisTickFontWeight,
+                formatter: dateFormatter,
+                hideOverlap: true,
+            },
+            splitLine: { show: false },
+        },
+
+        yAxis: [yAxisLeft, yAxisRight],
+
+        // dataZoom 'inside' = wheel zoom + drag pan + pinch zoom all in one.
+        // Two instances per axis so each axis can have its own config;
+        // y-axis ones are disabled to keep auto-scaling behavior.
+        dataZoom: [
+            {
+                type: 'inside',
+                xAxisIndex: 0,
+                zoomOnMouseWheel: true,
+                moveOnMouseMove: true,
+                moveOnMouseWheel: false,
+                preventDefaultMouseMove: true,
+                minValueSpan: 24 * 3600 * 1000,
+            },
+            { type: 'inside', yAxisIndex: 0, disabled: true },
+            ...(hasCPADoses ? [{ type: 'inside', yAxisIndex: 1, disabled: true }] : []),
+        ],
+
+        // axisPointer replaces Recharts Tooltip cursor + custom touch overlay.
+        axisPointer: {
+            show: true,
+            trigger: 'mousemove|click|touch',
+            snap: true,
+            label: { show: false },
+            handle: { show: false },
+            lineStyle: {
+                color: ECHART_THEME.cursorStroke,
+                type: 'dashed',
+                width: ECHART_THEME.cursorWidth,
+            },
+        },
+
+        series,
+    };
+}
+
+function formatAxisTickForECharts(raw: number | string): string {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return '0';
+    if (n >= 100) return `${Math.round(n)}`;
+    if (n >= 10) return `${Math.round(n)}`;
+    if (n >= 1) return n.toFixed(1);
+    return n.toFixed(2);
+}
 
 export default ResultChart;
