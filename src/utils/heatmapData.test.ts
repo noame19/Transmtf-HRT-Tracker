@@ -64,7 +64,7 @@ function categoriesOfCellForTest(events: DoseEvent[]): string[] {
 describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
     it('maps each drug class to a stable hex colour', () => {
         expect(HEATMAP_COLOR_BY_CATEGORY.estrogen).toBe('#EC4899');
-        expect(HEATMAP_COLOR_BY_CATEGORY.anti_androgen).toBe('#5a7eff');
+        expect(HEATMAP_COLOR_BY_CATEGORY.anti_androgen).toBe('rgb(0, 176, 240)');
         expect(HEATMAP_COLOR_BY_CATEGORY.progestin).toBe('#F59E0B');
         expect(HEATMAP_COLOR_BY_CATEGORY.other).toBe('#64748B');
     });
@@ -74,8 +74,8 @@ describe('heatmapColorForEster / HEATMAP_COLOR_BY_CATEGORY', () => {
         expect(heatmapColorForEster(Ester.EV)).toBe('#EC4899');
         expect(heatmapColorForEster(Ester.E2)).toBe('#EC4899');
         // Anti-androgen → purple (CPA + BICA, both fall in the same bucket)
-        expect(heatmapColorForEster(Ester.CPA)).toBe('#5a7eff');
-        expect(heatmapColorForEster(Ester.BICA)).toBe('#5a7eff');
+        expect(heatmapColorForEster(Ester.CPA)).toBe('rgb(0, 176, 240)');
+        expect(heatmapColorForEster(Ester.BICA)).toBe('rgb(0, 176, 240)');
         // Progestin → amber (PROG / 黄体酮 — 之前一直靠 'PRL' 字符串 fallback 占位)
         expect(heatmapColorForEster(Ester.PROG)).toBe('#F59E0B');
         // Other (anything not in the switch arms — e.g. PRL isn't an Enum
@@ -115,7 +115,7 @@ describe('category dedup (cell-level colour count)', () => {
 
     it('BICA by itself is anti_androgen (regression for the BICA→other bug)', () => {
         expect(drugCategoryOf(Ester.BICA)).toBe('anti_androgen');
-        expect(heatmapColorForEster(Ester.BICA)).toBe('#5a7eff');
+        expect(heatmapColorForEster(Ester.BICA)).toBe('rgb(0, 176, 240)');
     });
 
     it('PRL (string-cast legacy value) maps to progestin, not other', () => {

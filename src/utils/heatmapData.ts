@@ -65,7 +65,7 @@ export interface HeatmapRange {
  *  distinguishable for common colour-vision deficiencies. */
 export const HEATMAP_COLOR_BY_CATEGORY: Record<DrugCategory, string> = {
     estrogen: '#EC4899',      // Tailwind pink-500 — estradiol family
-    anti_androgen: '#5a7eff', // Custom blue — CPA / bica (was purple-500; user-requested hue)
+    anti_androgen: 'rgb(0, 176, 240)', // CPA / BICA — user-requested hue (was #5a7eff)
     progestin: '#F59E0B',     // Tailwind amber-500 — progesterone / PRL
     other: '#64748B',         // Tailwind slate-500 — fallback
 };
