@@ -1290,6 +1290,11 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
     series.push(...refSeries);
 
     // ----- Build Y axes -----
+    // `axisPointer: { show: false }` on each yAxis disables the per-axis pointer line,
+    // so axisPointer at the top level only renders the X-axis (vertical) cursor.
+    // Without this, ECharts draws a horizontal dashed pointer line for EACH y-axis
+    // (left E2 + right AA) — 2 extra horizontal lines that the Recharts version did
+    // not have. Top-level `yAxisIndex: null` does NOT reliably suppress these.
     const yAxisLeft: any = {
         type: 'value',
         name: 'E2 (pg/mL)',
@@ -1309,6 +1314,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
             formatter: formatAxisTickForECharts,
         },
         splitLine: { show: false },
+        axisPointer: { show: false },
     };
 
     const yAxisRight: any = {
@@ -1330,6 +1336,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
             formatter: formatAxisTickForECharts,
         } : { show: false },
         splitLine: { show: false },
+        axisPointer: { show: false },
     };
 
     return {
@@ -1389,16 +1396,15 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         ],
 
         // axisPointer replaces Recharts Tooltip cursor + custom touch overlay.
-        // xAxisIndex: 0 = only show the X-axis pointer (vertical line following cursor).
-        // yAxisIndex: null = explicitly disable Y-axis pointers — without this, ECharts
-        // default draws horizontal lines for BOTH y-axes (left E2 + right AA), giving us
-        // 2 extra horizontal dashed lines that didn't exist in the Recharts version.
+        // Per-axis `axisPointer: { show: false }` (set on each yAxis below) disables the
+        // Y-axis pointer lines; the top-level config here only renders the X-axis vertical
+        // cursor. Setting `yAxisIndex: null` on the top-level does NOT actually disable
+        // Y-axis pointer in ECharts — the per-axis show:false is the only reliable way.
         axisPointer: {
             show: true,
             trigger: 'mousemove|click|touch',
             snap: true,
             xAxisIndex: 0,
-            yAxisIndex: null,
             label: { show: false },
             handle: { show: false },
             lineStyle: {
