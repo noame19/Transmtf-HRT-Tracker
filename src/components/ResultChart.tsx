@@ -1123,10 +1123,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
                 ],
             },
         },
-        emphasis: {
-            focus: 'series',
-            itemStyle: { borderColor: ECHART_THEME.e2ActiveDotStroke, borderWidth: 3, color: ECHART_THEME.e2Accent },
-        },
+        emphasis: { disabled: true },
     });
 
     // ----- Main CPA curve (right axis, conditional) -----
@@ -1150,10 +1147,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
                     ],
                 },
             },
-            emphasis: {
-                focus: 'series',
-                itemStyle: { borderColor: '#fff', borderWidth: 3, color: aaColor },
-            },
+            emphasis: { disabled: true },
         });
     }
 
@@ -1178,10 +1172,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
                     ],
                 },
             },
-            emphasis: {
-                focus: 'series',
-                itemStyle: { borderColor: ECHART_THEME.personalActiveDotStroke, borderWidth: 2, color: ECHART_THEME.personalStroke },
-            },
+            emphasis: { disabled: true },
         });
     }
 
@@ -1197,10 +1188,7 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
             sampling: 'lttb',
             data: data.map(d => [d.time, d.concPersonalCPA ?? 0]),
             lineStyle: { color: aaColor, width: ECHART_THEME.personalStrokeWidth, type: 'dashed' },
-            emphasis: {
-                focus: 'series',
-                itemStyle: { borderColor: '#fff', borderWidth: 2, color: aaColor },
-            },
+            emphasis: { disabled: true },
         });
     }
 
