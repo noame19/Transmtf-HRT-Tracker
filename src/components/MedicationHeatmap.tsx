@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
+import { isE2Family } from '../../logic';
 import {
     buildHeatmapRange,
     HEATMAP_COLOR_BY_CATEGORY,
@@ -512,16 +513,16 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     : 'grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch'
                 }>
                     <KpiCard
-                        value={String(stats.totalEvents)}
-                        label={t('heatmap.kpi.total') || '累计用药'}
+                        value={stats.hrtStartLabel || '—'}
+                        label={t('heatmap.kpi.hrt_start') || '开始HRT'}
                     />
                     <KpiCard
-                        value={String(stats.activeDays)}
-                        label={t('heatmap.kpi.active_days') || '活跃天数'}
+                        value={String(stats.e2DoseCount)}
+                        label={t('heatmap.kpi.e2_count') || 'E2用药次数'}
                     />
                     <KpiCard
-                        value={String(stats.currentStreak)}
-                        label={t('heatmap.kpi.streak') || '当前连续'}
+                        value={stats.onTimeRate > 0 ? `${Math.round(stats.onTimeRate * 100)}%` : '—'}
+                        label={t('heatmap.kpi.on_time') || '用药准时率'}
                     />
                 </div>
                 </div>
@@ -701,7 +702,7 @@ const KpiCard: React.FC<{ value: string; label: string }> = ({ value, label }) =
     >
         <div className="flex items-center gap-1.5 min-w-0">
             <span
-                className="text-xl font-semibold tabular-nums tracking-tight leading-tight truncate"
+                className="text-base font-semibold tabular-nums tracking-tight leading-tight truncate"
                 style={{ color: 'var(--text-primary)' }}
             >
                 {value}
@@ -719,44 +720,55 @@ const KpiCard: React.FC<{ value: string; label: string }> = ({ value, label }) =
 // ── KPI computation ──────────────────────────────────────────────────────
 
 interface KpiStats {
-    totalEvents: number;
-    activeDays: number;
-    currentStreak: number;
+    /** Localised "starting HRT" duration string. Format examples:
+     *   days < 60         → "第30天"
+     *   60 ≤ days < 365   → "2个月15天"   (fixed 30-day month)
+     *   days ≥ 365        → "1年60天" / "2年230天"  (fixed 365-day year)
+     * Empty string when there's no history yet. */
+    hrtStartLabel: string;
+    /** Total E2-family dose events, with patch apply↔remove paired into 1. */
+    e2DoseCount: number;
+    /** On-time rate (0..1). Reserved for KPI #3 once plan-based compliance
+     *  logic is in place; currently always 0 (placeholder). */
+    onTimeRate: number;
+}
+
+/** Format a days-since-start duration using the three-bucket scheme:
+ *  <60 days → days only, ≥60 → months+days, ≥365 → years+days. */
+function formatHrtStart(days: number): string {
+    if (days < 0) return '';
+    if (days < 60) return `第${days}天`;
+    if (days < 365) {
+        const months = Math.floor(days / 30);
+        const rem = days - months * 30;
+        return rem === 0 ? `${months}个月` : `${months}个月${rem}天`;
+    }
+    const years = Math.floor(days / 365);
+    const rem = days - years * 365;
+    return rem === 0 ? `${years}年` : `${years}年${rem}天`;
 }
 
 function computeStats(events: DoseEvent[], today: Date): KpiStats {
-    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    // Filter out patch remove events so apply↔remove pairs count as 1 dose.
     const adminEvents = events.filter((e) => !isPatchRemove(e));
-    const totalEvents = adminEvents.length;
 
-    // Active days = distinct local days with ≥1 admin event in the FULL
-    // history (not the visible/cropped range). The KPI numbers represent
-    // the user's total usage, not "what's on screen right now" — otherwise
-    // toggling 2M/3M/6M would cause the count to jump around and confuse.
-    const dayKeys = new Set<string>();
-    for (const e of adminEvents) {
-        const d = new Date(e.timeH * 3600000);
-        dayKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-    }
-    const activeDays = dayKeys.size;
-
-    // Current streak = consecutive days ending today (or yesterday) with ≥1 event.
-    // Walk backwards from today; if today itself has no event, start from yesterday.
-    let streak = 0;
-    const cursor = new Date(todayMid);
-    // Step 1: peek at today — if empty, step back 1 day first (the streak is
-    // "still alive" if the user just hasn't logged today yet).
-    const todayHas = dayKeys.has(toDateKey(cursor));
-    if (!todayHas) cursor.setDate(cursor.getDate() - 1);
-    while (dayKeys.has(toDateKey(cursor))) {
-        streak += 1;
-        cursor.setDate(cursor.getDate() - 1);
+    // KPI #1: starting HRT — earliest admin event → today, in days.
+    let hrtStartLabel = '';
+    if (adminEvents.length > 0) {
+        const earliestMs = adminEvents.reduce((min, e) => Math.min(min, e.timeH * 3600000), Infinity);
+        const earliest = new Date(earliestMs);
+        const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+        const days = Math.max(0, Math.round((todayMid.getTime() - earliest.getTime()) / 86400000));
+        hrtStartLabel = formatHrtStart(days);
     }
 
-    // Reference to suppress unused warning when not used.
-    void totalEvents;
-    void adminEvents;
-    return { totalEvents, activeDays, currentStreak: streak };
+    // KPI #2: E2 dose count — E2-family admin events only.
+    const e2DoseCount = adminEvents.filter((e) => isE2Family(e.ester)).length;
+
+    // KPI #3: on-time rate — placeholder until plan-based compliance lands.
+    const onTimeRate = 0;
+
+    return { hrtStartLabel, e2DoseCount, onTimeRate };
 }
 
 function toDateKey(d: Date): string {
