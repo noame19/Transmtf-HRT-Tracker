@@ -502,12 +502,19 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
     }, [rawData, data]);
 
-    // Y axis domains (unchanged from Recharts version)
+    // Y axis domains. When xZoomRange is non-null, we restrict the data scan to
+    // the visible time window so the Y axis rescales with zoom — matching the
+    // ECharts reference behavior of `min: 'dataMin'`. baselineE2PGmL is a fixed
+    // reference line (markLine across full X), so it stays in the calculation
+    // regardless of zoom — otherwise zooming past baseline would push it offscreen.
     const yDomainLeft = useMemo((): [number, number] => {
         let basePeak = 0;
         let baseMin = Number.POSITIVE_INFINITY;
         let ciPeakRaw = 0;
         let hasBase = false;
+
+        const inRange = (t: number) =>
+            !xZoomRange || (t >= xZoomRange[0] && t <= xZoomRange[1]);
 
         const includeBase = (v: number | undefined) => {
             if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
@@ -522,11 +529,13 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
 
         for (const d of data) {
+            if (!inRange(d.time)) continue;
             includeBase(d.concE2);
             includeBase(d.concPersonal);
             includeCi(d.ci95High);
         }
         for (const l of labPoints) {
+            if (!inRange(l.time)) continue;
             includeBase(l.conc);
         }
         if (!hasE2Personal && baselineE2PGmL && baselineE2PGmL > 0) {
@@ -542,11 +551,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
-    }, [data, labPoints, simCI, baselineE2PGmL, hasE2Personal]);
+    }, [data, labPoints, simCI, baselineE2PGmL, hasE2Personal, xZoomRange]);
 
     const yDomainRight = useMemo((): [number, number] => {
         let basePeak = 0;
         let ciPeakRaw = 0;
+
+        const inRange = (t: number) =>
+            !xZoomRange || (t >= xZoomRange[0] && t <= xZoomRange[1]);
 
         const includeBase = (v: number | undefined) => {
             if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
@@ -559,6 +571,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         };
 
         for (const d of data) {
+            if (!inRange(d.time)) continue;
             includeBase(d.concCPA);
             includeBase(d.concPersonalCPA);
             includeCi(d.cpaCi95High);
@@ -568,7 +581,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const peak = Math.max(basePeak, ciPeak, CPA_AXIS_FALLBACK_MAX);
         const padded = Math.max(CPA_AXIS_FALLBACK_MAX, peak * 1.12);
         return [0, niceCeil(padded, CPA_AXIS_FALLBACK_MAX)];
-    }, [data]);
+    }, [data, xZoomRange]);
 
     const nowPoint = useMemo(() => {
         if (!sim || data.length === 0) return null;
