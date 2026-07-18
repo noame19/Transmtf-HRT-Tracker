@@ -85,7 +85,7 @@ const MainLayout: React.FC = () => {
     const { showDialog } = useDialog();
     const navigate = useNavigate();
     const location = useLocation();
-    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans, remindersEnabled } = useAppData();
+    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans, remindersEnabled, addPostponeLogEntry } = useAppData();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
@@ -531,6 +531,9 @@ const MainLayout: React.FC = () => {
                 updatedAtH: Date.now() / 3600000,
             }
             : p));
+        // Log this postpone so the heatmap "本月推迟数" KPI can count it
+        // without having to diff plan state deltas.
+        addPostponeLogEntry(planId, days);
     };
 
     useEffect(() => {

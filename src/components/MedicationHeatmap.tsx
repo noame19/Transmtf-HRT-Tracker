@@ -7,6 +7,7 @@ import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
 import { isE2Family } from '../../logic';
+import type { PostponeLogEntry } from '../contexts/AppDataContext';
 import {
     buildHeatmapRange,
     HEATMAP_COLOR_BY_CATEGORY,
@@ -54,6 +55,9 @@ interface MedicationHeatmapProps {
      *  light-yellow cell with the day-of-month number inside (so the user can
      *  spot plan-launch dates at a glance without leaving the heatmap). */
     plans?: Plan[];
+    /** Per-postpone log entries. Used to compute "本月推迟数" KPI.
+     *  Optional — when omitted, KPI shows "—". */
+    postponeLog?: PostponeLogEntry[];
     /** Override "now" for tests / previews. */
     today?: Date;
     /** Future pad appended after today (default 21d). */
@@ -118,6 +122,7 @@ function categoriesOfCell(cell: HeatmapDayCell): DrugCategory[] {
 const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     events,
     plans,
+    postponeLog,
     today,
     futurePadDays = 21,
     compact = false,
@@ -282,7 +287,10 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     }, []);
 
     // ── KPI stats (right side card stack) ─────────────────────────────────
-    const stats = useMemo(() => computeStats(events, todayRef), [events, todayRef]);
+    const stats = useMemo(
+        () => computeStats(events, todayRef, plans, postponeLog),
+        [events, todayRef, plans, postponeLog]
+    );
 
     // ── Tooltip state ─────────────────────────────────────────────────────
     const [tooltip, setTooltip] = useState<{
@@ -509,8 +517,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                  *  in normal mode (≥md), or a 3-column row below the grid in
                  *  compact mode (heatmap rendered in a narrow column). */}
                 <div className={compact
-                    ? 'grid grid-cols-3 gap-2 w-full md:mt-auto md:flex-none'
-                    : 'grid grid-cols-3 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch'
+                    ? 'grid grid-cols-2 gap-2 w-full md:mt-auto md:flex-none'
+                    : 'grid grid-cols-2 md:flex md:flex-col gap-2 w-full md:flex-[1] md:min-w-[144px] md:self-stretch'
                 }>
                     <KpiCard
                         value={stats.hrtStartLabel || '—'}
@@ -521,8 +529,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                         label={t('heatmap.kpi.e2_count') || 'E2用药次数'}
                     />
                     <KpiCard
-                        value={stats.onTimeRate > 0 ? `${Math.round(stats.onTimeRate * 100)}%` : '—'}
-                        label={t('heatmap.kpi.on_time') || '用药准时率'}
+                        value={stats.achievementRate > 0 ? `${Math.round(stats.achievementRate * 100)}%` : '—'}
+                        label={t('heatmap.kpi.achievement') || '计划达成率'}
+                    />
+                    <KpiCard
+                        value={String(stats.monthPostponeCount)}
+                        label={t('heatmap.kpi.month_postpone') || '本月推迟数'}
                     />
                 </div>
                 </div>
@@ -728,9 +740,12 @@ interface KpiStats {
     hrtStartLabel: string;
     /** Total E2-family dose events, with patch apply↔remove paired into 1. */
     e2DoseCount: number;
-    /** On-time rate (0..1). Reserved for KPI #3 once plan-based compliance
-     *  logic is in place; currently always 0 (placeholder). */
-    onTimeRate: number;
+    /** Plan achievement rate (0..1). Computed from CURRENT plan state — a
+     *  postponed dose rolls the plan forward and disappears from the
+     *  denominator, so postpone is "neutral" (see computeStats below). */
+    achievementRate: number;
+    /** Number of postpone actions in the current calendar month. */
+    monthPostponeCount: number;
 }
 
 /** Format a days-since-start duration using the three-bucket scheme:
@@ -748,7 +763,12 @@ function formatHrtStart(days: number): string {
     return rem === 0 ? `${years}年` : `${years}年${rem}天`;
 }
 
-function computeStats(events: DoseEvent[], today: Date): KpiStats {
+function computeStats(
+    events: DoseEvent[],
+    today: Date,
+    plans?: Plan[],
+    postponeLog?: PostponeLogEntry[],
+): KpiStats {
     // Filter out patch remove events so apply↔remove pairs count as 1 dose.
     const adminEvents = events.filter((e) => !isPatchRemove(e));
 
@@ -765,10 +785,45 @@ function computeStats(events: DoseEvent[], today: Date): KpiStats {
     // KPI #2: E2 dose count — E2-family admin events only.
     const e2DoseCount = adminEvents.filter((e) => isE2Family(e.ester)).length;
 
-    // KPI #3: on-time rate — placeholder until plan-based compliance lands.
-    const onTimeRate = 0;
+    // KPI #3: plan achievement rate (口径 B — lenient).
+    // Walk each enabled plan's startDateH → today via dueMomentsInRange to
+    // get all "should-have-dosed" days. Match each against an E2 admin event
+    // within ±24h. Denominator excludes post-roll-forward days because the
+    // plan's startDateH has already moved past them; that means postpone is
+    // "neutral" (it removes a day from the denominator without recording a
+    // "missed" — see KPI #4 for the explicit counter).
+    let achievementRate = 0;
+    if (plans && plans.length > 0) {
+        let totalDue = 0;
+        let totalTaken = 0;
+        const MATCH_WINDOW_MS = 24 * 3600 * 1000;
+        for (const plan of plans) {
+            if (!plan.enabled) continue;
+            // E2-category plans only — anti-androgens / progestins don't count.
+            if (drugCategoryOf(plan.ester) !== 'estrogen') continue;
+            const startDate = new Date(plan.startDateH * 3600000);
+            const dueMoments = dueMomentsInRange(plan, startDate, today);
+            for (const due of dueMoments) {
+                const dueMs = due.getTime();
+                if (dueMs > today.getTime()) continue; // future, skip
+                totalDue += 1;
+                const matched = adminEvents.some(
+                    (e) => isE2Family(e.ester) && Math.abs(e.timeH * 3600000 - dueMs) <= MATCH_WINDOW_MS
+                );
+                if (matched) totalTaken += 1;
+            }
+        }
+        achievementRate = totalDue > 0 ? totalTaken / totalDue : 0;
+    }
 
-    return { hrtStartLabel, e2DoseCount, onTimeRate };
+    // KPI #4: postpone actions in the current calendar month.
+    let monthPostponeCount = 0;
+    if (postponeLog && postponeLog.length > 0) {
+        const ym = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+        monthPostponeCount = postponeLog.filter((e) => e.yearMonth === ym).length;
+    }
+
+    return { hrtStartLabel, e2DoseCount, achievementRate, monthPostponeCount };
 }
 
 function toDateKey(d: Date): string {

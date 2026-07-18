@@ -23,6 +23,19 @@ const WEIGHT_MIGRATION_FLAG = 'hrt-weight-per-dose-migrated';
 const LEGACY_WEIGHT_KEY = 'hrt-weight';
 const PLANS_KEY = 'hrt-plans';
 const REMINDERS_ENABLED_KEY = 'hrt-reminders-enabled';
+const POSTPONE_LOG_KEY = 'hrt-postpone-log';
+
+/** Single postpone action, logged so the heatmap KPI can show
+ *  "本plan推迟数" / "本月推迟数" without parsing plan state deltas. */
+interface PostponeLogEntry {
+    id: string;
+    planId: string;
+    /** Local-date key YYYY-MM identifying the month this postpone counts
+     *  toward (matches the user-perceived month boundary). */
+    yearMonth: string;
+    days: number;
+    tsMs: number;
+}
 
 export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
@@ -88,6 +101,10 @@ interface AppDataContextType {
     /** Global reminder toggle (Android system notifications). Default ON. */
     remindersEnabled: boolean;
     setRemindersEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+    /** Per-postpone log entries. Persisted to localStorage so the heatmap
+     *  "本月推迟数" KPI survives reloads without needing to diff plan state. */
+    postponeLog: PostponeLogEntry[];
+    addPostponeLogEntry: (planId: string, days: number) => void;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -228,6 +245,24 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         return raw === '1' || raw.toLowerCase() === 'true';
     });
 
+    const [postponeLog, setPostponeLog] = useState<PostponeLogEntry[]>(() => {
+        const raw = localStorage.getItem(POSTPONE_LOG_KEY);
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter((e: any) =>
+                typeof e?.id === 'string' &&
+                typeof e?.planId === 'string' &&
+                typeof e?.yearMonth === 'string' &&
+                typeof e?.days === 'number' &&
+                typeof e?.tsMs === 'number'
+            );
+        } catch {
+            return [];
+        }
+    });
+
     /**
      * Conflict-rule-enforcing setter: at most one enabled plan per (ester, route).
      * If the proposed next state has any (ester, route) tuple shared by two
@@ -348,6 +383,21 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         localStorage.setItem(REMINDERS_ENABLED_KEY, remindersEnabled ? '1' : '0');
         finalizeLocalUpdate('remindersEnabled', REMINDERS_ENABLED_KEY);
     }, [remindersEnabled]);
+    useEffect(() => {
+        localStorage.setItem(POSTPONE_LOG_KEY, JSON.stringify(postponeLog));
+    }, [postponeLog]);
+
+    const addPostponeLogEntry = useCallback((planId: string, days: number) => {
+        const d = new Date();
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        setPostponeLog(prev => [...prev, {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            planId,
+            yearMonth: ym,
+            days,
+            tsMs: d.getTime(),
+        }]);
+    }, []);
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
@@ -669,6 +719,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setPlans,
         remindersEnabled,
         setRemindersEnabled,
+        postponeLog,
+        addPostponeLogEntry,
     };
 
     return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

@@ -74,6 +74,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   simCI,
   baselineE2PGmL,
   plans,
+  postponeLog,
   onEditEvent,
 }) => {
   const { t, lang } = useTranslation();
@@ -656,6 +657,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             <MedicationHeatmap
               events={events}
               plans={plans}
+              postponeLog={postponeLog}
               today={currentTime}
               compact={isTwoCol}
             />
