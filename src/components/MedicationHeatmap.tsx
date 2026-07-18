@@ -7,7 +7,7 @@ import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
 import { isE2Family } from '../../logic';
-import type { PostponeLogEntry } from '../contexts/AppDataContext';
+import type { PostponeLogEntry, DueLogEntry } from '../contexts/AppDataContext';
 import {
     buildHeatmapRange,
     HEATMAP_COLOR_BY_CATEGORY,
@@ -58,6 +58,9 @@ interface MedicationHeatmapProps {
     /** Per-postpone log entries. Used to compute "本月推迟数" KPI.
      *  Optional — when omitted, KPI shows "—". */
     postponeLog?: PostponeLogEntry[];
+    /** Frozen per-due-day compliance record (口径 C source of truth for
+     *  "计划达成率"). Optional — when omitted, KPI shows "—". */
+    dueLog?: DueLogEntry[];
     /** Override "now" for tests / previews. */
     today?: Date;
     /** Future pad appended after today (default 21d). */
@@ -123,6 +126,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
     events,
     plans,
     postponeLog,
+    dueLog,
     today,
     futurePadDays = 21,
     compact = false,
@@ -288,8 +292,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
     // ── KPI stats (right side card stack) ─────────────────────────────────
     const stats = useMemo(
-        () => computeStats(events, todayRef, plans, postponeLog),
-        [events, todayRef, plans, postponeLog]
+        () => computeStats(events, todayRef, plans, postponeLog, dueLog),
+        [events, todayRef, plans, postponeLog, dueLog]
     );
 
     // ── Tooltip state ─────────────────────────────────────────────────────
@@ -768,6 +772,7 @@ function computeStats(
     today: Date,
     plans?: Plan[],
     postponeLog?: PostponeLogEntry[],
+    dueLog?: DueLogEntry[],
 ): KpiStats {
     // Filter out patch remove events so apply↔remove pairs count as 1 dose.
     const adminEvents = events.filter((e) => !isPatchRemove(e));
@@ -785,35 +790,30 @@ function computeStats(
     // KPI #2: E2 dose count — E2-family admin events only.
     const e2DoseCount = adminEvents.filter((e) => isE2Family(e.ester)).length;
 
-    // KPI #3: plan achievement rate (口径 B — lenient).
-    // Walk each enabled plan's startDateH → today via dueMomentsInRange to
-    // get all "should-have-dosed" days. Match each against an E2 admin event
-    // within ±24h. Denominator excludes post-roll-forward days because the
-    // plan's startDateH has already moved past them; that means postpone is
-    // "neutral" (it removes a day from the denominator without recording a
-    // "missed" — see KPI #4 for the explicit counter).
+    // KPI #3: plan achievement rate (口径 C — frozen dueLog).
+    // Source of truth is the persisted dueLog (one entry per past due-day),
+    // NOT a re-computation against current plan state. Each dueLog entry has
+    // already been classified as taken / skipped / postponed at the time the
+    // due-day passed (via reminder interaction OR the AppDataProvider startup
+    // scan). Edits / disables to plans can therefore NEVER rewrite past.
+    //   numerator   = taken entries
+    //   denominator = taken + skipped (postponed excluded — user chose to
+    //                 roll forward; the day is "not applicable" rather than
+    //                 "missed")
     let achievementRate = 0;
-    if (plans && plans.length > 0) {
-        let totalDue = 0;
-        let totalTaken = 0;
-        const MATCH_WINDOW_MS = 24 * 3600 * 1000;
-        for (const plan of plans) {
-            if (!plan.enabled) continue;
-            // E2-category plans only — anti-androgens / progestins don't count.
-            if (drugCategoryOf(plan.ester) !== 'estrogen') continue;
-            const startDate = new Date(plan.startDateH * 3600000);
-            const dueMoments = dueMomentsInRange(plan, startDate, today);
-            for (const due of dueMoments) {
-                const dueMs = due.getTime();
-                if (dueMs > today.getTime()) continue; // future, skip
-                totalDue += 1;
-                const matched = adminEvents.some(
-                    (e) => isE2Family(e.ester) && Math.abs(e.timeH * 3600000 - dueMs) <= MATCH_WINDOW_MS
-                );
-                if (matched) totalTaken += 1;
+    if (dueLog && dueLog.length > 0) {
+        let taken = 0;
+        let applicable = 0;
+        for (const e of dueLog) {
+            if (e.status === 'taken') {
+                taken += 1;
+                applicable += 1;
+            } else if (e.status === 'skipped') {
+                applicable += 1;
             }
+            // 'postponed' intentionally excluded from denominator.
         }
-        achievementRate = totalDue > 0 ? totalTaken / totalDue : 0;
+        achievementRate = applicable > 0 ? taken / applicable : 0;
     }
 
     // KPI #4: postpone actions in the current calendar month.

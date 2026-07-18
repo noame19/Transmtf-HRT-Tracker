@@ -7,7 +7,7 @@ import {
     ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
 } from '../../logic';
 import { Plan } from '../../types';
-import { drugCategoryOf, sanitizePlansForConflict } from '../utils/planSchedule';
+import { drugCategoryOf, sanitizePlansForConflict, dueMomentsInRange } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
 import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
@@ -24,6 +24,7 @@ const LEGACY_WEIGHT_KEY = 'hrt-weight';
 const PLANS_KEY = 'hrt-plans';
 const REMINDERS_ENABLED_KEY = 'hrt-reminders-enabled';
 const POSTPONE_LOG_KEY = 'hrt-postpone-log';
+const DUE_LOG_KEY = 'hrt-due-log';
 
 /** Single postpone action, logged so the heatmap KPI can show
  *  "本plan推迟数" / "本月推迟数" without parsing plan state deltas. */
@@ -34,6 +35,19 @@ interface PostponeLogEntry {
      *  toward (matches the user-perceived month boundary). */
     yearMonth: string;
     days: number;
+    tsMs: number;
+}
+
+/** Per-plan-fire-day compliance record. Written ONCE (or updated) when
+ *  the user interacts with a reminder, OR auto-filled as 'skipped' on
+ *  app startup for past due days the user never touched. Frozen in time
+ *  so plan edits / disables can never "rewrite history". */
+interface DueLogEntry {
+    id: string;
+    planId: string;
+    /** Local-date key YYYY-MM-DD for the due day (NOT the interaction time). */
+    dateKey: string;
+    status: 'taken' | 'skipped' | 'postponed';
     tsMs: number;
 }
 
@@ -105,6 +119,14 @@ interface AppDataContextType {
      *  "本月推迟数" KPI survives reloads without needing to diff plan state. */
     postponeLog: PostponeLogEntry[];
     addPostponeLogEntry: (planId: string, days: number) => void;
+    /** Per-plan-fire-day compliance record (frozen history). Powers the
+     *  "计划达成率" KPI in 口径 C — editing a plan cannot erase past misses. */
+    dueLog: DueLogEntry[];
+    /** Upsert (insert or update) a dueLog entry. If an entry exists for the
+     *  same (planId, dateKey), its status is updated; otherwise a new entry
+     *  is appended. `dateKey` is the due-day's local date (YYYY-MM-DD), NOT
+     *  the current timestamp. */
+    upsertDueLogEntry: (planId: string, dateKey: string, status: DueLogEntry['status']) => void;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -263,6 +285,24 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     });
 
+    const [dueLog, setDueLog] = useState<DueLogEntry[]>(() => {
+        const raw = localStorage.getItem(DUE_LOG_KEY);
+        if (!raw) return [];
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter((e: any) =>
+                typeof e?.id === 'string' &&
+                typeof e?.planId === 'string' &&
+                typeof e?.dateKey === 'string' &&
+                (e?.status === 'taken' || e?.status === 'skipped' || e?.status === 'postponed') &&
+                typeof e?.tsMs === 'number'
+            );
+        } catch {
+            return [];
+        }
+    });
+
     /**
      * Conflict-rule-enforcing setter: at most one enabled plan per (ester, route).
      * If the proposed next state has any (ester, route) tuple shared by two
@@ -386,6 +426,56 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     useEffect(() => {
         localStorage.setItem(POSTPONE_LOG_KEY, JSON.stringify(postponeLog));
     }, [postponeLog]);
+    useEffect(() => {
+        localStorage.setItem(DUE_LOG_KEY, JSON.stringify(dueLog));
+    }, [dueLog]);
+
+    // Startup scan (and on every plan change): for each enabled E2 plan,
+    // walk past dueMomentsInRange from plan.startDateH to today, and for
+    // any due day that has NO dueLog entry yet, append a 'skipped' one.
+    // This is what makes "没开机 = 跳过" actually true (口径 C): the past
+    // always reflects what the plan was asking for, regardless of whether
+    // the user opened the app. Frozen at scan-time so plan edits / disables
+    // after the fact cannot rewrite history.
+    const scanRef = useRef({ lastScanKey: '' });
+    useEffect(() => {
+        const scanKey = `${plans.length}|${plans.map((p) => `${p.id}:${p.enabled}:${p.startDateH}:${p.intervalDays ?? ''}:${p.intervalHoursPerDay ?? ''}`).join(',')}`;
+        if (scanRef.current.lastScanKey === scanKey) return;
+        scanRef.current.lastScanKey = scanKey;
+
+        const today = new Date();
+        const todayMs = today.getTime();
+        const localKey = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        setDueLog(prev => {
+            const have = new Set(prev.map((e) => `${e.planId}|${e.dateKey}`));
+            const additions: DueLogEntry[] = [];
+            for (const p of plans) {
+                if (!p.enabled) continue;
+                if (drugCategoryOf(p.ester) !== 'estrogen') continue;
+                const start = new Date(p.startDateH * 3600000);
+                const dueMoments = dueMomentsInRange(p, start, today);
+                for (const due of dueMoments) {
+                    const dueMs = due.getTime();
+                    if (dueMs > todayMs) continue;
+                    const k = `${p.id}|${localKey(due)}`;
+                    if (have.has(k)) continue;
+                    const tsMs = Date.now();
+                    additions.push({
+                        id: `${tsMs}-${Math.random().toString(36).slice(2, 8)}`,
+                        planId: p.id,
+                        dateKey: localKey(due),
+                        status: 'skipped',
+                        tsMs,
+                    });
+                    have.add(k);
+                }
+            }
+            if (additions.length === 0) return prev;
+            return [...prev, ...additions];
+        });
+    }, [plans]);
 
     const addPostponeLogEntry = useCallback((planId: string, days: number) => {
         const d = new Date();
@@ -398,6 +488,31 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
             tsMs: d.getTime(),
         }]);
     }, []);
+
+    /** Upsert a dueLog entry by (planId, dateKey). If one exists, replace
+     *  its status; otherwise append. Used by reminder interactions AND by
+     *  the startup-scan that fills 'skipped' for past unattended due days. */
+    const upsertDueLogEntry = useCallback(
+        (planId: string, dateKey: string, status: DueLogEntry['status']) => {
+            setDueLog(prev => {
+                const idx = prev.findIndex((e) => e.planId === planId && e.dateKey === dateKey);
+                const tsMs = Date.now();
+                if (idx >= 0) {
+                    const next = prev.slice();
+                    next[idx] = { ...next[idx], status, tsMs };
+                    return next;
+                }
+                return [...prev, {
+                    id: `${tsMs}-${Math.random().toString(36).slice(2, 8)}`,
+                    planId,
+                    dateKey,
+                    status,
+                    tsMs,
+                }];
+            });
+        },
+        []
+    );
 
     useEffect(() => {
         const lang = localStorage.getItem('hrt-lang') || 'en';
@@ -721,6 +836,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setRemindersEnabled,
         postponeLog,
         addPostponeLogEntry,
+        dueLog,
+        upsertDueLogEntry,
     };
 
     return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

@@ -75,6 +75,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   baselineE2PGmL,
   plans,
   postponeLog,
+  dueLog,
   onEditEvent,
 }) => {
   const { t, lang } = useTranslation();
@@ -658,6 +659,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               events={events}
               plans={plans}
               postponeLog={postponeLog}
+              dueLog={dueLog}
               today={currentTime}
               compact={isTwoCol}
             />

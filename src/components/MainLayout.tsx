@@ -85,7 +85,7 @@ const MainLayout: React.FC = () => {
     const { showDialog } = useDialog();
     const navigate = useNavigate();
     const location = useLocation();
-    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans, remindersEnabled, addPostponeLogEntry } = useAppData();
+    const { events, setEvents, labResults, setLabResults, currentTime, plans, setPlans, remindersEnabled, addPostponeLogEntry, upsertDueLogEntry } = useAppData();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingEvent, setEditingEvent] = useState<DoseEvent | null>(null);
@@ -407,6 +407,14 @@ const MainLayout: React.FC = () => {
      * shows up in the compliance banner, which is the right place to
      * surface that signal.
      */
+    /** Convert a millisecond timestamp to a local-date YYYY-MM-DD key.
+     *  Used to address dueLog entries by the due-day (not the interaction
+     *  time). Matches the user-perceived day boundary (local midnight). */
+    const localDateKeyFromMs = (ms: number): string => {
+        const d = new Date(ms);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
     const handleDirectConfirm = () => {
         const plan = matchedPendingPlan;
         setPendingReminder(null);
@@ -426,6 +434,7 @@ const MainLayout: React.FC = () => {
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
         });
         markHandled(reminderKey(plan.id, pendingReminder.scheduledAtMs));
+        upsertDueLogEntry(plan.id, localDateKeyFromMs(pendingReminder.scheduledAtMs), 'taken');
     };
 
     /**
@@ -454,6 +463,7 @@ const MainLayout: React.FC = () => {
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
         });
         markHandled(reminderKey(plan.id, scheduledAtMs));
+        upsertDueLogEntry(plan.id, localDateKeyFromMs(scheduledAtMs), 'taken');
     };
 
     /**
@@ -496,6 +506,7 @@ const MainLayout: React.FC = () => {
         showDialog('confirm', `${title}\n\n${body}`, () => {
             markHandled(reminderKey(source!.planId, source!.scheduledAtMs));
             setPendingReminder(null);
+            upsertDueLogEntry(source!.planId, localDateKeyFromMs(source!.scheduledAtMs), 'skipped');
         });
     };
 
@@ -522,6 +533,11 @@ const MainLayout: React.FC = () => {
         }
         if (source) {
             markHandled(reminderKey(planId, source.scheduledAtMs));
+            // The postponed due day still counts toward dueLog so the
+            // achievement-rate denominator stays complete; achievement
+            // excludes 'postponed' from the numerator + denominator (treated
+            // as "not applicable — user chose to roll forward").
+            upsertDueLogEntry(planId, localDateKeyFromMs(source.scheduledAtMs), 'postponed');
         }
         setPendingReminder(null);
         setPlans(prev => prev.map(p => p.id === planId
