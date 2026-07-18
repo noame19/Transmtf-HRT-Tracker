@@ -823,7 +823,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         timer: ReturnType<typeof setTimeout> | null;
     } | null>(null);
 
-    const LONG_PRESS_MS = 1500;
+    const LONG_PRESS_MS = 1000;
     const MOVE_TOLERANCE_PX = 10;
 
     const setDataZoomDisabled = useCallback((disabled: boolean) => {
