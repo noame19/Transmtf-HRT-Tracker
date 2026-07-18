@@ -551,9 +551,14 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             includeBase(baselineE2PGmL);
         }
 
+        // Lower bound = baseMin directly so the minimum E2 data point never sits
+        // outside the Y axis. niceFloor(0.85) was making nice axis labels but
+        // cropping troughs (e.g. baseMin=88 → niceFloor=100, so 88 was clipped).
+        // We trade tick aesthetics for data integrity — ECharts auto-picks ticks
+        // that look reasonable even when the bound isn't a "nice" number.
         const minVal = hasBase ? baseMin : 0;
         const padded = Math.max(E2_AXIS_FALLBACK_MAX, basePeak * 1.12);
-        const lower = minVal > 0 ? niceFloor(minVal * 0.85, 0) : 0;
+        const lower = minVal > 0 ? minVal : 0;
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
