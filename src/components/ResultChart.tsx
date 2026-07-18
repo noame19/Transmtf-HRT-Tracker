@@ -654,11 +654,23 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
         // Track current dataZoom range so the X-axis label formatter can switch
         // from "MMM d" to "MMM d HH:mm" when zoomed in to < 2 days visible.
-        const onDataZoom = (params: any) => {
-            const batch = (params && params.batch) || [];
-            const xZoom = batch.find((b: any) => 'xAxisIndex' in b ? b.xAxisIndex === 0 : true) || batch[0];
-            if (xZoom && typeof xZoom.startValue === 'number' && typeof xZoom.endValue === 'number') {
-                setXZoomRange([xZoom.startValue, xZoom.endValue]);
+        // ECharts' dataZoom event payload does NOT reliably expose startValue/
+        // endValue (we didn't configure them on the dataZoom, and wheel zoom
+        // may not write them back). Use the chart's grid rect + convertFromPixel
+        // on the grid edges — this works for any zoom source (wheel, button,
+        // dispatchAction).
+        const onDataZoom = () => {
+            const chart = chartInstanceRef.current;
+            if (!chart) return;
+            const opt = chart.getOption();
+            const grid = (opt.grid as any[])?.[0] ?? { left: 60, right: 30, top: 30, bottom: 30 };
+            const leftPx = typeof grid.left === 'number' ? grid.left : 60;
+            const rightPx = chart.getWidth() - (typeof grid.right === 'number' ? grid.right : 30);
+            const startMs = chart.convertFromPixel({ xAxisIndex: 0 }, leftPx);
+            const endMs = chart.convertFromPixel({ xAxisIndex: 0 }, rightPx);
+            if (typeof startMs === 'number' && typeof endMs === 'number'
+                && Number.isFinite(startMs) && Number.isFinite(endMs)) {
+                setXZoomRange([startMs, endMs]);
             }
         };
         instance.on('dataZoom', onDataZoom);
