@@ -39,6 +39,8 @@ export default defineConfig(({ mode }) => {
             ]
           },
           workbox: {
+            // ECharts bundle is 2.27 MB; raise precache limit above default 2 MiB.
+            maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
             runtimeCaching: [
               {
                 urlPattern: /^https:\/\/cdn\.tailwindcss\.com\/.*/i,
