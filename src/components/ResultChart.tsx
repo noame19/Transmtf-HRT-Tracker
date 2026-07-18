@@ -514,13 +514,18 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
     // Y axis domains. When xZoomRange is non-null, we restrict the data scan to
     // the visible time window so the Y axis rescales with zoom — matching the
-    // ECharts reference behavior of `min: 'dataMin'`. baselineE2PGmL is a fixed
-    // reference line (markLine across full X), so it stays in the calculation
-    // regardless of zoom — otherwise zooming past baseline would push it offscreen.
+    // ECharts reference behavior of `min: 'dataMin'`.
+    //
+    // CI 95% band is INTENTIONALLY excluded from peak calculation: it can extend
+    // past the Y axis at peaks (ECharts clips to grid), which gives a tighter,
+    // curve-following axis range. The user explicitly chose this trade-off.
+    // baselineE2PGmL is a fixed reference line (markLine across full X), so it
+    // stays in the calculation regardless of zoom — otherwise zooming past
+    // baseline would push it offscreen and the axis lower bound would still
+    // reflect it via niceFloor.
     const yDomainLeft = useMemo((): [number, number] => {
         let basePeak = 0;
         let baseMin = Number.POSITIVE_INFINITY;
-        let ciPeakRaw = 0;
         let hasBase = false;
 
         const inRange = (t: number) =>
@@ -533,16 +538,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             if (v < baseMin) baseMin = v;
         };
 
-        const includeCi = (v: number | undefined) => {
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
-            if (v > ciPeakRaw) ciPeakRaw = v;
-        };
-
         for (const d of data) {
             if (!inRange(d.time)) continue;
             includeBase(d.concE2);
             includeBase(d.concPersonal);
-            includeCi(d.ci95High);
         }
         for (const l of labPoints) {
             if (!inRange(l.time)) continue;
@@ -553,19 +552,15 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         }
 
         const minVal = hasBase ? baseMin : 0;
-        const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 20) : E2_AXIS_FALLBACK_MAX;
-        const ciPeak = Math.min(ciPeakRaw, ciCap);
-        const peak = Math.max(basePeak, ciPeak, E2_AXIS_FALLBACK_MAX);
-        const padded = Math.max(E2_AXIS_FALLBACK_MAX, peak * 1.12);
+        const padded = Math.max(E2_AXIS_FALLBACK_MAX, basePeak * 1.12);
         const lower = minVal > 0 ? niceFloor(minVal * 0.85, 0) : 0;
         let upper = niceCeil(padded, E2_AXIS_FALLBACK_MAX);
         if (upper - lower < 1) upper = lower + 1;
         return [lower, upper];
-    }, [data, labPoints, simCI, baselineE2PGmL, hasE2Personal, xZoomRange]);
+    }, [data, labPoints, baselineE2PGmL, hasE2Personal, xZoomRange]);
 
     const yDomainRight = useMemo((): [number, number] => {
         let basePeak = 0;
-        let ciPeakRaw = 0;
 
         const inRange = (t: number) =>
             !xZoomRange || (t >= xZoomRange[0] && t <= xZoomRange[1]);
@@ -575,21 +570,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             if (v > basePeak) basePeak = v;
         };
 
-        const includeCi = (v: number | undefined) => {
-            if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return;
-            if (v > ciPeakRaw) ciPeakRaw = v;
-        };
-
         for (const d of data) {
             if (!inRange(d.time)) continue;
             includeBase(d.concCPA);
             includeBase(d.concPersonalCPA);
-            includeCi(d.cpaCi95High);
         }
-        const ciCap = basePeak > 0 ? Math.max(basePeak * 1.5, basePeak + 0.2) : CPA_AXIS_FALLBACK_MAX;
-        const ciPeak = Math.min(ciPeakRaw, ciCap);
-        const peak = Math.max(basePeak, ciPeak, CPA_AXIS_FALLBACK_MAX);
-        const padded = Math.max(CPA_AXIS_FALLBACK_MAX, peak * 1.12);
+        const padded = Math.max(CPA_AXIS_FALLBACK_MAX, basePeak * 1.12);
         return [0, niceCeil(padded, CPA_AXIS_FALLBACK_MAX)];
     }, [data, xZoomRange]);
 
