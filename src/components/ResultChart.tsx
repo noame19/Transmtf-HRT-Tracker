@@ -326,6 +326,16 @@ interface ResultChartProps {
 }
 
 const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH, onPointClick, onShareImage }: ResultChartProps) => {
+    // xZoomRange must be declared before any useMemo that depends on it.
+    // React strict mode double-invokes useMemo factories, so if a downstream
+    // useMemo (yDomainLeft/Right, buildChartOption) reads xZoomRange but the
+    // declaration lives below them, the first invocation throws TDZ.
+    // Current visible X-axis range (timestamp ms). null = full range / not yet known.
+    // When the visible window is narrow enough (< 2 days), the X-axis labels switch
+    // from "MMM d" to "MMM d HH:mm" so the user can read intra-day time, and the
+    // Y-axis domain rescales to the visible window.
+    const [xZoomRange, setXZoomRange] = useState<[number, number] | null>(null);
+
     const primaryAA = useMemo<Ester | null>(
         () => pickPrimaryAntiandrogen(events, nowH ?? Date.now() / 3600000),
         [events, nowH]
@@ -645,10 +655,6 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     } | null>(null);
     // Re-render trigger for CSS-var-dependent options (dark mode toggle).
     const [themeTick, setThemeTick] = useState(0);
-    // Current visible X-axis range (timestamp ms). null = full range / not yet known.
-    // When the visible window is narrow enough (< 2 days), the X-axis labels switch
-    // from "MMM d" to "MMM d HH:mm" so the user can read intra-day time.
-    const [xZoomRange, setXZoomRange] = useState<[number, number] | null>(null);
 
     const isEmpty = !sim || sim.timeH.length === 0;
 
