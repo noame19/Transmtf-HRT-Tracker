@@ -1389,10 +1389,16 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         ],
 
         // axisPointer replaces Recharts Tooltip cursor + custom touch overlay.
+        // xAxisIndex: 0 = only show the X-axis pointer (vertical line following cursor).
+        // yAxisIndex: null = explicitly disable Y-axis pointers — without this, ECharts
+        // default draws horizontal lines for BOTH y-axes (left E2 + right AA), giving us
+        // 2 extra horizontal dashed lines that didn't exist in the Recharts version.
         axisPointer: {
             show: true,
             trigger: 'mousemove|click|touch',
             snap: true,
+            xAxisIndex: 0,
+            yAxisIndex: null,
             label: { show: false },
             handle: { show: false },
             lineStyle: {
