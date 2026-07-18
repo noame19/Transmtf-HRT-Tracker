@@ -721,6 +721,18 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                 return;
             }
 
+            // Tooltip placement uses raw mouse pixel coordinates (params.event.offsetX/Y)
+            // instead of convertToPixel(curveY) — so the React DOM tooltip tracks the
+            // cursor smoothly and does not snap to curve Y. axisPointer.snap:false gives
+            // us continuous axesInfo.value, but we don't need it for positioning anymore.
+            const evt = params.event;
+            const cursorX = typeof evt?.offsetX === 'number' ? evt.offsetX : null;
+            const cursorY = typeof evt?.offsetY === 'number' ? evt.offsetY : null;
+            if (cursorX == null || cursorY == null) {
+                setHoverState(null);
+                return;
+            }
+
             // Check if cursor is over a lab point (within tolerance).
             const LAB_HIT_TOLERANCE_MS = 24 * 3600 * 1000;
             let matchedLab: typeof labPoints[number] | undefined;
@@ -731,18 +743,11 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                 }
             }
 
-            const px = chart.convertToPixel({ xAxisIndex: 0 }, time);
-            if (typeof px !== 'number' || !Number.isFinite(px)) {
-                setHoverState(null);
-                return;
-            }
-
             if (matchedLab) {
-                const py = chart.convertToPixel({ yAxisIndex: 0 }, matchedLab.conc);
                 setHoverState({
                     time,
-                    relX: px,
-                    relY: typeof py === 'number' ? py : 0,
+                    relX: cursorX,
+                    relY: cursorY,
                     dataPoint: { time: matchedLab.time, concE2: matchedLab.conc, isLabResult: true } as ChartPoint,
                     isLab: true,
                     labPoint: matchedLab,
@@ -757,11 +762,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                 return;
             }
             const point = data[idx];
-            const py = chart.convertToPixel({ yAxisIndex: 0 }, point.concE2 ?? 0);
             setHoverState({
                 time,
-                relX: px,
-                relY: typeof py === 'number' ? py : 0,
+                relX: cursorX,
+                relY: cursorY,
                 dataPoint: point,
                 isLab: false,
             });
