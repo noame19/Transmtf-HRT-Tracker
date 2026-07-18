@@ -808,6 +808,103 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         setHoverState(null);
     }, []);
 
+    // Mobile long-press hover mode:
+    //   Single-finger touch + hold 1.5s → enter hover mode.
+    //   In hover mode: tooltip follows finger (smooth), ECharts dataZoom is
+    //   disabled so the chart no longer pans on touchmove.
+    //   Short tap or movement > 10px before 1.5s → cancel hover timer, let
+    //   ECharts handle the pan normally.
+    //   Touch end / cancel → exit hover mode, re-enable dataZoom, hide tooltip.
+    const touchStateRef = useRef<{
+        startX: number;
+        startY: number;
+        moved: boolean;
+        isHoverMode: boolean;
+        timer: ReturnType<typeof setTimeout> | null;
+    } | null>(null);
+
+    const LONG_PRESS_MS = 1500;
+    const MOVE_TOLERANCE_PX = 10;
+
+    const setDataZoomDisabled = useCallback((disabled: boolean) => {
+        const chart = chartInstanceRef.current;
+        if (!chart) return;
+        // Patch dataZoom items in place — `disabled` is independent of the
+        // React-side `option` memo, so toggling here does NOT trigger a re-render.
+        chart.setOption({
+            dataZoom: [
+                { type: 'inside', xAxisIndex: 0, disabled },
+                { type: 'inside', yAxisIndex: 0, disabled },
+                ...(hasCPADoses ? [{ type: 'inside', yAxisIndex: 1, disabled }] : []),
+            ],
+        }, { lazyUpdate: true });
+    }, [hasCPADoses]);
+
+    const enterHoverMode = useCallback((offsetX: number, offsetY: number) => {
+        const state = touchStateRef.current;
+        if (!state || state.isHoverMode || state.moved) return;
+        state.isHoverMode = true;
+        setDataZoomDisabled(true);
+        updateHover(offsetX, offsetY);
+    }, [setDataZoomDisabled, updateHover]);
+
+    const exitHoverMode = useCallback(() => {
+        const state = touchStateRef.current;
+        if (state?.timer) {
+            clearTimeout(state.timer);
+        }
+        touchStateRef.current = null;
+        setHoverState(null);
+        setDataZoomDisabled(false);
+    }, [setDataZoomDisabled]);
+
+    const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+        if (e.touches.length !== 1) return; // only single-finger hover mode
+        const touch = e.touches[0];
+        const rect = chartRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const offsetX = touch.clientX - rect.left;
+        const offsetY = touch.clientY - rect.top;
+
+        const timer = setTimeout(() => enterHoverMode(offsetX, offsetY), LONG_PRESS_MS);
+        touchStateRef.current = {
+            startX: offsetX,
+            startY: offsetY,
+            moved: false,
+            isHoverMode: false,
+            timer,
+        };
+    }, [enterHoverMode]);
+
+    const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+        const state = touchStateRef.current;
+        if (!state) return;
+        const touch = e.touches[0];
+        const rect = chartRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const offsetX = touch.clientX - rect.left;
+        const offsetY = touch.clientY - rect.top;
+
+        if (!state.isHoverMode) {
+            // Before long-press: if the finger has moved noticeably, abandon the
+            // long-press attempt and let ECharts pan as usual.
+            const dx = Math.abs(offsetX - state.startX);
+            const dy = Math.abs(offsetY - state.startY);
+            if (dx > MOVE_TOLERANCE_PX || dy > MOVE_TOLERANCE_PX) {
+                if (state.timer) clearTimeout(state.timer);
+                touchStateRef.current = null;
+            }
+            return;
+        }
+        // In hover mode: prevent ECharts from panning and update the tooltip.
+        e.preventDefault();
+        updateHover(offsetX, offsetY);
+    }, [updateHover]);
+
+    const handleTouchEnd = useCallback(() => {
+        exitHoverMode();
+    }, [exitHoverMode]);
+
     // Zoom helpers (1M / 1W / reset) — dispatch dataZoom action with start/end timestamps.
     const zoomToDuration = useCallback((days: number) => {
         const chart = chartInstanceRef.current;
@@ -892,6 +989,10 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                     className="w-full h-full"
                     onMouseMove={handleChartMouseMove}
                     onMouseLeave={handleChartMouseLeave}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchEnd}
                 />
 
                 {/* Empty state overlay */}
