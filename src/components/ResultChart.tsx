@@ -748,6 +748,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
     // div directly gives us the cursor pixel coordinates without ambiguity,
     // so the React DOM tooltip tracks the cursor smoothly in both X and Y.
     // ECharts' axisPointer configuration is still in place — it draws the
+    // True while we're in touch-driven hover mode (long-press on phone/tablet).
+    // tooltipPlacement uses this to switch from "follow finger pixel" to
+    // "fixed at chart top 20%, centered on cursor X" — the tooltip won't be
+    // covered by the finger anymore.
+    const [touchHoverMode, setTouchHoverMode] = useState(false);
+
     // vertical dashed cursor line on its own.
     const updateHover = useCallback((offsetX: number, offsetY: number) => {
         if (isEmpty) {
@@ -844,6 +850,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         const state = touchStateRef.current;
         if (!state || state.isHoverMode || state.moved) return;
         state.isHoverMode = true;
+        setTouchHoverMode(true);
         setDataZoomDisabled(true);
         updateHover(offsetX, offsetY);
     }, [setDataZoomDisabled, updateHover]);
@@ -854,6 +861,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
             clearTimeout(state.timer);
         }
         touchStateRef.current = null;
+        setTouchHoverMode(false);
         setHoverState(null);
         setDataZoomDisabled(false);
     }, [setDataZoomDisabled]);
@@ -919,18 +927,38 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
     const hasPersonalModel = hasE2Personal;
 
-    // Compute tooltip placement: prefer right of cursor, flip left if near edge.
+    // Compute tooltip placement.
+    //   - Mouse / desktop: tooltip follows the cursor pixel with a small offset
+    //     and flips left when it would overflow the right edge.
+    //   - Touch (phone / tablet, long-press hover mode): tooltip is pinned to
+    //     ~20% from chart top and centered on the cursor X — the finger
+    //     otherwise covers the tooltip. If the centered tooltip would overflow
+    //     a chart edge, the left/right edge is clamped so the tooltip stays
+    //     fully inside the chart.
+    const TOOLTIP_WIDTH = 160;
     const tooltipPlacement = useMemo(() => {
-        if (!hoverState || !chartRef.current) return { left: 0, top: 0, flipX: false };
-        const containerWidth = chartRef.current.clientWidth;
+        if (!hoverState || !chartRef.current) {
+            return { left: 0, top: 0, transform: '' };
+        }
+        const container = chartRef.current;
+        if (touchHoverMode) {
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            const halfWidth = TOOLTIP_WIDTH / 2;
+            // Center the tooltip on the cursor X, clamp to chart edges.
+            const left = Math.max(halfWidth, Math.min(containerWidth - halfWidth, hoverState.relX));
+            const top = containerHeight * 0.2;
+            return { left, top, transform: 'translateX(-50%)' };
+        }
+        const containerWidth = container.clientWidth;
         const left = hoverState.relX + 12;
-        const flipX = left + 160 > containerWidth;
+        const flipX = left + TOOLTIP_WIDTH > containerWidth;
         return {
             left: flipX ? Math.max(0, hoverState.relX - 12) : left,
             top: Math.max(0, hoverState.relY - 8),
-            flipX,
+            transform: flipX ? 'translateX(-100%)' : '',
         };
-    }, [hoverState]);
+    }, [hoverState, touchHoverMode]);
 
     return (
         <div className="glass-card rounded-2xl relative overflow-hidden flex flex-col md:h-80 xl:h-[340px]">
@@ -1013,7 +1041,7 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
                         style={{
                             left: tooltipPlacement.left,
                             top: tooltipPlacement.top,
-                            transform: tooltipPlacement.flipX ? 'translateX(-100%)' : undefined,
+                            transform: tooltipPlacement.transform || undefined,
                         }}
                     >
                         {hoverState.isLab && hoverState.labPoint ? (
