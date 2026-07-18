@@ -699,94 +699,73 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
         chart.setOption(option, { notMerge: false, lazyUpdate: true });
     }, [option]);
 
-    // Wire up axisPointer event for our React DOM tooltip overlay.
-    useEffect(() => {
+    // Tooltip positioning is driven by a native React onMouseMove on the chart
+    // container (see JSX below), NOT by ECharts' `updateAxisPointer` event.
+    // Rationale: params.event.offsetX/Y on `updateAxisPointer` is unreliable
+    // (zrender wraps and re-dispatches events), and TouchEvent has no
+    // offsetX/Y at all. Reading native MouseEvent.offsetX/Y off the chartRef
+    // div directly gives us the cursor pixel coordinates without ambiguity,
+    // so the React DOM tooltip tracks the cursor smoothly in both X and Y.
+    // ECharts' axisPointer configuration is still in place — it draws the
+    // vertical dashed cursor line on its own.
+    const updateHover = useCallback((offsetX: number, offsetY: number) => {
+        if (isEmpty) {
+            setHoverState(null);
+            return;
+        }
         const chart = chartInstanceRef.current;
         if (!chart) return;
+        const time = chart.convertFromPixel({ xAxisIndex: 0 }, offsetX);
+        if (typeof time !== 'number' || !Number.isFinite(time)) {
+            setHoverState(null);
+            return;
+        }
 
-        const handler = (params: any) => {
-            if (isEmpty) {
-                setHoverState(null);
-                return;
+        // Check if cursor is over a lab point (within tolerance).
+        const LAB_HIT_TOLERANCE_MS = 24 * 3600 * 1000;
+        let matchedLab: typeof labPoints[number] | undefined;
+        for (const lp of labPoints) {
+            if (Math.abs(lp.time - time) < LAB_HIT_TOLERANCE_MS) {
+                matchedLab = lp;
+                break;
             }
-            const xInfo = params.axesInfo?.find((a: any) => a.axisDim === 'x');
-            const time = xInfo?.value;
-            if (typeof time !== 'number') {
-                setHoverState(null);
-                return;
-            }
-            const containerRect = chartRef.current?.getBoundingClientRect();
-            if (!containerRect) {
-                setHoverState(null);
-                return;
-            }
+        }
 
-            // Tooltip placement prefers raw mouse pixel coordinates
-            // (params.event.offsetX/Y on MouseEvent) so the React DOM tooltip tracks
-            // the cursor smoothly and does not snap to curve Y. On TouchEvent
-            // (offsetX/Y absent) we fall back to convertToPixel so the tooltip never
-            // disappears in the middle of a touch interaction.
-            const evt = params.event;
-            let cursorX: number | null = null;
-            let cursorY: number | null = null;
-            if (evt && typeof evt.offsetX === 'number' && typeof evt.offsetY === 'number') {
-                cursorX = evt.offsetX;
-                cursorY = evt.offsetY;
-            }
-            let curveY: number | null = null;
-            const timePx = chart.convertToPixel({ xAxisIndex: 0 }, time);
-            if (typeof timePx !== 'number' || !Number.isFinite(timePx)) {
-                setHoverState(null);
-                return;
-            }
-
-            // Check if cursor is over a lab point (within tolerance).
-            const LAB_HIT_TOLERANCE_MS = 24 * 3600 * 1000;
-            let matchedLab: typeof labPoints[number] | undefined;
-            for (const lp of labPoints) {
-                if (Math.abs(lp.time - time) < LAB_HIT_TOLERANCE_MS) {
-                    matchedLab = lp;
-                    break;
-                }
-            }
-
-            const finalRelX = cursorX ?? timePx;
-
-            if (matchedLab) {
-                const py = chart.convertToPixel({ yAxisIndex: 0 }, matchedLab.conc);
-                curveY = typeof py === 'number' ? py : null;
-                setHoverState({
-                    time,
-                    relX: finalRelX,
-                    relY: cursorY ?? curveY ?? 0,
-                    dataPoint: { time: matchedLab.time, concE2: matchedLab.conc, isLabResult: true } as ChartPoint,
-                    isLab: true,
-                    labPoint: matchedLab,
-                });
-                return;
-            }
-
-            // Find nearest data point in `data` for the tooltip payload.
-            const idx = nearestIndex(data, time);
-            if (idx < 0) {
-                setHoverState(null);
-                return;
-            }
-            const point = data[idx];
-            const py = chart.convertToPixel({ yAxisIndex: 0 }, point.concE2 ?? 0);
-            curveY = typeof py === 'number' ? py : null;
+        if (matchedLab) {
             setHoverState({
                 time,
-                relX: finalRelX,
-                relY: cursorY ?? curveY ?? 0,
-                dataPoint: point,
-                isLab: false,
+                relX: offsetX,
+                relY: offsetY,
+                dataPoint: { time: matchedLab.time, concE2: matchedLab.conc, isLabResult: true } as ChartPoint,
+                isLab: true,
+                labPoint: matchedLab,
             });
-        };
+            return;
+        }
 
-        chart.on('updateAxisPointer', handler);
-        return () => { chart.off('updateAxisPointer', handler); };
+        // Find nearest data point in `data` for the tooltip payload.
+        const idx = nearestIndex(data, time);
+        if (idx < 0) {
+            setHoverState(null);
+            return;
+        }
+        const point = data[idx];
+        setHoverState({
+            time,
+            relX: offsetX,
+            relY: offsetY,
+            dataPoint: point,
+            isLab: false,
+        });
     }, [data, labPoints, isEmpty]);
+
+    const handleChartMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        updateHover(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+    }, [updateHover]);
+
+    const handleChartMouseLeave = useCallback(() => {
+        setHoverState(null);
+    }, []);
 
     // Zoom helpers (1M / 1W / reset) — dispatch dataZoom action with start/end timestamps.
     const zoomToDuration = useCallback((days: number) => {
@@ -867,7 +846,12 @@ const ResultChart = ({ sim, events, labResults = [], simCI, baselineE2PGmL, nowH
 
             {/* Chart container (always rendered to keep ECharts init working) */}
             <div className="relative h-[36vh] min-h-[200px] md:flex-1 md:min-h-0 w-full touch-none px-2 pb-2">
-                <div ref={chartRef} className="w-full h-full" />
+                <div
+                    ref={chartRef}
+                    className="w-full h-full"
+                    onMouseMove={handleChartMouseMove}
+                    onMouseLeave={handleChartMouseLeave}
+                />
 
                 {/* Empty state overlay */}
                 {isEmpty && (
