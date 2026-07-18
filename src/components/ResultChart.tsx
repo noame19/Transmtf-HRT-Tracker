@@ -1403,7 +1403,9 @@ function buildChartOption(input: BuildOptionInput): echarts.EChartsCoreOption {
         axisPointer: {
             show: true,
             trigger: 'mousemove|click|touch',
-            snap: true,
+            // snap: false → cursor line 平滑贴紧鼠标像素位置(与 ECharts 参考代码一致)。
+            // 默认 true 会让 cursor 跳到最近 data point,体感"跟不上手"。
+            snap: false,
             xAxisIndex: 0,
             label: { show: false },
             handle: { show: false },
