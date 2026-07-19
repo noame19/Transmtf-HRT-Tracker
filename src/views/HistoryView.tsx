@@ -139,7 +139,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
               <>
                 <button
                   onClick={() => onBatchAdd()}
-                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 h-11 rounded-xl text-sm font-bold btn-press-glass transition"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 h-11 rounded-xl text-[0.75rem] md:text-sm font-bold btn-press-glass transition"
                   style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
                 >
                   <Layers size={15} />
@@ -147,7 +147,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 </button>
                 <button
                   onClick={() => onAddEvent()}
-                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
+                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-[0.75rem] md:text-sm font-bold btn-press-glass transition glass-btn-primary"
                 >
                   <Plus size={16} />
                   <span>{t('btn.add')}</span>
@@ -156,7 +156,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             ) : (
               <button
                 onClick={() => onAddPlan()}
-                className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
+                className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-[0.75rem] md:text-sm font-bold btn-press-glass transition glass-btn-primary"
               >
                 <Plus size={16} />
                 <span>{t('plan.new') || '新增计划'}</span>

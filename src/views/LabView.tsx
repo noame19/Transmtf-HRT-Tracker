@@ -291,7 +291,7 @@ const LabView: React.FC<LabViewProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onAddLabResult}
-              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-sm font-bold btn-press-glass transition glass-btn-primary"
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 h-11 rounded-xl text-white text-[0.75rem] md:text-sm font-bold btn-press-glass transition glass-btn-primary"
             >
               <Plus size={16} />
               <span>{t('lab.add_title')}</span>
