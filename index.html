@@ -560,6 +560,12 @@
             font-weight: 550 !important;
         }
 
+        /* E2 status badge (包裹「高于参考范围」之类文字)与其它 KPI 行的间距加大 (2026-07-19)
+           用户反馈 inline style 加 !important 不生效,改用 class;!important 压过 cdn tailwind 同特异性 */
+        .e2-status-badge {
+            margin-top: 0.5rem !important;
+        }
+
         /* 全局 .space-y-1 子项间距从 0.5rem 收紧到 0.1rem (2026-07-19)
            抗雄卡左栏(div[2]/div[1])里堆(estimate/数字/各 CI 行/个人模型/Base/status badge)
            太散,需要缩。用户确认全局生效,因此不限定父容器。
