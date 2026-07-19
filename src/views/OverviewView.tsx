@@ -556,7 +556,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 };
                 const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
                 return (
-              <div className="space-y-0.5 md:space-y-1 min-w-0 flex flex-col justify-end md:justify-center">
+              <div className="space-y-1 min-w-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: aaColor }}>
                   <span className="kpi-stat-title">{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
@@ -578,49 +578,55 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     </span>
                   )}
                 </div>
-                {hasPersonalAaModel && currentAA > 0 && (
-                  <>
-                    {currentAACI && (
-                      <div className="flex items-center gap-1.5 md:mt-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wide"
-                          style={{ color: aaColor, opacity: 0.8 }}>{t('chart.cpa_pop_range')}</span>
-                        <span className="text-[11px] font-semibold"
-                          style={{ color: aaColor }}>
-                          {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
-                          <span className="text-[9px] ml-0.5"
-                            style={{ color: aaColor }}>{fmt(currentAACI.hi).unit}</span>
-                        </span>
-                      </div>
-                    )}
-                    {primaryAASpec?.adherenceFromE2 && (
-                      <div className="flex items-center gap-1.5 md:mt-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wide"
-                          style={{ color: aaColor, opacity: 0.8 }}>
-                          {t('chart.cpa_adherence')}
-                        </span>
-                        {personalAA !== null && (
-                          <span className="text-[10px] font-semibold"
+                {/* 3 行 sub-stat + note 全部包进 mt-auto wrapper:
+                    - mt-auto 把整组推至卡片底部,与上方大数字自然留出空间
+                    - mobile 行距 1px(space-y-px),desktop 2px(space-y-0.5)
+                      桌面保留原视觉密度,mobile 紧凑到几乎贴在一起 */}
+                <div className="mt-auto space-y-px md:space-y-0.5">
+                  {hasPersonalAaModel && currentAA > 0 && (
+                    <>
+                      {currentAACI && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wide"
+                            style={{ color: aaColor, opacity: 0.8 }}>{t('chart.cpa_pop_range')}</span>
+                          <span className="text-[11px] font-semibold"
                             style={{ color: aaColor }}>
-                            {fmtText(personalAA)} {fmt(personalAA).unit}
+                            {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
+                            <span className="text-[9px] ml-0.5"
+                              style={{ color: aaColor }}>{fmt(currentAACI.hi).unit}</span>
                           </span>
-                        )}
-                      </div>
-                    )}
-                    {rawAA > 0 && rawAA !== personalAA && (
-                      <div className="flex items-center gap-1.5 md:mt-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Base</span>
-                        <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                          {fmtText(rawAA)} {fmt(rawAA).unit}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {currentAA > 0 && (
-                  <div className="mt-1 text-[9px] leading-tight italic" style={{ color: 'var(--text-tertiary)' }}>
-                    {t(noteKey)}
-                  </div>
-                )}
+                        </div>
+                      )}
+                      {primaryAASpec?.adherenceFromE2 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wide"
+                            style={{ color: aaColor, opacity: 0.8 }}>
+                            {t('chart.cpa_adherence')}
+                          </span>
+                          {personalAA !== null && (
+                            <span className="text-[10px] font-semibold"
+                              style={{ color: aaColor }}>
+                              {fmtText(personalAA)} {fmt(personalAA).unit}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {rawAA > 0 && rawAA !== personalAA && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Base</span>
+                          <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                            {fmtText(rawAA)} {fmt(rawAA).unit}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {currentAA > 0 && (
+                    <div className="text-[9px] leading-tight italic" style={{ color: 'var(--text-tertiary)' }}>
+                      {t(noteKey)}
+                    </div>
+                  )}
+                </div>
               </div>
                 );
               })()}
