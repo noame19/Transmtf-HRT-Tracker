@@ -716,16 +716,16 @@ const KpiCard: React.FC<{ value: string; label: string }> = ({ value, label }) =
         className="min-w-0 flex flex-col justify-center rounded-lg px-3 py-2 md:flex-1 md:min-h-0"
         style={{ background: 'var(--bg-card-hover)' }}
     >
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center justify-center gap-1.5 min-w-0">
             <span
-                className="text-base font-semibold tabular-nums tracking-tight leading-tight truncate"
+                className="text-base font-semibold tabular-nums tracking-tight leading-tight truncate text-center"
                 style={{ color: 'var(--text-primary)' }}
             >
                 {value}
             </span>
         </div>
         <div
-            className="text-[12px] mt-0.5 truncate w-full"
+            className="text-[12px] mt-0.5 truncate w-full text-center"
             style={{ color: 'var(--text-tertiary)' }}
         >
             {label}

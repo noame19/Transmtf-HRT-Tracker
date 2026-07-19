@@ -378,14 +378,14 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>
           )}
           {/* 大号时间 + 相对日 */}
-          <div className="flex items-end gap-1.5 mt-1">
+          <div className="flex items-end gap-1.5 mt-[0.2rem] md:mt-1">
             {nextDue ? (
               <>
                 <span className="text-4xl md:text-5xl font-medium tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
                   {formatTime(nextDue)}
                 </span>
                 {nextDueStr && (
-                  <span className="text-sm md:text-base font-bold mb-0.5" style={{ color: PLAN_MAIN, opacity: 0.75 }}>
+                  <span className="text-sm md:text-base font-bold mb-0.5" style={{ color: PLAN_MAIN, opacity: 0.85 }}>
                     {nextDueStr}
                   </span>
                 )}
@@ -582,7 +582,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                     - mt-auto 把整组推至卡片底部,与上方大数字自然留出空间
                     - mobile 行距 1px(space-y-px),desktop 2px(space-y-0.5)
                       桌面保留原视觉密度,mobile 紧凑到几乎贴在一起 */}
-                <div className="mt-auto space-y-px md:space-y-0.5">
+                <div className="mt-auto space-y-px md:space-y-0.5 opacity-80">
                   {hasPersonalAaModel && currentAA > 0 && (
                     <>
                       {currentAACI && (
