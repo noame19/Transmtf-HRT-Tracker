@@ -699,6 +699,16 @@ const MainLayout: React.FC = () => {
     const handleSaveBatch = (newEvents: DoseEvent[]) => {
         setEvents(prev => [...prev, ...newEvents]);
     };
+    // Multi-select delete — HistoryView 的浮动工具栏触发,带配对的 patch-remove
+    // id 已经被上层(HistoryView)合并到 ids 数组里,这里只负责按 id 集合过滤。
+    const handleBulkDeleteEvents = (ids: string[]) => {
+        const idSet = new Set(ids);
+        setEvents(prev => prev.filter(e => !idSet.has(e.id)));
+    };
+    const handleBulkDeletePlans = (ids: string[]) => {
+        const idSet = new Set(ids);
+        setPlans(prev => prev.filter(p => !idSet.has(p.id)));
+    };
 
     // Plan CRUD — wired through the same outlet context the records tab uses,
     // so HistoryView doesn't need to know about modals/storage directly.
@@ -836,6 +846,8 @@ const MainLayout: React.FC = () => {
                         onDeletePlan: handleDeletePlan,
                         onTogglePlan: handleTogglePlan,
                         onRemovePatch: handleRemovePatch,
+                        onBulkDeleteEvents: handleBulkDeleteEvents,
+                        onBulkDeletePlans: handleBulkDeletePlans,
                         // Legacy modal deep-link fields (kept for the deep-link
                         // 1-tap confirm path that the heads-up notification
                         // still triggers). The /history page only consumes
