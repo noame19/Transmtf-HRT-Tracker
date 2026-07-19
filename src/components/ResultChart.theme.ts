@@ -17,12 +17,12 @@
 
 export const ECHART_THEME = {
     // --- E2 主曲线 ---
-    e2Stroke: '#f6c4d7',          // 原 Recharts Area stroke="#f6c4d7"
+    e2Stroke: '#f2a3ad',          // rgb(242,163,173) 用户指定;原 Recharts Area stroke="#f6c4d7"
     e2Accent: '#ec4899',          // 原 Recharts E2 轴标签 fill="#ec4899"
     e2DotFill: '#ec4899',         // 原 Recharts E2 dose 点 fill="#ec4899"
     e2ActiveDotStroke: '#ffffff', // activeDot stroke="#fff"
-    e2GradientTop: 'rgba(246,196,215,0.18)', // 原 <stop offset="5%" stopColor="#f6c4d7" stopOpacity={0.18}/>
-    e2GradientBottom: 'rgba(246,196,215,0)', // 原 <stop offset="95%" stopColor="#f6c4d7" stopOpacity={0}/>
+    e2GradientTop: 'rgba(242,163,173,0.18)', // 同步 e2Stroke 改为 rgb(242,163,173);原 offset="5%" opacity 0.18
+    e2GradientBottom: 'rgba(242,163,173,0)', // 同步 e2Stroke 改为 rgb(242,163,173);原 offset="95%" opacity 0
 
     // --- Personal model (E2 个性化拟合曲线) ---
     personalStroke: '#f43f5e',    // 原 Recharts Line stroke="#f43f5e"
@@ -53,7 +53,7 @@ export const ECHART_THEME = {
     nowDotStroke: '#ffffff',      // 原 Recharts nowDot stroke="white"
     nowDotStrokeWidth: 1.5,       // 原 Recharts nowDot strokeWidth={1.5}
     nowDotSize: 6,                // 视觉对齐:now 是双轴上的小亮点
-    nowLineStroke: '#f6c4d7',     // 原 Recharts ReferenceLine stroke="#f6c4d7"
+    nowLineStroke: '#f2a3ad',     // 同步 e2Stroke 改 rgb(242,163,173);原 ReferenceLine stroke="#f6c4d7"
     nowLineDasharray: [3, 3],     // 原 Recharts strokeDasharray="3 3"
     nowLineWidth: 1.2,            // 原 Recharts strokeWidth={1.2}
 
@@ -63,7 +63,7 @@ export const ECHART_THEME = {
     baselineWidth: 1.2,           // 原 Recharts strokeWidth={1.2}
 
     // --- Tooltip cursor(hover 时悬停虚线) ---
-    cursorStroke: '#f6c4d7',      // 原 Recharts cursor stroke="#f6c4d7"
+    cursorStroke: '#f2a3ad',      // 同步 e2Stroke 改 rgb(242,163,173);原 cursor stroke="#f6c4d7"
     cursorDasharray: [4, 4],      // 原 Recharts strokeDasharray="4 4"
     cursorWidth: 1,               // 原 Recharts strokeWidth={1}
 

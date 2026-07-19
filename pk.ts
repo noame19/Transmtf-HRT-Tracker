@@ -537,7 +537,7 @@ export const ANTIANDROGENS: Partial<Record<Ester, AntiandrogenSpec>> = {
     [Ester.CPA]: {
         ester: Ester.CPA,
         nativeUnit: 'ng/mL',
-        color: '#8b5cf6',
+        color: '#00b0f0',
         popLogVar: CPA_2COMP_PK.popLogVar,
         ciMaxNative: 500,
         adherenceFromE2: true,
@@ -549,7 +549,7 @@ export const ANTIANDROGENS: Partial<Record<Ester, AntiandrogenSpec>> = {
     [Ester.BICA]: {
         ester: Ester.BICA,
         nativeUnit: 'ng/mL',
-        color: '#f59e0b',
+        color: '#00b0f0',
         popLogVar: BICA_PK.popLogVar,
         ciMaxNative: 20000,
         adherenceFromE2: false,
