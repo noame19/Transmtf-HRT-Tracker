@@ -366,10 +366,16 @@ fn ensure_notification_channel(_app: tauri::AppHandle) -> Result<bool, String> {
     }
 }
 
-/// Returns the user's notification preference as a Z (boolean). On API < 33
-/// the platform has no runtime toggle, so we just return `true` (the channel
-/// can still be muted by the user in system settings; AlarmManager fires
-/// regardless).
+/// Returns whether the user has notifications enabled for our app.
+/// On API 33+ this ALSO triggers the runtime POST_NOTIFICATIONS permission
+/// dialog on first call (the dialog result is reflected in the return
+/// value the next time the user re-opens the app).
+///
+/// We reuse the existing `areNotificationsEnabled` Kotlin entry point —
+/// it returns the same boolean regardless of whether the system dialog
+/// ran. The OS shows the dialog automatically on first access of the
+/// protected API surface (`NotificationManagerCompat.from(ctx).areNotificationsEnabled()`),
+/// so the JS side just calls this once and reads the answer.
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
 fn request_notification_permission(_app: tauri::AppHandle) -> Result<bool, String> {
@@ -389,6 +395,97 @@ fn request_notification_permission(_app: tauri::AppHandle) -> Result<bool, Strin
     #[cfg(not(target_os = "android"))]
     {
         Err("request_notification_permission only available on Android".to_string())
+    }
+}
+
+/// True if our app is in the device's "battery optimization whitelist"
+/// (a.k.a. "not optimized", "unrestricted"). On API < 23 the feature
+/// doesn't exist and we return true so the UI banner auto-dismisses.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn is_battery_optimization_ignored(_app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "isBatteryOptimizationIgnored",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(isBatteryOptimizationIgnored): {}", e))?
+                .z()
+                .map_err(|e| format!("isBatteryOptimizationIgnored.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(true)
+    }
+}
+
+/// Open the system battery-optimization settings page. Returns true if
+/// the page launched (so the JS banner can re-check on next mount and
+/// auto-dismiss). On API < 23 we always return true.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn request_ignore_battery_optimization(_app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "requestIgnoreBatteryOptimization",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(requestIgnoreBatteryOptimization): {}", e))?
+                .z()
+                .map_err(|e| format!("requestIgnoreBatteryOptimization.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(true)
+    }
+}
+
+/// Open the per-OEM "auto-start" / "background app management" page so
+/// the user can whitelist our app for background execution + BOOT_COMPLETED
+/// broadcasts. Tries known MIUI/EMUI/ColorOS/OriginOS component names
+/// then falls back to AOSP "background app management" → app-info.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn open_manufacturer_auto_start_settings(_app: tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "openManufacturerAutoStartSettings",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(openManufacturerAutoStartSettings): {}", e))?
+                .z()
+                .map_err(|e| format!("openManufacturerAutoStartSettings.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(true)
     }
 }
 
@@ -573,6 +670,9 @@ pub fn run() {
             clipboard_write_text,
             ensure_notification_channel,
             request_notification_permission,
+            is_battery_optimization_ignored,
+            request_ignore_battery_optimization,
+            open_manufacturer_auto_start_settings,
             schedule_plan_reminders,
             cancel_plan_reminders,
             cancel_all_reminders,

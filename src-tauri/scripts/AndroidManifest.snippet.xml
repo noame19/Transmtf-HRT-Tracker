@@ -33,6 +33,22 @@
     <!-- 设备重启后恢复 alarm 必需 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- 引导用户加电池优化白名单时,需要这个权限才能用
+         Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS intent。
+         我们的 Kotlin 代码走的是 ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+         (跳到电池优化列表页),严格说不强制要这个权限 — 但加上更稳,
+         万一未来代码改动。Google Play 政策会审这个权限的理由,所以
+         manifest 里加了需要在 Play Console 写明用途(个人用可忽略)。 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- 查询当前是否在白名单里 — API 23+ 自动 grant,不需要用户授权 -->
+    <!-- (no extra permission — PowerManager.isIgnoringBatteryOptimizations
+         不需要 manifest 声明) -->
+
+    <!-- 自启动白名单(国产 ROM):无法用 manifest 解决,需要用户在
+         OEM 设置页手动开启。Kotlin 端 openManufacturerAutoStartSettings
+         负责跳到各厂商的自启动管理页。 -->
+
     <application ...>
         <!-- ── ReminderReceiver: alarm 触发点 ───────────────────────── -->
         <receiver

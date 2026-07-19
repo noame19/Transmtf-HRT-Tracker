@@ -4,10 +4,15 @@ import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
@@ -82,13 +87,154 @@ object NotificationScheduler {
     }
 
     /**
-     * Whether the user has notifications globally enabled for our app. On
-     * API < 33 there is no per-app runtime permission to request, so we just
-     * trust the system toggle.
+     * On API 33+ the system shows a runtime permission dialog asking the
+     * user to grant POST_NOTIFICATIONS. This MUST run on the main UI
+     * thread — Android throws if you call it from a JNI daemon thread, so
+     * the caller (Rust) hops to Looper.getMainLooper() before invoking
+     * this. We delegate that to the activity's runOnUiThread in the bridge
+     * method that calls us; the static method here just runs the body
+     * synchronously.
+     *
+     * Returns true if the user has notifications enabled after the call
+     * (covers both the runtime prompt result and the system toggle).
      */
     @JvmStatic
     fun areNotificationsEnabled(context: Context): Boolean {
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    /**
+     * Returns true if our app is in the device's "battery optimization
+     * whitelist" (a.k.a. "not optimized", "unrestricted"). When in this
+     * whitelist, Doze does NOT defer our alarms to maintenance windows —
+     * alarms fire on time even when the device is idle.
+     *
+     * API < 23 (pre-M) has no battery optimization feature; we return
+     * true so the UI doesn't pester old devices with a "please whitelist"
+     * banner they can't act on.
+     */
+    @JvmStatic
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * Open the system "battery optimization" settings page so the user can
+     * whitelist our app. We use the public Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+     * page (Android 6+ standard) — NOT the per-app ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+     * intent that requires the `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+     * permission and is reviewed strictly by Play Store.
+     *
+     * On API < 23 (pre-M) there is no battery optimization; we just return
+     * true to signal "nothing to do" so the JS banner auto-dismisses.
+     */
+    @JvmStatic
+    fun requestIgnoreBatteryOptimization(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        return try {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "requestIgnoreBatteryOptimization: no settings activity")
+            false
+        }
+    }
+
+    /**
+     * Open the per-manufacturer "auto-start" / "background app management"
+     * page. MIUI / EMUI / ColorOS / OriginOS / OneUI all gate BOOT_COMPLETED
+     * and background services behind this toggle — without it, our
+     * BootReceiver never fires after a reboot and the user gets zero
+     * reminders until they re-open the app.
+     *
+     * We try the OEM's well-known component first; if that Activity is
+     * missing (or we're on AOSP / Pixel), we fall back to the stock
+     * "background app management" page that most OEM skins ship. If even
+     * that fails (pure AOSP), we land on the standard app-info page so
+     * the user can at least find the right setting manually.
+     *
+     * The list of tried components is best-effort — a given ROM may ship
+     * a different class name, in which case we fall through to the next.
+     */
+    @JvmStatic
+    fun openManufacturerAutoStartSettings(context: Context): Boolean {
+        // Ordered roughly from most-paranoid to least-paranoid OEM skin.
+        // Each entry is tried until one startActivity() call succeeds.
+        val candidates = listOf(
+            // Xiaomi MIUI
+            ComponentName("com.miui.securitycenter",
+                "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            // Huawei EMUI / HarmonyOS
+            ComponentName("com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ComponentName("com.huawei.systemmanager",
+                "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            // OPPO ColorOS
+            ComponentName("com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.oppo.safe",
+                "com.oppo.safe.permission.startup.StartupAppListActivity"),
+            ComponentName("com.coloros.oppoguardelf",
+                "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"),
+            // VIVO OriginOS / Funtouch
+            ComponentName("com.vivo.permissionmanager",
+                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            ComponentName("com.iqoo.secure",
+                "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity"),
+            // Samsung OneUI (less restrictive but worth trying)
+            ComponentName("com.samsung.android.lool",
+                "com.samsung.android.sm.ui.battery.BatteryActivity"),
+            // Letv (rare but some users have it)
+            ComponentName("com.letv.android.letvsafe",
+                "com.letv.android.letvsafe.AutobootManageActivity"),
+        )
+
+        for (component in candidates) {
+            try {
+                val intent = Intent().apply {
+                    component = component
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                Log.i(TAG, "openManufacturerAutoStartSettings: opened ${component.flattenToShortString()}")
+                return true
+            } catch (e: Exception) {
+                // Class missing, signature mismatch, or permission denied — try next
+                Log.d(TAG, "openManufacturerAutoStartSettings: ${component.flattenToShortString()} not available")
+            }
+        }
+
+        // Fallback A: most OEM skins expose this standardized "background
+        // app management" deep-link. Honor it if the activity exists.
+        try {
+            val intent = Intent().apply {
+                action = "android.settings.APP_BATTERY_MANAGEMENT"
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return true
+        } catch (e: Exception) {
+            Log.d(TAG, "openManufacturerAutoStartSettings: APP_BATTERY_MANAGEMENT not available")
+        }
+
+        // Fallback B: standard app-info page. The user can at least find
+        // the right toggle themselves (Settings → Apps → HRT Tracker →
+        // Battery → "Unrestricted" or similar). Always available.
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "openManufacturerAutoStartSettings: all fallbacks failed", e)
+            false
+        }
     }
 
     /**
