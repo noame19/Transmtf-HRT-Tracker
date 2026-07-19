@@ -267,7 +267,7 @@ export const TRANSLATIONS_BASE = {
         "field.patch_total": "总剂量 (mg)",
         "field.patch_remove_time": "摘下时间（可选）",
         "field.patch_remove_time_placeholder": "默认不填；填了即生成贴上+移除配对记录",
-        "field.sl_duration": "含服时长 (分钟)",
+        "field.sl_duration": "含服时长",
         "field.sl_custom": "自定义 θ",
         "dose.quick.custom": "自定义",
         "field.gel_site": "涂抹部位",
@@ -287,10 +287,10 @@ export const TRANSLATIONS_BASE = {
         "dose.guide.unit.ug_day": "µg/天",
 
         "sl.instructions": "尽量避免吞咽，在舌下含服直至达到目标时间。",
-        "sl.mode.quick": "快速 (2 分钟)",
-        "sl.mode.casual": "随意 (5 分钟)",
-        "sl.mode.standard": "标准 (10 分钟)",
-        "sl.mode.strict": "严格 (15 分钟)",
+        "sl.mode.quick": "快速（2分钟）",
+        "sl.mode.casual": "随意（5分钟）",
+        "sl.mode.standard": "标准（10分钟）",
+        "sl.mode.strict": "严格（15分钟）",
 
         "template.set_default": "设为默认",
         "template.title": "模板",
