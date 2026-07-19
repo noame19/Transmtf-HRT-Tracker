@@ -552,6 +552,10 @@
             font-weight: 550 !important;
         }
 
+        /* 顶部 header 在手机上需要更大顶部 padding (2026-07-19)
+           CDN Tailwind 运行时 .pt-4 = 1rem,这里提升到 2rem,需 !important 压过 */
+        .pt-4 { padding-top: 2rem !important; }
+
         /* 全局 .space-y-1 子项间距从 0.5rem 收紧到 0.1rem (2026-07-19)
            抗雄卡左栏(div[2]/div[1])里堆(estimate/数字/各 CI 行/个人模型/Base/status badge)
            太散,需要缩。用户确认全局生效,因此不限定父容器。
