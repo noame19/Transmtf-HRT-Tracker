@@ -536,14 +536,6 @@
             color-scheme: dark;
         }
 
-        /* Override Tailwind space-y-1: make the gap 0.5rem (8px) instead of default 0.25rem.
-           CDN Tailwind injects a same-specificity rule later, so !important is required to win. */
-        .space-y-1 > :not([hidden]) ~ :not([hidden]) {
-            --tw-space-y-reverse: 0;
-            margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse))) !important;
-            margin-bottom: calc(0.5rem * calc(1 - var(--tw-space-y-reverse))) !important;
-        }
-
         /* 用药浓度 / 用药日历 两张玻璃卡的高度微调(2026-07-19)
            需 !important 压过 cdn.tailwindcss.com 运行时注入的同特异性工具类 */
         @media (min-width: 768px) {
