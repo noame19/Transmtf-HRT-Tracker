@@ -195,8 +195,15 @@ object NotificationScheduler {
 
         for (component in candidates) {
             try {
+                // Note: explicitly qualify with `this.` on the Intent property
+                // so the compiler does not try to resolve the assignment
+                // target to the outer `for (component in candidates)` loop
+                // variable (which is a `val` and would fail with
+                // "Val cannot be reassigned"). Without the `this.`
+                // qualifier Kotlin's name resolution prefers the outer val
+                // over the receiver property.
                 val intent = Intent().apply {
-                    component = component
+                    this.component = component
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)
@@ -290,7 +297,18 @@ object NotificationScheduler {
                 // no batching, no deferral, no permission prompt at runtime
                 // (USE_EXACT_ALARM is auto-granted on API 33+ for the
                 // alarm-clock use case).
-                am.setAlarmClock(AlarmManager.RTC_WAKEUP, moment, pi)
+                //
+                // Signature: setAlarmClock(AlarmClockInfo, PendingIntent).
+                // AlarmClockInfo(time, showIntent) — the showIntent fires
+                // when the user taps the system's "next alarm" status bar
+                // affordance. We pass the same ReminderReceiver PI here so
+                // tapping it re-shows the heads-up notification (mirrors
+                // the behaviour of stock alarm-clock apps). RTC_WAKEUP is
+                // inside AlarmClockInfo — no longer a separate parameter.
+                am.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(moment, pi),
+                    pi,
+                )
                 newCodes.add(requestCode.toString())
                 count++
             }
