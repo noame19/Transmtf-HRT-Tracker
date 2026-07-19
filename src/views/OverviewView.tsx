@@ -381,7 +381,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           <div className="flex items-end gap-1.5 mt-1">
             {nextDue ? (
               <>
-                <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
+                <span className="text-4xl md:text-5xl font-medium tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
                   {formatTime(nextDue)}
                 </span>
                 {nextDueStr && (
@@ -391,7 +391,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 )}
               </>
             ) : (
-              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN, opacity: 0.45 }}>
+              <span className="text-4xl md:text-5xl font-medium tracking-tight leading-none" style={{ color: PLAN_MAIN, opacity: 0.45 }}>
                 --:--
               </span>
             )}
@@ -443,7 +443,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 <div className="flex items-end gap-2">
                   {currentLevel > 0 ? (
                     <>
-                      <span className="text-4xl md:text-5xl font-black tracking-tight"
+                      <span className="text-4xl md:text-5xl font-medium tracking-tight"
                         style={{ color: E2_CONC_COLOR }}>
                         {formatHeadlineE2(currentLevel)}
                       </span>
@@ -451,7 +451,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         style={{ color: 'rgb(254, 57, 63)', opacity: 0.7 }}>pg/mL</span>
                     </>
                   ) : (
-                    <span className="text-4xl md:text-5xl font-black tracking-tight"
+                    <span className="text-4xl md:text-5xl font-medium tracking-tight"
                       style={{ color: 'var(--text-tertiary)' }}>
                       --
                     </span>
@@ -556,7 +556,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 };
                 const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
                 return (
-              <div className="space-y-1 min-w-0 flex flex-col justify-center">
+              <div className="space-y-0.5 md:space-y-1 min-w-0 flex flex-col justify-end md:justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: aaColor }}>
                   <span className="kpi-stat-title">{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
@@ -564,7 +564,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 <div className="flex items-end gap-2">
                   {currentAA > 0 ? (
                     <>
-                      <span className="text-4xl md:text-5xl font-black tracking-tight"
+                      <span className="text-4xl md:text-5xl font-medium tracking-tight"
                         style={{ color: aaColor }}>
                         {headline.value}
                       </span>
@@ -572,7 +572,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         style={{ color: aaColor, opacity: 0.7 }}>{headline.unit}</span>
                     </>
                   ) : (
-                    <span className="text-4xl md:text-5xl font-black tracking-tight"
+                    <span className="text-4xl md:text-5xl font-medium tracking-tight"
                       style={{ color: 'var(--text-tertiary)' }}>
                       --
                     </span>
@@ -581,7 +581,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 {hasPersonalAaModel && currentAA > 0 && (
                   <>
                     {currentAACI && (
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 md:mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wide"
                           style={{ color: aaColor, opacity: 0.8 }}>{t('chart.cpa_pop_range')}</span>
                         <span className="text-[11px] font-semibold"
@@ -593,7 +593,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                       </div>
                     )}
                     {primaryAASpec?.adherenceFromE2 && (
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 md:mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wide"
                           style={{ color: aaColor, opacity: 0.8 }}>
                           {t('chart.cpa_adherence')}
@@ -607,7 +607,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                       </div>
                     )}
                     {rawAA > 0 && rawAA !== personalAA && (
-                      <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex items-center gap-1.5 md:mt-0.5">
                         <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>Base</span>
                         <span className="text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
                           {fmtText(rawAA)} {fmt(rawAA).unit}
