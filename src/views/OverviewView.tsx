@@ -354,48 +354,51 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       : null;
     const routeText = plan ? (t(`plan.route.${plan.route}`) || t(`route.${plan.route}`)) : null;
     return (
-      <div className="flex flex-col min-w-0">
-        {/* 下次计划标题 + 途径徽章 */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] md:text-xs font-bold" style={{ color: PLAN_MAIN }}>
-            {t('overview.next_plan', '下次计划')}
-          </span>
-          {routeText && (
-            <span className="text-[9px] font-bold px-1 py-0.5 rounded"
-              style={{ background: `rgba(${hexToRgb(PLAN_BADGE)},0.14)`, color: PLAN_BADGE }}>
-              {routeText}
+      <div className="flex flex-col min-w-0 h-full">
+        {/* 上块:下次计划 + 药名 + 大号时间 — flex-1 让它占满中间空白,justify-center 垂直居中 */}
+        <div className="flex-1 flex flex-col justify-center min-h-0">
+          {/* 下次计划标题 + 途径徽章 */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] md:text-xs font-bold" style={{ color: PLAN_MAIN }}>
+              {t('overview.next_plan', '下次计划')}
             </span>
-          )}
-        </div>
-        {/* 药名 + 剂量 */}
-        {plan ? (
-          <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color: PLAN_MAIN, opacity: 0.9 }}>
-            {drugName} {formatDoseMG(plan.doseMG)}mg
-          </p>
-        ) : (
-          <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>
-        )}
-        {/* 大号时间 + 相对日 */}
-        <div className="flex items-end gap-1.5 mt-1">
-          {nextDue ? (
-            <>
-              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
-                {formatTime(nextDue)}
+            {routeText && (
+              <span className="text-[9px] font-bold px-1 py-0.5 rounded"
+                style={{ background: `rgba(${hexToRgb(PLAN_BADGE)},0.14)`, color: PLAN_BADGE }}>
+                {routeText}
               </span>
-              {nextDueStr && (
-                <span className="text-sm md:text-base font-bold mb-0.5" style={{ color: PLAN_MAIN, opacity: 0.75 }}>
-                  {nextDueStr}
-                </span>
-              )}
-            </>
+            )}
+          </div>
+          {/* 药名 + 剂量 */}
+          {plan ? (
+            <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color: PLAN_MAIN, opacity: 0.9 }}>
+              {drugName} {formatDoseMG(plan.doseMG)}mg
+            </p>
           ) : (
-            <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN, opacity: 0.45 }}>
-              --:--
-            </span>
+            <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>
           )}
+          {/* 大号时间 + 相对日 */}
+          <div className="flex items-end gap-1.5 mt-1">
+            {nextDue ? (
+              <>
+                <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
+                  {formatTime(nextDue)}
+                </span>
+                {nextDueStr && (
+                  <span className="text-sm md:text-base font-bold mb-0.5" style={{ color: PLAN_MAIN, opacity: 0.75 }}>
+                    {nextDueStr}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-4xl md:text-5xl font-black tracking-tight leading-none" style={{ color: PLAN_MAIN, opacity: 0.45 }}>
+                --:--
+              </span>
+            )}
+          </div>
         </div>
-        {/* 底部：上次用药 + 含服时长，mt-auto 贴卡片底 */}
-        <div className="mt-auto pt-2">
+        {/* 底部：上次用药 + 含服时长 — 独立块,自然贴卡片底(无 mt-auto) */}
+        <div className="pt-2">
           {lastDose && (
             <p className="text-[10px] md:text-xs font-medium pt-2 border-t truncate"
               style={{ color: PLAN_SOFT, opacity: 0.9, borderColor: `rgba(${hexToRgb(PLAN_SOFT)},0.6)` }}>
@@ -426,7 +429,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             }}>
             <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
               {/* 左栏 — E2 当前浓度(排布沿用原卡,重新配色) */}
-              <div className="space-y-1 min-w-0">
+              <div className="space-y-1 min-w-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: E2_CONC_COLOR }}>
                   <span>{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
@@ -552,7 +555,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 };
                 const noteKey = primaryAA === Ester.BICA ? 'chart.bica_note' : 'chart.cpa_note';
                 return (
-              <div className="space-y-1 min-w-0">
+              <div className="space-y-1 min-w-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: aaColor }}>
                   <span>{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
