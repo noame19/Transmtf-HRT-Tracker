@@ -552,9 +552,17 @@
             font-weight: 550 !important;
         }
 
-        /* 顶部 header 在手机上需要更大顶部 padding (2026-07-19)
-           CDN Tailwind 运行时 .pt-4 = 1rem,这里提升到 2rem,需 !important 压过 */
-        .pt-4 { padding-top: 2rem !important; }
+        /* 顶部安全区 padding (2026-07-19)
+           全面屏手机上状态栏/刘海会盖住顶部内容,硬编码 .pt-4 写死 2rem
+           对每台机的高度都不一样。改用 env(safe-area-inset-top) 让浏览器
+           自动读系统返回值,刘海机返回大值,普通机返回 0;后面 + 1rem 是
+           视觉舒适余量。只在 mobile(<768px)生效,tablet/desktop 维持原 pt-*。
+           需 !important 压过 cdn.tailwindcss.com 运行时注入的同特异性工具类 */
+        @media (max-width: 767px) {
+            .safe-area-pt {
+                padding-top: calc(env(safe-area-inset-top, 0px) + 1rem) !important;
+            }
+        }
 
         /* 全局 .space-y-1 子项间距从 0.5rem 收紧到 0.1rem (2026-07-19)
            抗雄卡左栏(div[2]/div[1])里堆(estimate/数字/各 CI 行/个人模型/Base/status badge)

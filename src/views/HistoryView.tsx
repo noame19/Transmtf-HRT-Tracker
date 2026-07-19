@@ -89,7 +89,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   }, [events, lang]);
 
   return (
-    <div className="relative space-y-5 pt-6 pb-16">
+    <div className="relative space-y-5 safe-area-pt md:pt-6 pb-16">
       {/* Reminder banners — three modes, in priority order:
        *  1. permissionDenied → amber "通知权限未开启" hint (single banner).
        *  2. bannerDue (and the global modal isn't already covering this due)

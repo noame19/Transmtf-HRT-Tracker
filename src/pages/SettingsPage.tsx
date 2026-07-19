@@ -361,7 +361,7 @@ const SettingsPage: React.FC = () => {
     const sectionTitleClass = "px-1 text-xs font-bold uppercase tracking-wider";
 
     return (
-        <div className="min-h-full px-4 py-6 md:px-6">
+        <div className="min-h-full px-4 md:px-6 safe-area-pt md:pt-6 pb-6">
             <div className="mx-auto w-full max-w-2xl space-y-6">
                 {/* Page title */}
                 <div className="rounded-2xl glass-card glass-highlight relative overflow-hidden p-5">

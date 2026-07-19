@@ -413,7 +413,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <>
-      <header className="relative overflow-x-hidden px-3 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+      <header className="relative overflow-x-hidden px-3 md:px-8 safe-area-pt md:pt-6 pb-3 md:pb-4">
         {/* 按药物分类的两张卡：E2 卡 + 抗雄卡。每卡左栏=当前浓度、右栏=
           *  用药时间(下次计划+大号时间+上次用药)。桌面并排,md:items-stretch
           *  两卡等高;窄屏堆叠。 */}
