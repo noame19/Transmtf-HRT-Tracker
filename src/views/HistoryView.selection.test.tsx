@@ -132,7 +132,7 @@ describe('HistoryView — selection mode', () => {
         expect(onEditEvent).toHaveBeenCalledWith(events[0]);
     });
 
-    it('range select: idle → awaitingAnchor → armed → range tick', () => {
+    it('range select: click A → click E → click range button fills A..E', () => {
         const events = [
             mkEvent('a', 100),
             mkEvent('b', 200),
@@ -147,14 +147,29 @@ describe('HistoryView — selection mode', () => {
         fireEvent.pointerDown(aRow, { clientX: 10, clientY: 10, button: 0 });
         act(() => { vi.advanceTimersByTime(500); });
 
-        // Click range button → awaitingAnchor
-        fireEvent.click(screen.getByTestId('btn-range'));
-        // Click event-row-c → anchor becomes c, state becomes armed
-        fireEvent.click(screen.getByTestId('event-row-c'));
-        // Click event-row-e → range c..e ticked (3 items)
+        // Click 'a' (already selected by long-press but click toggles off
+        // and back; use a different row for a clean state).
+        // The long-press above already selected 'a' and set it as anchor.
+        // Now click 'e' — toggles 'e' on, anchor stays 'a'.
         fireEvent.click(screen.getByTestId('event-row-e'));
+        // selectedIds = {a, e}; anchor = a. Range button should be enabled.
+        const rangeBtn = screen.getByTestId('btn-range') as HTMLButtonElement;
+        expect(rangeBtn.disabled).toBe(false);
 
-        // After range tick: a(1 from long-press) + c,d,e(3 from range) = 4
-        expect(screen.getByTestId('btn-delete').getAttribute('aria-label')).toContain('4');
+        // Click range button → fills a..e
+        fireEvent.click(rangeBtn);
+        expect(screen.getByTestId('btn-delete').getAttribute('aria-label')).toContain('5');
+    });
+
+    it('range button stays disabled with only 1 item selected', () => {
+        const events = [mkEvent('a', 100), mkEvent('b', 200)];
+        render(<HistoryView {...baseProps} events={events} />);
+
+        const aRow = screen.getByTestId('event-row-a');
+        fireEvent.pointerDown(aRow, { clientX: 10, clientY: 10, button: 0 });
+        act(() => { vi.advanceTimersByTime(500); });
+        // After long-press: selectionMode + {a} + anchor=a
+        const rangeBtn = screen.getByTestId('btn-range') as HTMLButtonElement;
+        expect(rangeBtn.disabled).toBe(true);
     });
 });

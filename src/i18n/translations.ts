@@ -71,8 +71,7 @@ export const TRANSLATIONS_BASE = {
         "timeline.plans_tab": "用药计划",
 
         "history.selected_count": "已选 {count} 项",
-        "history.range_awaiting_anchor": "请点 A 作为起点",
-        "history.range_armed": "请点 B 完成范围",
+        "history.range_picking_end": "已选起点,再点一条,再按「区间选择」补全",
         "history.bulk_delete_confirm": "确认删除 {count} 条?此操作不可撤销。",
         "toolbar.select_all": "全选",
         "toolbar.range_select": "区间选择",
@@ -919,8 +918,7 @@ export const TRANSLATIONS_BASE = {
         "nav.settings": "Settings",
 
         "history.selected_count": "{count} selected",
-        "history.range_awaiting_anchor": "Tap A as the start",
-        "history.range_armed": "Tap B to finish the range",
+        "history.range_picking_end": "Anchor picked — tap another, then tap Range to fill in",
         "history.bulk_delete_confirm": "Delete {count} item(s)? This cannot be undone.",
         "toolbar.select_all": "Select all",
         "toolbar.range_select": "Range select",
@@ -2344,8 +2342,7 @@ export const TRANSLATIONS = {
         "nav.aria_mobile": "ボトムナビゲーション",
 
         "history.selected_count": "{count} 件選択中",
-        "history.range_awaiting_anchor": "始点 A をタップ",
-        "history.range_armed": "終点 B をタップ",
+        "history.range_picking_end": "始点選択済み — もう 1 件タップ後「範囲選択」を押すと補完",
         "history.bulk_delete_confirm": "{count} 件を削除しますか?元に戻せません。",
         "toolbar.select_all": "すべて選択",
         "toolbar.range_select": "範囲選択",

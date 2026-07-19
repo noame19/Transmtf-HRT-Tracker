@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCheck, BetweenHorizontalEnd, RotateCcw, Trash2 } from 'lucide-react';
 
-export type RangeButtonState = 'idle' | 'awaitingAnchor' | 'armed';
+export type RangeButtonState = 'idle' | 'pickingEnd';
 
 interface HistoryBulkActionBarProps {
     visible: boolean;
@@ -27,6 +27,8 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
     // has actually picked at least one item — otherwise the destructive
     // primary button is misleading.
     const canDelete = rangeButtonState === 'idle' && selectedCount > 0;
+    // 区间按钮:有 anchor + 已选 ≥ 2 时高亮可点,只选了 1 条时灰着提示用户再选一条。
+    const canArmRange = rangeButtonState === 'pickingEnd' && selectedCount >= 2;
 
     return (
         <div
@@ -38,8 +40,9 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
                 icon={<BetweenHorizontalEnd size={20} />}
                 label="区间选择"
                 onClick={onArmRange}
-                active={rangeButtonState !== 'idle'}
-                pulsing={rangeButtonState === 'awaitingAnchor'}
+                active={canArmRange}
+                pulsing={canArmRange}
+                disabled={!canArmRange}
                 testId="btn-range"
             />
             <ToolbarBtn

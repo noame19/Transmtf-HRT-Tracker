@@ -82,7 +82,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   // ── Multi-select state ──────────────────────────────────────────────
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [rangeButtonState, setRangeButtonState] = useState<'idle' | 'awaitingAnchor' | 'armed'>('idle');
+  const [rangeButtonState, setRangeButtonState] = useState<'idle' | 'pickingEnd'>('idle');
   const [rangeAnchorId, setRangeAnchorId] = useState<string | null>(null);
   const pressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -153,21 +153,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   const handleArmRange = () => {
-    if (rangeButtonState === 'idle') {
-      setRangeButtonState('awaitingAnchor');
-      return;
-    }
-    setRangeButtonState('idle');
-    setRangeAnchorId(null);
-  };
-
-  const handleRangeTick = (itemId: string) => {
+    // 区间选择按钮 = "补全" 用,触发条件:已有 anchor + 至少 2 条已选。
+    // 取 anchor 作为起点,selectedIds 中**时间序最靠后**(即最近被 toggle
+    // 的另一端)作为终点,中间全部勾上。点完按钮后清掉 anchor,避免
+    // 误触多次点按钮反复加重复。
+    if (rangeButtonState !== 'pickingEnd') return;
+    if (rangeAnchorId == null || selectedIds.size < 2) return;
     const visibleIds = activeTab === 'records'
       ? visibleEventIds
       : plans.map(p => p.id);
-    const startIdx = visibleIds.indexOf(rangeAnchorId ?? '');
-    const endIdx = visibleIds.indexOf(itemId);
-    if (startIdx < 0 || endIdx < 0) return;
+    const startIdx = visibleIds.indexOf(rangeAnchorId);
+    if (startIdx < 0) return;
+    // 找 selectedIds 中除 anchor 外的另一端:在 visibleEventIds 中 index 最大
+    // 的(时间最新)就是另一端;index 最小的是 anchor 自己。
+    let endIdx = -1;
+    for (let i = visibleIds.length - 1; i >= 0; i--) {
+      const id = visibleIds[i];
+      if (id === rangeAnchorId) continue;
+      if (selectedIds.has(id)) { endIdx = i; break; }
+    }
+    if (endIdx < 0) return;
     const [lo, hi] = startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
     const rangeIds = visibleIds.slice(lo, hi + 1);
     setSelectedIds(prev => {
@@ -209,17 +214,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const onItemClick = (ev: DoseEvent) => {
     if (selectionMode) {
-      if (rangeButtonState === 'awaitingAnchor') {
-        setRangeAnchorId(ev.id);
-        setRangeButtonState('armed');
-        toggleSelected(ev.id);
-        return;
-      }
-      if (rangeButtonState === 'armed') {
-        handleRangeTick(ev.id);
-        return;
-      }
+      // 新区间语义:单击 = toggle + (若还没 anchor)记录 anchor。
+      // 工具栏「区间」按钮单独触发"补全 A~B 中间"。这样符合用户要求:
+      //   点 A → 点 B → 点"区间选择" → A..B 全勾。
+      // 若用户从来没点过任何 item(只是长按进了多选然后单点一条),
+      // 那次单击既 toggle 自己,又成为 anchor;此时 selectedIds.size=1
+      // 按钮不会高亮,需再点至少另一条才能触发。
       toggleSelected(ev.id);
+      if (rangeAnchorId == null) {
+        setRangeAnchorId(ev.id);
+        setRangeButtonState('pickingEnd');
+      }
       return;
     }
     onEditEvent(ev);
@@ -389,13 +394,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     onMouseEnter={e => { if (!selectionMode) e.currentTarget.style.background = 'var(--bg-card-hover)'; }}
                     onMouseLeave={e => { if (!selectionMode) e.currentTarget.style.background = 'transparent'; }}
                   >
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border`}
-                      style={{
-                        background: ev.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
-                        borderColor: ev.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
-                      }}>
-                      {getRouteIcon(ev.route)}
-                    </div>
                     {selectionMode && (
                       <button
                         type="button"
@@ -411,6 +409,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                         {selectedIds.has(ev.id) && <Check size={14} color="#fff" strokeWidth={3} />}
                       </button>
                     )}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border`}
+                      style={{
+                        background: ev.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
+                        borderColor: ev.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
+                      }}>
+                      {getRouteIcon(ev.route)}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
@@ -515,8 +520,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
               {t('history.selected_count', { count: selectedIds.size })}
             </span>
             <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {rangeButtonState === 'awaitingAnchor' && t('history.range_awaiting_anchor')}
-              {rangeButtonState === 'armed' && t('history.range_armed')}
+              {rangeButtonState === 'pickingEnd' && t('history.range_picking_end')}
             </span>
           </div>
         </div>

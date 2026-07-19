@@ -114,13 +114,6 @@ const PlanList: React.FC<PlanListProps> = ({
                         }}
                     >
                         <div className="p-4 flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
-                                style={{
-                                    background: plan.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
-                                    borderColor: plan.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
-                                }}>
-                                {getRouteIcon(plan.route)}
-                            </div>
                             {selectionMode && (
                                 <button
                                     type="button"
@@ -138,6 +131,13 @@ const PlanList: React.FC<PlanListProps> = ({
                                     )}
                                 </button>
                             )}
+                            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
+                                style={{
+                                    background: plan.route === RouteEnum.injection ? 'var(--bg-soft-rose)' : 'var(--bg-card-hover)',
+                                    borderColor: plan.route === RouteEnum.injection ? 'var(--border-soft-rose)' : 'var(--border-primary)',
+                                }}>
+                                {getRouteIcon(plan.route)}
+                            </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
