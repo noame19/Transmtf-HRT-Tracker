@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AndroidManifest.xml 权限与 receiver 配置片段(2026-07-19 改造)
+
+  仓库里没有 AndroidManifest.xml 源文件(APK 是 apk_dl/ 下手工构建的)。
+  用户需要把以下内容合并到自己维护的 Android Studio 工程的
+  app/src/main/AndroidManifest.xml 里。
+
+  必加项:
+    1. <uses-permission> 两项权限
+    2. <receiver> 注册 ReminderReceiver + BootReceiver
+    3. 自启动白名单 + 电池优化白名单需要用户手动去系统设置加,
+       manifest 无能为力,需配合 App 内首启动引导(留作 follow-up)
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.smirnovayama.hrttracker">
+
+    <!-- ── Permissions ────────────────────────────────────────────────── -->
+    <!-- API 31-32: 不需要用户授权,manifest 声明即授予(系统检测到
+         alarm-clock 类用法直接 grant)。但 manifest 必须声明,否则
+         setAlarmClock 在 Android 12 设备上会抛 SecurityException。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- API 33+: USE_EXACT_ALARM 替代 SCHEDULE_EXACT_ALARM,完全不需要
+         用户授权,系统对 alarm-clock / calendar 类应用自动 grant。
+         同时声明两个权限是 Google 官方推荐做法(forward + back compat)。 -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- API 33+ 的 POST_NOTIFICATIONS 运行时权限,首次启动要弹一次
+         (NotificationScheduler.ensureChannel 之后由 JS 端主动触发) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 设备重启后恢复 alarm 必需 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application ...>
+        <!-- ── ReminderReceiver: alarm 触发点 ───────────────────────── -->
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.smirnovayama.hrttracker.REMINDER_FIRE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── BootReceiver: 设备重启 / App 更新后重置所有 alarm ──────
+             exported="true" 是 BOOT_COMPLETED 系统广播的要求;
+             permission 限制只有系统能发这个 intent 给我们。 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

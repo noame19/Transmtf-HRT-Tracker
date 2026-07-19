@@ -11,7 +11,10 @@ import androidx.core.app.NotificationCompat
 /**
  * AlarmManager entry point. When a scheduled alarm fires, we:
  *   1. Look up the cached plan + its next moment from the intent extras.
- *   2. Build a notification with a deep-link back into the app.
+ *   2. Build a regular heads-up notification in the system tray (NO
+ *      fullScreenIntent, NO lock-screen takeover — the user explicitly
+ *      asked for a normal notification despite using setAlarmClock under
+ *      the hood).
  *   3. Write the deep-link JSON to SharedPreferences so the JS side can
  *      pick it up the next time the app is foregrounded.
  *   4. Schedule the next reminder for the same plan (incrementally — avoids

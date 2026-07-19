@@ -22,10 +22,23 @@ import java.util.concurrent.TimeUnit
  * receivers whole.
  *
  * The Rust layer is a thin shim: it forwards the user's plan JSON here and
- * we do the scheduling locally. We intentionally use
- * `AlarmManager.setWindow()` (inexact) so the app does NOT need
- * `SCHEDULE_EXACT_ALARM` — a few minutes of drift is fine for a daily
- * medication reminder and avoids the Play Store extra-permission prompt.
+ * we do the scheduling locally.
+ *
+ * Scheduling strategy (2026-07 redesign, personal-use app — Play Store
+ * policy N/A):
+ *   - We use `AlarmManager.setAlarmClock()` for every medication moment.
+ *     This is the only API that survives (a) Doze, (b) App Standby
+ *     Buckets, (c) OEM aggressive background-kill (MIUI/EMUI/ColorOS), and
+ *     (d) the app being completely closed. It is treated by the system as
+ *     a real user-set alarm clock: highest priority, no batching.
+ *   - Required manifest permissions: `USE_EXACT_ALARM` (API 33+, system
+ *     grants automatically, no user prompt) AND `SCHEDULE_EXACT_ALARM`
+ *     (API 31–32, system grants automatically on first launch).
+ *   - Side effect: the system shows a small "next alarm" affordance in the
+ *     status bar (same as a regular alarm-clock app). We do NOT use the
+ *     AlarmClock API's `PendingIntent` to launch any Activity — the
+ *     PendingIntent points to ReminderReceiver, which only fires a
+ *     regular heads-up Notification. No lock-screen takeover.
  */
 object NotificationScheduler {
     private const val TAG = "NotificationScheduler"
@@ -124,9 +137,14 @@ object NotificationScheduler {
             for ((moment, isoTime) in moments) {
                 val requestCode = (plan.id.hashCode() xor isoTime.hashCode())
                 val pi = buildPendingIntent(context, requestCode, plan.id, moment)
-                // setWindow gives ±5min drift and dodges SCHEDULE_EXACT_ALARM.
-                val windowMs = TimeUnit.MINUTES.toMillis(5)
-                am.setWindow(AlarmManager.RTC_WAKEUP, moment, windowMs, pi)
+                // setAlarmClock = the only AlarmManager API that fires
+                // reliably under Doze + App Standby + OEM kill + closed-app
+                // state. Cost: system shows a "next alarm" status-bar
+                // affordance (acceptable for a med reminder). Benefits:
+                // no batching, no deferral, no permission prompt at runtime
+                // (USE_EXACT_ALARM is auto-granted on API 33+ for the
+                // alarm-clock use case).
+                am.setAlarmClock(AlarmManager.RTC_WAKEUP, moment, pi)
                 newCodes.add(requestCode.toString())
                 count++
             }
