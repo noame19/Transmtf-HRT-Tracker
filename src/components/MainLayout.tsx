@@ -864,11 +864,14 @@ const MainLayout: React.FC = () => {
                 </div>
             </main>
 
-            {/* ── Mobile bottom nav — Glass Pill ── */}
-            <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-1 pb-3"
-                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', background: 'linear-gradient(to top, var(--bg-secondary) 75%, transparent)' }}>
+            {/* ── Mobile bottom nav — Glass Pill ──
+                高度整体缩短 ~20%(省约 17px,目标接近用户要的"10% 左右"可见缩短)。
+                改动:nav pt 1→0、内 paddingBottom 12→8、容器 py-1.5→py-1、
+                button py-2.5→py-2、icon 22→20、文字 10→9。桌面 nav 不动。 */}
+            <nav aria-label={t('nav.aria_mobile')} className="fixed bottom-0 left-0 right-0 z-40 md:hidden px-3 pt-0 pb-2"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)', background: 'linear-gradient(to top, var(--bg-secondary) 75%, transparent)' }}>
                 <div
-                    className="rounded-3xl px-1.5 py-1.5 glass"
+                    className="rounded-3xl px-1.5 py-1 glass"
                     style={{
                         boxShadow: 'var(--shadow-md)',
                     }}
@@ -882,19 +885,19 @@ const MainLayout: React.FC = () => {
                                     key={id}
                                     onClick={() => handleViewChange(id)}
                                     aria-current={active ? 'page' : undefined}
-                                    className={`relative flex flex-col items-center gap-0.5 py-2.5 px-1 rounded-2xl transition-all duration-200 btn-press-glass ${
+                                    className={`relative flex flex-col items-center gap-0.5 py-2 px-1 rounded-2xl transition-all duration-200 btn-press-glass ${
                                         active ? 'glass-btn' : ''
                                     }`}
                                 >
                                     <Icon
-                                        size={22}
+                                        size={20}
                                         style={{
                                             color: active ? 'var(--accent-500)' : 'var(--text-tertiary)',
                                             transition: 'color 0.2s',
                                         }}
                                     />
                                     <span
-                                        className="text-[10px] font-semibold leading-none"
+                                        className="text-[9px] font-semibold leading-none"
                                         style={{
                                             color: active ? 'var(--accent-500)' : 'var(--text-tertiary)',
                                             transition: 'color 0.2s',
