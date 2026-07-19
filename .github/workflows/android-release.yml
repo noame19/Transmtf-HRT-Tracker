@@ -254,6 +254,28 @@ jobs:
           if ! grep -q "RECEIVE_BOOT_COMPLETED" "$MANIFEST"; then
             sed -i 's|</manifest>|    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />\n</manifest>|' "$MANIFEST"
           fi
+          # SCHEDULE_EXACT_ALARM (API 31-32) + USE_EXACT_ALARM (API 33+):
+          # required for NotificationScheduler.setAlarmClock. Without these,
+          # Android 12+ throws SecurityException and reminders never fire
+          # when the app is closed / Doze / OEM kill. We rely on the
+          # alarm-clock use case so USE_EXACT_ALARM is auto-granted on 33+
+          # without a user prompt.
+          if ! grep -q "SCHEDULE_EXACT_ALARM" "$MANIFEST"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />\n</manifest>|' "$MANIFEST"
+          fi
+          if ! grep -q "USE_EXACT_ALARM" "$MANIFEST"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />\n</manifest>|' "$MANIFEST"
+          fi
+          # REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: needed for the
+          # Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS intent
+          # (per-app deep-link to "allow background activity"). We use the
+          # broader ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS (the list
+          # page) in NotificationScheduler, which doesn't strictly require
+          # this permission — but adding it future-proofs against code
+          # switching to the per-app intent.
+          if ! grep -q "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" "$MANIFEST"; then
+            sed -i 's|</manifest>|    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />\n</manifest>|' "$MANIFEST"
+          fi
           # ReminderReceiver — internal receiver fired by AlarmManager.
           # BootReceiver — exported (system sends BOOT_COMPLETED to it).
           # We use python (not sed) because we splice a multi-line <receiver>
