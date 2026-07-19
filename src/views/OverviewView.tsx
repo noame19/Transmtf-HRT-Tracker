@@ -357,7 +357,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
       <div className="flex flex-col min-w-0">
         {/* 下次计划标题 + 途径徽章 */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="kpi-stat-title" style={{ color: PLAN_MAIN }}>
+          <span className="text-[10px] md:text-xs font-bold" style={{ color: PLAN_MAIN }}>
             {t('overview.next_plan', '下次计划')}
           </span>
           {routeText && (
@@ -398,7 +398,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         <div className="mt-auto pt-2">
           {lastDose && (
             <p className="text-[10px] md:text-xs font-medium pt-2 border-t truncate"
-              style={{ color: 'rgb(254, 57, 63)', opacity: 0.7, borderColor: 'rgba(254, 57, 63, 0.6)' }}>
+              style={{ color: PLAN_SOFT, opacity: 0.9, borderColor: `rgba(${hexToRgb(PLAN_SOFT)},0.6)` }}>
               {t('overview.last_short', '上次')} {formatTimeAgo(lastDose.timeH)} {formatTime(new Date(lastDose.timeH * 3600000))}
             </p>
           )}
@@ -426,10 +426,10 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             }}>
             <div className="grid grid-cols-2 gap-3 md:gap-4 flex-1 min-h-0">
               {/* 左栏 — E2 当前浓度(排布沿用原卡,重新配色) */}
-              <div className="space-y-1 min-w-0" style={{ alignContent: 'center' }}>
+              <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: E2_CONC_COLOR }}>
-                  <span className="kpi-stat-title">{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
+                  <span>{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
                   {hasPersonalModel && (
                     <span className="px-1 py-0.5 rounded-full text-[8px] font-bold"
                       style={{ background: `rgba(${hexToRgb(E2_CONC_COLOR)},0.14)`, color: E2_CONC_COLOR }}>
@@ -455,7 +455,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   )}
                 </div>
                 {currentCI && (
-                  <div className="flex items-center gap-1.5 mt-0.5" style={{ marginTop: '0.5rem' }}>
+                  <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[9px] font-bold uppercase tracking-wide"
                       style={{ color: E2_CONC_COLOR, opacity: 0.75 }}>95% CI</span>
                     <span className="text-[11px] font-semibold"
@@ -555,7 +555,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: aaColor }}>
-                  <span className="kpi-stat-title">{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
+                  <span>{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
                 </div>
                 <div className="flex items-end gap-2">
                   {currentAA > 0 ? (
@@ -583,8 +583,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         <span className="text-[11px] font-semibold"
                           style={{ color: aaColor }}>
                           {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
-                          <span className="text-[9px] ml-0.5"
-                            style={{ color: 'rgb(0, 176, 240)' }}>{fmt(currentAACI.hi).unit}</span>
+                          <span className="text-[9px] font-normal ml-0.5"
+                            style={{ color: aaColor, opacity: 0.8 }}>{fmt(currentAACI.hi).unit}</span>
                         </span>
                       </div>
                     )}

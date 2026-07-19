@@ -543,47 +543,6 @@
             margin-top: calc(0.5rem * calc(1 - var(--tw-space-y-reverse))) !important;
             margin-bottom: calc(0.5rem * calc(1 - var(--tw-space-y-reverse))) !important;
         }
-
-        /* ── Per-UI-tweak overrides (2026-07-19) ── */
-
-        /* Mobile (max-width 767px): tighter header paddings + smaller headline. */
-        @media (max-width: 767px) {
-            .pt-4 { padding-top: 2rem !important; }
-            .pt-2 { padding-top: 0.2rem !important; }
-            .text-4xl { font-size: 1.5rem !important; line-height: 2rem !important; }
-        }
-
-        /* Tablet (min-width 768px): hero chart card 25rem. */
-        @media (min-width: 768px) {
-            .md\:h-80 { height: 25rem !important; }
-        }
-
-        /* Desktop (min-width 1280px): hero chart card 420px. */
-        @media (min-width: 1280px) {
-            .xl\:h-\[340px\] { height: 420px !important; }
-        }
-
-        /* Mobile + tablet (max-width 1023px): kill the .space-y-1 vertical
-           gap inside the hero KPI cards. This MUST come AFTER the desktop
-           .space-y-1 override above so the cascade order is:
-           desktop → 0.5rem, mobile/tablet → 0. */
-        @media (max-width: 1023px) {
-            .space-y-1 > :not([hidden]) ~ :not([hidden]) {
-                --tw-space-y-reverse: 0;
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-            }
-        }
-
-        /* Shared label style for the 4 hero KPI titles (E2 estimate,
-         * AA estimate, 下次计划 x2). Applied as a regular class via
-         * className="kpi-stat-title" — uses !important to win the
-         * cascade against Tailwind text-[…]/font-bold utilities on the
-         * same element. */
-        .kpi-stat-title {
-            font-size: 0.75rem !important;
-            font-weight: 550 !important;
-        }
     </style>
 <script type="importmap">
 {
