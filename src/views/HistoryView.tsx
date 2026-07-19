@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { Activity, Plus, Layers, CalendarClock, Sticker } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Activity, Plus, Layers, CalendarClock, Sticker, Check } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
+import { useDialog } from '../contexts/DialogContext';
 import { formatDateTime, formatTime, formatDateWithYear, dateKey, getRouteIcon } from '../utils/helpers';
 import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../../logic';
 import { Plan } from '../../types';
 import PlanList from '../components/PlanList';
+import HistoryBulkActionBar from '../components/HistoryBulkActionBar';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
 import ComplianceBanner from '../components/ComplianceBanner';
 import type { ComplianceMismatch } from '../utils/planCompliance';
@@ -55,6 +57,9 @@ interface HistoryViewProps {
   onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
   complianceMismatches: ComplianceMismatch[];
+  /** Multi-select delete handlers — invoked by the floating action bar. */
+  onBulkDeleteEvents: (ids: string[]) => void;
+  onBulkDeletePlans: (ids: string[]) => void;
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({
@@ -67,9 +72,40 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   onDelay1d, onDelay2d,
   permissionDenied, onOpenNotificationSettings,
   complianceMismatches,
+  onBulkDeleteEvents,
+  onBulkDeletePlans,
 }) => {
   const { t, lang } = useTranslation();
+  const { showDialog } = useDialog();
   const [activeTab, setActiveTab] = useState<HistoryTab>('records');
+
+  // ── Multi-select state ──────────────────────────────────────────────
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [rangeButtonState, setRangeButtonState] = useState<'idle' | 'awaitingAnchor' | 'armed'>('idle');
+  const [rangeAnchorId, setRangeAnchorId] = useState<string | null>(null);
+  const pressTimerRef = useRef<number | null>(null);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const resetSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setRangeButtonState('idle');
+    setRangeAnchorId(null);
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const groupedEvents = useMemo(() => {
     const sorted = [...events].sort((a, b) => b.timeH - a.timeH);
@@ -87,6 +123,119 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     });
     return groups;
   }, [events, lang]);
+
+  // Visible event ids in render order (newest first). Patch-apply events
+  // carry their companion patch-remove id along so a bulk delete removes
+  // both ends of the wear window as a single bookkeeping unit. Single
+  // toggle clicks still surface ONLY the row's own id (handled in
+  // onItemClick), this `visibleEventIds` is for "select all" / range / delete.
+  const visibleEventIds = useMemo(() => {
+    const out: string[] = [];
+    for (const group of Object.values(groupedEvents)) {
+      for (const ev of group.items) {
+        if (ev.route === RouteEnum.patchRemove) continue;
+        out.push(ev.id);
+        if (ev.route === RouteEnum.patchApply) {
+          const paired = findPatchRemoveForApply(ev, events);
+          if (paired && !out.includes(paired.id)) out.push(paired.id);
+        }
+      }
+    }
+    return out;
+  }, [groupedEvents, events]);
+
+  const handleSelectAll = () => {
+    if (activeTab === 'records') {
+      setSelectedIds(new Set(visibleEventIds));
+    } else {
+      setSelectedIds(new Set(plans.map(p => p.id)));
+    }
+  };
+
+  const handleArmRange = () => {
+    if (rangeButtonState === 'idle') {
+      setRangeButtonState('awaitingAnchor');
+      return;
+    }
+    setRangeButtonState('idle');
+    setRangeAnchorId(null);
+  };
+
+  const handleRangeTick = (itemId: string) => {
+    const visibleIds = activeTab === 'records'
+      ? visibleEventIds
+      : plans.map(p => p.id);
+    const startIdx = visibleIds.indexOf(rangeAnchorId ?? '');
+    const endIdx = visibleIds.indexOf(itemId);
+    if (startIdx < 0 || endIdx < 0) return;
+    const [lo, hi] = startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+    const rangeIds = visibleIds.slice(lo, hi + 1);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      rangeIds.forEach(id => next.add(id));
+      return next;
+    });
+    setRangeButtonState('idle');
+    setRangeAnchorId(null);
+  };
+
+  // Long-press helpers — attached to every event row.
+  const onItemPointerDown = (e: React.PointerEvent, itemId: string) => {
+    if (e.button !== 0) return;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    pressTimerRef.current = window.setTimeout(() => {
+      pressTimerRef.current = null;
+      if (navigator.vibrate) navigator.vibrate(30);
+      setSelectionMode(true);
+      setSelectedIds(new Set([itemId]));
+    }, 500);
+  };
+  const onItemPointerMove = (e: React.PointerEvent) => {
+    if (!pressStartRef.current || pressTimerRef.current === null) return;
+    const dx = e.clientX - pressStartRef.current.x;
+    const dy = e.clientY - pressStartRef.current.y;
+    if (Math.hypot(dx, dy) > 10 && pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+  const onItemPointerEnd = () => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    pressStartRef.current = null;
+  };
+
+  const onItemClick = (ev: DoseEvent) => {
+    if (selectionMode) {
+      if (rangeButtonState === 'awaitingAnchor') {
+        setRangeAnchorId(ev.id);
+        setRangeButtonState('armed');
+        toggleSelected(ev.id);
+        return;
+      }
+      if (rangeButtonState === 'armed') {
+        handleRangeTick(ev.id);
+        return;
+      }
+      toggleSelected(ev.id);
+      return;
+    }
+    onEditEvent(ev);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (activeTab === 'records') onBulkDeleteEvents(ids);
+    else onBulkDeletePlans(ids);
+    resetSelection();
+  };
+
+  const handleBulkCancel = () => {
+    resetSelection();
+  };
 
   return (
     <div className="relative space-y-5 safe-area-pt md:pt-6 pb-16">
@@ -170,7 +319,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       <div className="px-2 md:max-lg:px-2 lg:px-4">
         <div className="flex gap-1 p-1 rounded-xl glass-card">
           <button
-            onClick={() => setActiveTab('records')}
+            onClick={() => { setActiveTab('records'); resetSelection(); }}
             className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition btn-press-glass ${activeTab === 'records' ? 'glass-btn-primary text-white' : ''}`}
             style={activeTab !== 'records' ? { color: 'var(--text-secondary)' } : undefined}
           >
@@ -178,7 +327,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             <span>{t('timeline.records_tab') || '用药记录'}</span>
           </button>
           <button
-            onClick={() => setActiveTab('plans')}
+            onClick={() => { setActiveTab('plans'); resetSelection(); }}
             className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition btn-press-glass ${activeTab === 'plans' ? 'glass-btn-primary text-white' : ''}`}
             style={activeTab !== 'plans' ? { color: 'var(--text-secondary)' } : undefined}
           >
@@ -219,10 +368,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   return (
                   <div
                     key={ev.id}
-                    onClick={() => onEditEvent(ev)}
+                    data-testid={`event-row-${ev.id}`}
+                    onClick={() => onItemClick(ev)}
+                    onPointerDown={(e) => onItemPointerDown(e, ev.id)}
+                    onPointerMove={onItemPointerMove}
+                    onPointerUp={onItemPointerEnd}
+                    onPointerLeave={onItemPointerEnd}
+                    onPointerCancel={onItemPointerEnd}
                     className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative btn-press-glass"
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    style={{
+                      background: selectionMode && selectedIds.has(ev.id) ? 'var(--bg-card-hover)' : 'transparent',
+                    }}
+                    onMouseEnter={e => { if (!selectionMode) e.currentTarget.style.background = 'var(--bg-card-hover)'; }}
+                    onMouseLeave={e => { if (!selectionMode) e.currentTarget.style.background = 'transparent'; }}
                   >
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border`}
                       style={{
@@ -231,6 +389,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                       }}>
                       {getRouteIcon(ev.route)}
                     </div>
+                    {selectionMode && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleSelected(ev.id); }}
+                        aria-label={selectedIds.has(ev.id) ? '取消选中' : '选中'}
+                        data-testid={`event-checkbox-${ev.id}`}
+                        className="w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 btn-press-glass"
+                        style={{
+                          borderColor: selectedIds.has(ev.id) ? 'var(--accent-500)' : 'var(--border-primary)',
+                          background: selectedIds.has(ev.id) ? 'var(--accent-500)' : 'transparent',
+                        }}
+                      >
+                        {selectedIds.has(ev.id) && <Check size={14} color="#fff" strokeWidth={3} />}
+                      </button>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
@@ -319,8 +492,37 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onDeletePlan={onDeletePlan}
           onTogglePlan={onTogglePlan}
           mismatches={complianceMismatches}
+          selectionMode={selectionMode}
+          selectedIds={Array.from(selectedIds)}
+          onToggleSelected={toggleSelected}
         />
       )}
+
+      {/* Multi-select top banner + floating action bar.
+       *  Both render outside the records / plans sub-trees so they overlay
+       *  whatever is currently on screen. */}
+      {selectionMode && (
+        <div className="px-2 md:max-lg:px-2 lg:px-4 sticky top-0 z-30">
+          <div className="glass-card rounded-xl px-3 py-2 flex items-center justify-between text-sm">
+            <span style={{ color: 'var(--text-primary)' }}>
+              {t('history.selected_count', { count: selectedIds.size })}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {rangeButtonState === 'awaitingAnchor' && t('history.range_awaiting_anchor')}
+              {rangeButtonState === 'armed' && t('history.range_armed')}
+            </span>
+          </div>
+        </div>
+      )}
+      <HistoryBulkActionBar
+        visible={selectionMode}
+        selectedCount={selectedIds.size}
+        rangeButtonState={rangeButtonState}
+        onSelectAll={handleSelectAll}
+        onArmRange={handleArmRange}
+        onCancel={handleBulkCancel}
+        onDelete={handleBulkDelete}
+      />
     </div>
   );
 };
