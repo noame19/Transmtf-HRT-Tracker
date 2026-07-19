@@ -378,7 +378,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>
           )}
           {/* 大号时间 + 相对日 */}
-          <div className="flex items-end gap-1.5 mt-[0.2rem] md:mt-1">
+          <div className="flex items-end gap-1.5 mt-1">
             {nextDue ? (
               <>
                 <span className="text-4xl md:text-5xl font-medium tracking-tight leading-none" style={{ color: PLAN_MAIN }}>
@@ -398,7 +398,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
         </div>
         {/* 底部：上次用药 + 含服时长 — 独立块,自然贴卡片底(无 mt-auto) */}
-        <div className="pt-2">
+        <div className="pt-[0.2rem] md:pt-2">
           {lastDose && (
             <p className="text-[10px] md:text-xs font-medium pt-2 border-t truncate"
               style={{ color: PLAN_SOFT, opacity: 0.9, borderColor: `rgba(${hexToRgb(PLAN_SOFT)},0.6)` }}>
