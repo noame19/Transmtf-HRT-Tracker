@@ -225,15 +225,27 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     onEditEvent(ev);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
+    const ok = await showDialog(
+      'confirm',
+      t('history.bulk_delete_confirm', { count: ids.length }),
+    );
+    if (ok !== 'confirm') return;
     if (activeTab === 'records') onBulkDeleteEvents(ids);
     else onBulkDeletePlans(ids);
     resetSelection();
   };
 
-  const handleBulkCancel = () => {
+  const handleBulkCancel = async () => {
+    if (selectedIds.size > 0) {
+      const ok = await showDialog(
+        'confirm',
+        t('history.bulk_cancel_confirm', { count: selectedIds.size }),
+      );
+      if (ok !== 'confirm') return;
+    }
     resetSelection();
   };
 
