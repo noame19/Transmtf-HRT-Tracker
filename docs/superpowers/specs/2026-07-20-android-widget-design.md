@@ -60,14 +60,19 @@
 
 ## 1. Widget 矩阵
 
+**三类语义不同的 widget**：
+- **浓度单侧**（E2 + 抗雄各一个）：只看"现在浓度多少"
+- **计划单侧**（E2 + 抗雄各一个）：只看"下次啥时候吃"
+- **精简全卡**（E2 + 抗雄各一个）：**同时显示浓度和计划**，一个 widget 装两件事（用户原话："5x2 横长条本来就是用来同时放入浓度和计划的"）
+
 | Widget ID 后缀 | 显示 | 尺寸 | 显示字段 | 缓存来源 |
 |---|---|---|---|---|
 | `e2_conc_3x2` / `e2_conc_2x3` | E2 当前浓度单侧 | 3x2 或 2x3 cells（用户装时选） | 3x2: 浓度+CI+staleness; 2x3: 浓度+单位（丢 CI、staleness） | snapshot.e2 |
 | `e2_plan_3x2` / `e2_plan_2x3` | E2 下次计划单侧 | 3x2 或 2x3 cells（用户装时选） | 3x2: 药名+剂量+途径+倒计时+绝对时间+staleness; 2x3: 药名+倒计时+绝对时间（丢剂量、staleness） | snapshot.e2 |
-| `e2_full_5x2` | E2 精简全卡 | 5x2 cells only | 左侧: 浓度数值 + 单位；右侧: 药名 + 剂量 + 途径 + 下次时间(时分) + staleness | snapshot.e2 |
+| `e2_full_5x2` | E2 精简全卡（浓度+计划同卡） | 5x2 cells only | 左侧: 浓度数值 + 单位；右侧: 药名 + 剂量 + 途径 + 下次时间(时分) + staleness | snapshot.e2 |
 | `aa_conc_3x2` / `aa_conc_2x3` | 抗雄当前浓度单侧 | 3x2 或 2x3 cells（用户装时选） | 3x2: 浓度+CI+staleness; 2x3: 浓度+单位（丢 CI、staleness） | snapshot.aa |
 | `aa_plan_3x2` / `aa_plan_2x3` | 抗雄下次计划单侧 | 3x2 或 2x3 cells（用户装时选） | 3x2: 药名+剂量+途径+倒计时+绝对时间+staleness; 2x3: 药名+倒计时+绝对时间（丢剂量、staleness） | snapshot.aa |
-| `aa_full_5x2` | 抗雄精简全卡 | 5x2 cells only | 左侧: 浓度数值 + 单位；右侧: 药名 + 剂量 + 途径 + 下次时间(时分) + staleness | snapshot.aa |
+| `aa_full_5x2` | 抗雄精简全卡（浓度+计划同卡） | 5x2 cells only | 左侧: 浓度数值 + 单位；右侧: 药名 + 剂量 + 途径 + 下次时间(时分) + staleness | snapshot.aa |
 | `cal_heatmap_4x3` | 月历热力图 | 4x3 cells | 最近 6 周 × 7 天 = 42 格色块，今天高亮 | snapshot.calendarHeatmap |
 
 **精简全卡（5x2）去掉**（用户原话："可以只保留关键数据，当前浓度值、下次计划 肌注 药物 剂量 时间"）：
@@ -597,7 +602,7 @@ CI patch 锚点（`src-tauri/scripts/AndroidManifest.widget.snippet.xml`）：
   - `now - computedAtMs < 5min` → "刚刚"
   - `5min <= diff < 60min` → "N 分钟前更新"
   - `diff >= 60min` → "N 小时前更新"
-  - `diff >= 24h` → "1 天前更新"（红色 stale 警告色）
+  - `diff >= 24h` → "1 天前更新"（文案带"· 数据可能已变化"，但**不染色**）
 
 ### 10.2 Android instrumented test
 
@@ -646,12 +651,18 @@ CI patch 锚点（`src-tauri/scripts/AndroidManifest.widget.snippet.xml`）：
   - 阶段 2（如嫌慢）：Rust 重写 pk.ts 核心插值（2-3 周）
   - 阶段 3（如还嫌慢）：缓存 + 增量更新
 
-### 11.5 浓度快照的 staleness 误导
+### 11.5 浓度快照的 staleness 提示
 - **风险**：widget 显示"现在 145 pg/mL"但实际可能已衰减到 130（5x2 widget 没显示 CI，用户没有可信度指示器）
-- **缓解**：
+- **缓解**（已按用户要求简化）：
   - 3x2 / 2x3 widget 全部显示 staleness
-  - 5x2 widget 也保留 staleness（不显示 CI 但 staleness 是另一种可信度信号）
-  - staleness > 30min 变橙色提示；> 1h 变红色提示（"1 小时前更新 · 数据已过期"）
+  - 5x2 widget 也保留 staleness
+  - **不搞颜色变化**（不橙色不红色），只用纯文字标"X 分钟前更新"
+  - staleness 文案分级（仅文字）：
+    - `< 5 分钟` → "刚刚更新"
+    - `5 ~ 30 分钟` → "N 分钟前更新"
+    - `30 分钟 ~ 2 小时` → "半小时前更新"
+    - `≥ 2 小时` → "N 小时前更新"
+    - `≥ 24 小时` → "1 天前更新"（文案带"· 数据可能已变化"提示，但不染色）
 
 ### 11.6 PRL 不在 widget 范围
 - 用户计划里有 PRL（卡麦角林）但概览页没显示 PRL 卡片
