@@ -515,8 +515,9 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                   </div>
                 )}
                 {currentStatus && (
-                  <div className="px-2.5 py-1 rounded-lg border flex items-center gap-1.5 mt-1 w-fit e2-status-badge"
+                  <div className="px-2.5 py-1 rounded-lg border flex items-center gap-1.5 mt-1 w-fit"
                     style={{
+                      marginTop: '0.5rem !important',
                       background: currentStatus.bg,
                       borderColor: currentStatus.border,
                     }}>
