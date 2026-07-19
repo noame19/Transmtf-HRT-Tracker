@@ -359,7 +359,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         <div className="flex-1 flex flex-col justify-center min-h-0">
           {/* 下次计划标题 + 途径徽章 */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] md:text-xs font-bold" style={{ color: PLAN_MAIN }}>
+            <span className="text-[10px] md:text-xs font-bold kpi-stat-title" style={{ color: PLAN_MAIN }}>
               {t('overview.next_plan', '下次计划')}
             </span>
             {routeText && (
@@ -432,7 +432,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="space-y-1 min-w-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: E2_CONC_COLOR }}>
-                  <span>{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
+                  <span className="kpi-stat-title">{t('status.estimate_prefix')} E2 {t('status.estimate')}</span>
                   {hasPersonalModel && (
                     <span className="px-1 py-0.5 rounded-full text-[8px] font-bold"
                       style={{ background: `rgba(${hexToRgb(E2_CONC_COLOR)},0.14)`, color: E2_CONC_COLOR }}>
@@ -558,7 +558,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               <div className="space-y-1 min-w-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1.5 flex-wrap text-xs font-medium leading-tight"
                   style={{ color: aaColor }}>
-                  <span>{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
+                  <span className="kpi-stat-title">{t('status.estimate_prefix')} {aaLabel} {t('status.estimate')}</span>
                 </div>
                 <div className="flex items-end gap-2">
                   {currentAA > 0 ? (
