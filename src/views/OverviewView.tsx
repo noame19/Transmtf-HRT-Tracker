@@ -413,7 +413,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
 
   return (
     <>
-      <header className="relative overflow-x-hidden px-3 md:px-8 safe-area-pt md:pt-6 pb-3 md:pb-4">
+      <header className="relative overflow-x-hidden px-3 md:max-lg:px-2 lg:px-8 safe-area-pt md:pt-6 pb-3 md:pb-4">
         {/* 按药物分类的两张卡：E2 卡 + 抗雄卡。每卡左栏=当前浓度、右栏=
           *  用药时间(下次计划+大号时间+上次用药)。桌面并排,md:items-stretch
           *  两卡等高;窄屏堆叠。 */}
@@ -638,7 +638,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
         </div>
       </header>
 
-      <main className="w-full overflow-x-hidden px-3 md:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
+      <main className="w-full overflow-x-hidden px-3 md:max-lg:px-2 lg:px-8 pt-0 pb-4 md:pb-6 rounded-t-3xl"
         style={{ overscrollBehaviorX: 'none' }}>
         {/*
          * md 断点（≥768px，与顶部 header 对齐）把血药浓度图（2/3 宽）和用药
