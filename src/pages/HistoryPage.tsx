@@ -36,6 +36,8 @@ interface OutletContext {
     onDelay2d: (planId: string, scheduledAtMs: number) => void;
     permissionDenied: boolean;
     onOpenNotificationSettings?: () => void;
+    onBulkDeleteEvents: (ids: string[]) => void;
+    onBulkDeletePlans: (ids: string[]) => void;
 }
 
 const HistoryPage: React.FC = () => {
@@ -48,6 +50,7 @@ const HistoryPage: React.FC = () => {
         onConfirmBanner, onSkipBanner,
         onDelay1d, onDelay2d,
         permissionDenied, onOpenNotificationSettings,
+        onBulkDeleteEvents, onBulkDeletePlans,
     } = useOutletContext<OutletContext>();
     const { events, plans, currentTime } = useAppData();
 
@@ -83,6 +86,8 @@ const HistoryPage: React.FC = () => {
             permissionDenied={permissionDenied}
             onOpenNotificationSettings={onOpenNotificationSettings}
             complianceMismatches={complianceMismatches}
+            onBulkDeleteEvents={onBulkDeleteEvents}
+            onBulkDeletePlans={onBulkDeletePlans}
         />
     );
 };
