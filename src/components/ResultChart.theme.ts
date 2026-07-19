@@ -21,8 +21,8 @@ export const ECHART_THEME = {
     e2Accent: '#ec4899',          // 原 Recharts E2 轴标签 fill="#ec4899"
     e2DotFill: '#ec4899',         // 原 Recharts E2 dose 点 fill="#ec4899"
     e2ActiveDotStroke: '#ffffff', // activeDot stroke="#fff"
-    e2GradientTop: 'rgba(242,163,173,0.18)', // 同步 e2Stroke 改为 rgb(242,163,173);原 offset="5%" opacity 0.18
-    e2GradientBottom: 'rgba(242,163,173,0)', // 同步 e2Stroke 改为 rgb(242,163,173);原 offset="95%" opacity 0
+    e2GradientTop: 'rgba(242,163,173,0.33)', // 同步 e2Stroke 改为 rgb(242,163,173);offset="5%" opacity 0.33(2026-07-19 原 0.18 加 0.15)
+    e2GradientBottom: 'rgba(242,163,173,0)', // 同步 e2Stroke 改为 rgb(242,163,173);offset="95%" opacity 0(底部始终透明)
 
     // --- Personal model (E2 个性化拟合曲线) ---
     personalStroke: '#f43f5e',    // 原 Recharts Line stroke="#f43f5e"
@@ -32,8 +32,8 @@ export const ECHART_THEME = {
     personalActiveDotStroke: '#ffffff',
 
     // --- CI band (95% / 68% 置信区间) ---
-    ci95Fill: 'rgba(244,63,94,0.09)', // 原 fill="rgba(244,63,94,0.09)"
-    ci68Fill: 'rgba(244,63,94,0.17)', // 原 fill="rgba(244,63,94,0.17)"
+    ci95Fill: 'rgba(244,63,94,0.24)', // 2026-07-19 原 0.09 加 0.15;颜色固定红,不会跟着 E2 曲线变色
+    ci68Fill: 'rgba(244,63,94,0.32)', // 2026-07-19 原 0.17 加 0.15;颜色固定红
 
     // --- AA (抗雄) 系列 ---
     // 运行时由 pickPrimaryAntiandrogen / ANTIANDROGENS 表给出,
@@ -137,10 +137,10 @@ export function hexToRgba(hex: string, alpha: number): string {
 
 /**
  * 等价于原 Recharts `\`${aaColor}1A\`` → 'rgba(139,92,246,0.1)'。
- * CPA band 默认 10% 透明度。
+ * CPA band 默认 10% 透明度(2026-07-19 调到 25%:曲线渐变填充 + 95% CI 都用这个 base alpha)。
  */
 export function aaBandFill(aaColor: string): string {
-    return hexToRgba(aaColor, 0.1);
+    return hexToRgba(aaColor, 0.25);
 }
 
 /**
