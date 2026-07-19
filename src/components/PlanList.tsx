@@ -6,7 +6,7 @@ import { Ester, Route as RouteEnum } from '../../types';
 import { Plan } from '../../types';
 import { planSubtitle, findConflicts } from '../utils/planSchedule';
 import { ComplianceMismatch } from '../utils/planCompliance';
-import { CalendarClock, Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { CalendarClock, Plus, Pencil, Trash2, AlertTriangle, Check } from 'lucide-react';
 
 interface PlanListProps {
     plans: Plan[];
@@ -21,9 +21,20 @@ interface PlanListProps {
      * two stay in sync without re-running the analysis.
      */
     mismatches?: ComplianceMismatch[];
+    /** Whether the parent view is currently in multi-select mode. When true,
+     *  each card renders a leading ✓ checkbox and the inline enable toggle +
+     *  edit/delete buttons are HIDDEN. */
+    selectionMode?: boolean;
+    /** Currently selected plan ids. */
+    selectedIds?: string[];
+    /** Toggle a single plan's selection state. */
+    onToggleSelected?: (id: string) => void;
 }
 
-const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan, mismatches = [] }) => {
+const PlanList: React.FC<PlanListProps> = ({
+    plans, onAddPlan, onEditPlan, onDeletePlan, onTogglePlan, mismatches = [],
+    selectionMode = false, selectedIds = [], onToggleSelected,
+}) => {
     const { t } = useTranslation();
     const { showDialog } = useDialog();
 
@@ -60,6 +71,10 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
     // doesn't have to scan the mismatches array for every row.
     const mismatchedPlanIds = new Set(mismatches.map((m) => m.plan.id));
 
+    // O(1) selection lookup for the multi-select mode (set rendered on parent).
+    const selectedSet = new Set(selectedIds);
+    const isSelected = (id: string) => selectedSet.has(id);
+
     return (
         <div className="space-y-4">
             {plans.length === 0 && (
@@ -86,8 +101,14 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                 // 里的双语 route.* 区分开 —— 用户要求卡片标题只显示中文。
                 const routeLabel = t(`plan.route.${plan.route}`) || t(`route.${plan.route}`) || plan.route;
                 return (
-                    <div key={plan.id} className="mx-4 rounded-2xl glass-card overflow-hidden transition-all"
-                        style={{ opacity: plan.enabled ? 1 : 0.7 }}>
+                    <div
+                        key={plan.id}
+                        className="mx-4 rounded-2xl glass-card overflow-hidden transition-all"
+                        style={{ opacity: plan.enabled || selectionMode ? 1 : 0.7 }}
+                        onClick={() => {
+                            if (selectionMode) onToggleSelected?.(plan.id);
+                        }}
+                    >
                         <div className="p-4 flex items-start gap-4">
                             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
                                 style={{
@@ -96,28 +117,47 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                                 }}>
                                 {getRouteIcon(plan.route)}
                             </div>
+                            {selectionMode && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onToggleSelected?.(plan.id); }}
+                                    aria-label={isSelected(plan.id) ? '取消选中' : '选中'}
+                                    data-testid={`plan-checkbox-${plan.id}`}
+                                    className="w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 btn-press-glass"
+                                    style={{
+                                        borderColor: isSelected(plan.id) ? 'var(--accent-500)' : 'var(--border-primary)',
+                                        background: isSelected(plan.id) ? 'var(--accent-500)' : 'transparent',
+                                    }}
+                                >
+                                    {isSelected(plan.id) && (
+                                        <Check size={14} color="#fff" strokeWidth={3} />
+                                    )}
+                                </button>
+                            )}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
                                         {`${t(`ester.${plan.ester}`)} · ${routeLabel}`}
                                     </span>
-                                    {/* Enable toggle */}
-                                    <label className="inline-flex items-center cursor-pointer shrink-0 ml-2">
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={plan.enabled}
-                                            onChange={(e) => onTogglePlan(plan.id, e.target.checked)}
-                                            aria-label={t('plan.field.enabled') || '启用'}
-                                        />
-                                        <div className="relative w-10 h-6 rounded-full transition-colors"
-                                            style={{ background: plan.enabled ? 'var(--accent-500)' : 'var(--bg-card-hover)' }}>
-                                            <span
-                                                className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                                                style={{ transform: plan.enabled ? 'translateX(16px)' : 'translateX(0)' }}
+                                    {/* Enable toggle — hidden in selection mode */}
+                                    {!selectionMode && (
+                                        <label className="inline-flex items-center cursor-pointer shrink-0 ml-2">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={plan.enabled}
+                                                onChange={(e) => onTogglePlan(plan.id, e.target.checked)}
+                                                aria-label={t('plan.field.enabled') || '启用'}
                                             />
-                                        </div>
-                                    </label>
+                                            <div className="relative w-10 h-6 rounded-full transition-colors"
+                                                style={{ background: plan.enabled ? 'var(--accent-500)' : 'var(--bg-card-hover)' }}>
+                                                <span
+                                                    className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                                    style={{ transform: plan.enabled ? 'translateX(16px)' : 'translateX(0)' }}
+                                                />
+                                            </div>
+                                        </label>
+                                    )}
                                 </div>
                                 {/* Compliance mismatch tag — sits directly under the
                                  * toggle, right-aligned. Hidden when the plan is in
@@ -165,25 +205,27 @@ const PlanList: React.FC<PlanListProps> = ({ plans, onAddPlan, onEditPlan, onDel
                                 )}
                             </div>
                         </div>
-                        <div className="px-4 py-2 border-t flex items-center justify-end gap-2"
-                            style={{ borderColor: 'var(--border-secondary)' }}>
-                            <button
-                                onClick={() => onEditPlan(plan)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition btn-press-glass"
-                                style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
-                            >
-                                <Pencil size={12} />
-                                <span>{t('plan.edit') || '编辑'}</span>
-                            </button>
-                            <button
-                                onClick={(e) => handleDeleteClick(e, plan)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition btn-press-glass"
-                                style={{ background: 'var(--bg-card-hover)', color: '#dc2626' }}
-                            >
-                                <Trash2 size={12} />
-                                <span>{t('plan.delete') || '删除'}</span>
-                            </button>
-                        </div>
+                        {!selectionMode && (
+                            <div className="px-4 py-2 border-t flex items-center justify-end gap-2"
+                                style={{ borderColor: 'var(--border-secondary)' }}>
+                                <button
+                                    onClick={() => onEditPlan(plan)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition btn-press-glass"
+                                    style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}
+                                >
+                                    <Pencil size={12} />
+                                    <span>{t('plan.edit') || '编辑'}</span>
+                                </button>
+                                <button
+                                    onClick={(e) => handleDeleteClick(e, plan)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition btn-press-glass"
+                                    style={{ background: 'var(--bg-card-hover)', color: '#dc2626' }}
+                                >
+                                    <Trash2 size={12} />
+                                    <span>{t('plan.delete') || '删除'}</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 );
             })}
