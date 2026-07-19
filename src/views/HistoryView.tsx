@@ -238,14 +238,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     resetSelection();
   };
 
-  const handleBulkCancel = async () => {
-    if (selectedIds.size > 0) {
-      const ok = await showDialog(
-        'confirm',
-        t('history.bulk_cancel_confirm', { count: selectedIds.size }),
-      );
-      if (ok !== 'confirm') return;
-    }
+  const handleBulkCancel = () => {
+    // 取消多选模式 = 直接重置,不弹 confirm dialog(用户明确指示)。
+    // 误触恢复成本低(再长按一条就回到多选),弹窗反而打断节奏。
     resetSelection();
   };
 

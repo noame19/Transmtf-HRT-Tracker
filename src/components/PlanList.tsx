@@ -104,7 +104,11 @@ const PlanList: React.FC<PlanListProps> = ({
                     <div
                         key={plan.id}
                         className="mx-4 rounded-2xl glass-card overflow-hidden transition-all"
-                        style={{ opacity: plan.enabled || selectionMode ? 1 : 0.7 }}
+                        style={{
+                            opacity: plan.enabled || selectionMode ? 1 : 0.7,
+                            background: isSelected(plan.id) ? 'var(--bg-card-hover)' : undefined,
+                            border: isSelected(plan.id) ? '1px solid var(--accent-500)' : undefined,
+                        }}
                         onClick={() => {
                             if (selectionMode) onToggleSelected?.(plan.id);
                         }}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCheck, ArrowDownUp, X, Trash2 } from 'lucide-react';
+import { CheckCheck, BetweenHorizontalEnd, RotateCcw, Trash2 } from 'lucide-react';
 
 export type RangeButtonState = 'idle' | 'awaitingAnchor' | 'armed';
 
@@ -35,13 +35,7 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
             data-testid="bulk-action-bar"
         >
             <ToolbarBtn
-                icon={<CheckCheck size={20} />}
-                label="全选"
-                onClick={onSelectAll}
-                testId="btn-select-all"
-            />
-            <ToolbarBtn
-                icon={<ArrowDownUp size={20} />}
+                icon={<BetweenHorizontalEnd size={20} />}
                 label="区间选择"
                 onClick={onArmRange}
                 active={rangeButtonState !== 'idle'}
@@ -49,10 +43,10 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
                 testId="btn-range"
             />
             <ToolbarBtn
-                icon={<X size={20} />}
-                label="取消"
-                onClick={onCancel}
-                testId="btn-cancel"
+                icon={<CheckCheck size={20} />}
+                label="全选"
+                onClick={onSelectAll}
+                testId="btn-select-all"
             />
             <ToolbarBtn
                 icon={<Trash2 size={20} />}
@@ -61,6 +55,12 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
                 disabled={!canDelete}
                 danger
                 testId="btn-delete"
+            />
+            <ToolbarBtn
+                icon={<RotateCcw size={20} />}
+                label="取消"
+                onClick={onCancel}
+                testId="btn-cancel"
             />
         </div>
     );

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { TRANSLATIONS, Lang } from '../i18n/translations';
 
-const LanguageContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (k: string) => string } | null>(null);
+const LanguageContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (k: string, vars?: Record<string, string | number>) => string } | null>(null);
 
 export const useTranslation = () => {
     const ctx = useContext(LanguageContext);
@@ -26,9 +26,17 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
         window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-lang', lastModified } }));
     }, [lang]);
 
-    const t = (key: string) => {
+    const t = (key: string, vars?: Record<string, string | number>) => {
         const pack = (TRANSLATIONS as any)[lang] || TRANSLATIONS.zh;
-        return pack[key] ?? TRANSLATIONS.zh[key as keyof typeof TRANSLATIONS.zh] ?? TRANSLATIONS.en[key as keyof typeof TRANSLATIONS.en] ?? key;
+        const raw = pack[key] ?? TRANSLATIONS.zh[key as keyof typeof TRANSLATIONS.zh] ?? TRANSLATIONS.en[key as keyof typeof TRANSLATIONS.en] ?? key;
+        if (!vars) return raw;
+        // Replace `{name}` placeholders with vars[name]. Missing keys fall
+        // back to the original placeholder so a typo in the translation
+        // string is obvious in the UI rather than silently empty.
+        return raw.replace(/\{(\w+)\}/g, (m, name) => {
+            const v = vars[name];
+            return v === undefined || v === null ? m : String(v);
+        });
     };
 
     return (
