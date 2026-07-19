@@ -282,7 +282,7 @@ const LabView: React.FC<LabViewProps> = ({
 
   return (
     <div className="relative space-y-5 safe-area-pt md:pt-6 pb-8">
-      <div className="px-4">
+      <div className="px-2 md:max-lg:px-2 lg:px-4">
         <div className="w-full p-4 glass-card flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
             style={{ color: 'var(--text-primary)' }}>

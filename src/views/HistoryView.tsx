@@ -128,7 +128,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
        *  (mx-4 + space-y-5 in the parent) keeps the same visual cadence as
        *  the rest of /history. */}
       <ComplianceBanner mismatches={complianceMismatches} />
-      <div className="px-4">
+      <div className="px-2 md:max-lg:px-2 lg:px-4">
         <div className="w-full p-4 rounded-2xl glass-card glass-highlight relative overflow-hidden flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight flex items-center gap-3"
             style={{ color: 'var(--text-primary)' }}>
@@ -167,7 +167,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       </div>
 
       {/* Tab strip */}
-      <div className="px-4">
+      <div className="px-2 md:max-lg:px-2 lg:px-4">
         <div className="flex gap-1 p-1 rounded-xl glass-card">
           <button
             onClick={() => setActiveTab('records')}
