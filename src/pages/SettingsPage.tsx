@@ -121,8 +121,8 @@ const SettingsPage: React.FC = () => {
      *   1. Make sure the notification channel exists.
      *   2. Ask for POST_NOTIFICATIONS permission (Android 13+) — this is
      *      a runtime permission and only triggers a dialog the first time.
-     *   3. Surface a banner-like alert if the user denies the permission
-     *      so they know reminders won't fire even though the toggle is on.
+     *   3. Refresh the in-page permission state so the inline hint under
+     *      the toggle can update.
      */
     const handleToggleReminders = async (enabled: boolean) => {
         setRemindersEnabled(enabled);
@@ -133,16 +133,51 @@ const SettingsPage: React.FC = () => {
         try {
             await invoke('ensure_notification_channel');
             const granted = await invoke<boolean>('request_notification_permission');
-            if (!granted) {
-                showDialog(
-                    'alert',
-                    t('settings.reminders.permission_denied') ||
-                    '通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。',
-                );
-            }
+            setRemindersPermissionGranted(granted);
         } catch {
             /* command may not exist yet on web/dev — fail silently */
         }
+    };
+
+    /**
+     * Re-check Android notification permission whenever reminders flip on
+     * (or on mount, so users landing here from /history see the same hint).
+     * We also expose a manual "open system settings" button for the case
+     * where the user dismissed the system dialog and needs a deeper route
+     * — invoking `request_notification_permission` on Android re-shows the
+     * dialog when possible and is a no-op once it's permanently denied.
+     */
+    const [remindersPermissionGranted, setRemindersPermissionGranted] = useState<boolean | null>(null);
+    useEffect(() => {
+        if (!isTauri) {
+            setRemindersPermissionGranted(null);
+            return;
+        }
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke !== 'function') {
+            setRemindersPermissionGranted(null);
+            return;
+        }
+        let cancelled = false;
+        const check = async () => {
+            try {
+                const granted = await invoke<boolean>('request_notification_permission');
+                if (!cancelled) setRemindersPermissionGranted(granted);
+            } catch {
+                if (!cancelled) setRemindersPermissionGranted(null);
+            }
+        };
+        check();
+        return () => { cancelled = true; };
+    }, [remindersEnabled]);
+
+    const openNotificationSettings = async () => {
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke !== 'function') return;
+        try {
+            const granted = await invoke<boolean>('request_notification_permission');
+            setRemindersPermissionGranted(granted);
+        } catch { /* ignore */ }
     };
 
     const { t, lang, setLang } = useTranslation();
@@ -441,6 +476,53 @@ const SettingsPage: React.FC = () => {
                                 </div>
                                 <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
                             </div>
+                            {/* Permission hint — sits UNDER the toggle, not as a
+                             *  full-width banner. Only shown when reminders are
+                             *  toggled on AND the OS notification permission is
+                             *  denied. We deliberately do NOT block the toggle
+                             *  itself: users can still flip the switch and we
+                             *  re-check on every render of this page. The
+                             *  "去设置" button re-invokes the runtime permission
+                             *  flow; on permanently-denied devices this reopens
+                             *  the system app-info screen via the platform
+                             *  shim. */}
+                            {remindersEnabled && remindersPermissionGranted === false && (
+                                <div
+                                    role="alert"
+                                    className="mt-3 rounded-xl px-3 py-2.5 flex items-start gap-2"
+                                    style={{
+                                        background: 'var(--bg-soft-rose)',
+                                        border: '1px solid var(--border-soft-rose)',
+                                    }}
+                                >
+                                    <AlertTriangle
+                                        size={16}
+                                        className="shrink-0 mt-0.5"
+                                        style={{ color: 'var(--text-soft-rose)' }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <p
+                                            className="text-xs leading-snug"
+                                            style={{ color: 'var(--text-secondary)' }}
+                                        >
+                                            {t('settings.reminders.permission_denied') ||
+                                                '通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={openNotificationSettings}
+                                        className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold btn-press-glass"
+                                        style={{
+                                            background: 'var(--bg-card)',
+                                            color: 'var(--text-primary)',
+                                            border: '1px solid var(--border-primary)',
+                                        }}
+                                    >
+                                        {t('reminder.banner.open_settings') || '去设置'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </section>

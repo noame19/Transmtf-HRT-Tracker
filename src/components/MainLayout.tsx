@@ -111,7 +111,6 @@ const MainLayout: React.FC = () => {
     // notification's planId + scheduledAtMs into SharedPreferences; we poll
     // it here on a timer (so we don't need a WebSocket / push channel).
     const [pendingReminder, setPendingReminder] = useState<PendingReminder | null>(null);
-    const [permissionDenied, setPermissionDenied] = useState(false);
 
     /**
      * Two Sets track per-due user interactions. Both keys are `${planId}@${dueMs}`
@@ -255,33 +254,6 @@ const MainLayout: React.FC = () => {
         }
         return out;
     }, [plans, events, currentTime, handledReminders, reminderKey]);
-
-    /**
-     * Whenever the reminder permission becomes denied, flip the banner
-     * flag so the amber "permission denied" hint is shown on /history. We
-     * only re-check when `remindersEnabled` flips, since the user has to
-     * explicitly re-toggle to retrigger the runtime permission flow.
-     */
-    useEffect(() => {
-        const invoke = (typeof window !== 'undefined'
-            ? (window as any).__TAURI_INTERNALS__?.invoke
-            : null);
-        if (typeof invoke !== 'function' || !remindersEnabled) {
-            setPermissionDenied(false);
-            return;
-        }
-        let cancelled = false;
-        const check = async () => {
-            try {
-                const granted = await invoke('request_notification_permission');
-                if (!cancelled) setPermissionDenied(granted === false);
-            } catch {
-                if (!cancelled) setPermissionDenied(false);
-            }
-        };
-        check();
-        return () => { cancelled = true; };
-    }, [remindersEnabled]);
 
     /**
      * Polls the Rust `get_pending_reminders` shim. MainActivity.onNewIntent
@@ -864,12 +836,6 @@ const MainLayout: React.FC = () => {
                         onSkipBanner: handleSkipPending,
                         onDelay1d: (planId: string, scheduledAtMs: number) => handleDelayPlan(planId, 1, scheduledAtMs),
                         onDelay2d: (planId: string, scheduledAtMs: number) => handleDelayPlan(planId, 2, scheduledAtMs),
-                        permissionDenied,
-                        onOpenNotificationSettings: async () => {
-                            const invoke = (window as any).__TAURI_INTERNALS__?.invoke;
-                            if (!invoke) return;
-                            try { await invoke('request_notification_permission'); } catch { /* ignore */ }
-                        },
                     }} />
                     {/* bottom padding so content isn't hidden behind the mobile nav */}
                     <div className="h-24 md:h-4" />

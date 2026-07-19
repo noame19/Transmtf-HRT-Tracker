@@ -53,8 +53,6 @@ interface HistoryViewProps {
   onSkipBanner: (scheduledAtMs: number) => void;
   onDelay1d: (planId: string, scheduledAtMs: number) => void;
   onDelay2d: (planId: string, scheduledAtMs: number) => void;
-  permissionDenied: boolean;
-  onOpenNotificationSettings?: () => void;
   /** Plan-vs-history mismatches; the banner renders nothing when empty. */
   complianceMismatches: ComplianceMismatch[];
   /** Multi-select delete handlers — invoked by the floating action bar. */
@@ -70,7 +68,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   bannerEntries,
   onConfirmBanner, onSkipBanner,
   onDelay1d, onDelay2d,
-  permissionDenied, onOpenNotificationSettings,
   complianceMismatches,
   onBulkDeleteEvents,
   onBulkDeletePlans,
@@ -251,25 +248,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   return (
     <div className="relative space-y-5 safe-area-pt md:pt-6 pb-16">
-      {/* Reminder banners — three modes, in priority order:
-       *  1. permissionDenied → amber "通知权限未开启" hint (single banner).
-       *  2. bannerDue (and the global modal isn't already covering this due)
+      {/* Reminder banners — two modes:
+       *  1. bannerDue (and the global modal isn't already covering this due)
        *     → soft-rose "该吃药了"/"已过服药时间" banner with action buttons.
        *     Rendered as a STACK: one banner per pending due so users with
        *     multiple drugs (E2 + CPA + PRL) on the same day see each drug
        *     addressed independently. We hide the banner stack entirely
        *     when the modal is open so the full-screen modal isn't
        *     double-covered.
-       *  3. (no banners) → normal timeline view. */}
-      {permissionDenied ? (
-        <ReminderBanner
-          pending={null}
-          matchedPlan={null}
-          onConfirm={onConfirmPendingReminder}
-          permissionDenied={true}
-          onOpenPermissionSettings={onOpenNotificationSettings}
-        />
-      ) : pendingReminder ? null : (
+       *  2. (no banners) → normal timeline view.
+       *  Permission-denied hint used to live here as a banner; it's now
+       *  in SettingsPage (under the reminder toggle) so it doesn't pollute
+       *  the daily timeline view. */}
+      {pendingReminder ? null : (
         bannerEntries.map((entry) => (
           <ReminderBanner
             // planId+dueMs is unique per (plan, scheduledAt) so the same

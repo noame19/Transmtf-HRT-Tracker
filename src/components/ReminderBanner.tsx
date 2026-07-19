@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { Bell, AlertTriangle, Check, FastForward, SkipForward } from 'lucide-react';
+import { Bell, Check, FastForward, SkipForward } from 'lucide-react';
 import { Plan } from '../../types';
 import { ConfirmButton } from './ConfirmButton';
 import { useConfirmButton } from '../hooks/useConfirmButton';
@@ -34,10 +34,6 @@ interface ReminderBannerProps {
     onDelay1d?: (planId: string) => void;
     /** "计划推迟 2 天" (late only) — shifts plan.startDateH by 2 days. */
     onDelay2d?: (planId: string) => void;
-    /** Show the amber "permission denied" banner — only when reminders are
-     *  globally enabled but Android notification permission was denied. */
-    permissionDenied: boolean;
-    onOpenPermissionSettings?: () => void;
 }
 
 function fmtHHMM(d: Date): string {
@@ -50,47 +46,12 @@ const ReminderBanner: React.FC<ReminderBannerProps> = ({
     pending, matchedPlan,
     onConfirm, onSkip,
     onDelay1d, onDelay2d,
-    permissionDenied, onOpenPermissionSettings,
 }) => {
     const { t } = useTranslation();
     // 4 个按钮共用一个状态机(同一时刻只有一个 pending),别名避免与 props.pending 冲突
     const { pending: confirmPending, request } = useConfirmButton();
 
-    // 1. Permission denied — informational amber banner.
-    if (permissionDenied) {
-        return (
-            <div className="mx-4 rounded-2xl p-4 flex items-center gap-3"
-                style={{
-                    background: 'var(--bg-soft-rose)',
-                    border: '1px solid var(--border-soft-rose)',
-                }}>
-                <AlertTriangle size={20} style={{ color: 'var(--text-soft-rose)' }} />
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {t('reminder.banner.permission_denied') || '通知权限未开启'}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                        {t('reminder.banner.permission_desc') || '请到系统设置 → 应用 → HRT Tracker → 通知 中开启。'}
-                    </p>
-                </div>
-                {onOpenPermissionSettings && (
-                    <button
-                        onClick={onOpenPermissionSettings}
-                        className="px-3 py-2 h-10 rounded-xl text-xs font-bold btn-press-glass"
-                        style={{
-                            background: 'var(--bg-card)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border-primary)',
-                        }}
-                    >
-                        {t('reminder.banner.open_settings') || '去设置'}
-                    </button>
-                )}
-            </div>
-        );
-    }
-
-    // 2. Due moment — render in either on_time or late variant.
+    // Due moment — render in either on_time or late variant.
     if (!pending || !matchedPlan) return null;
 
     const when = new Date(pending.scheduledAtMs);
