@@ -448,7 +448,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         {formatHeadlineE2(currentLevel)}
                       </span>
                       <span className="text-sm md:text-base font-bold mb-1"
-                        style={{ color: E2_CONC_SOFT, opacity: 0.7 }}>pg/mL</span>
+                        style={{ color: 'rgb(254, 57, 63)', opacity: 0.7 }}>pg/mL</span>
                     </>
                   ) : (
                     <span className="text-4xl md:text-5xl font-black tracking-tight"
@@ -517,6 +517,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                 {currentStatus && (
                   <div className="px-2.5 py-1 rounded-lg border flex items-center gap-1.5 mt-1 w-fit"
                     style={{
+                      marginTop: '0.5rem !important',
                       background: currentStatus.bg,
                       borderColor: currentStatus.border,
                     }}>
@@ -586,8 +587,8 @@ const OverviewView: React.FC<OverviewViewProps> = ({
                         <span className="text-[11px] font-semibold"
                           style={{ color: aaColor }}>
                           {fmtText(currentAACI.lo)} – {fmtText(currentAACI.hi)}
-                          <span className="text-[9px] font-normal ml-0.5"
-                            style={{ color: aaColor, opacity: 0.8 }}>{fmt(currentAACI.hi).unit}</span>
+                          <span className="text-[9px] ml-0.5"
+                            style={{ color: aaColor }}>{fmt(currentAACI.hi).unit}</span>
                         </span>
                       </div>
                     )}
