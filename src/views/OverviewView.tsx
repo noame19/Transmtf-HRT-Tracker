@@ -334,7 +334,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
     if (!extraText) return null;
     return (
       <p className="text-[9px] italic truncate mt-1" style={{ color: PLAN_HOLD_GRAY }}>
-        {t('field.sl_duration')}：<span className="font-semibold not-italic">{extraText}</span>
+        {t('field.sl_duration')}：<span className="font-semibold italic">{extraText}</span>
       </p>
     );
   })();
