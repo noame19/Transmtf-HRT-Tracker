@@ -105,6 +105,9 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [endDate, setEndDate] = useState('');
     const [leadMinutes, setLeadMinutes] = useState('5');
     const [enabled, setEnabled] = useState(true);
+    // 2026-07-20 新增：Android 通知栏通知开关（per-plan）。关闭后该 plan 不发通知栏通知，
+    // 但 app 内「该用药了」弹窗仍正常显示（弹窗由 plan.enabled + 当前时间驱动，不依赖通知栏）。
+    const [notifyEnabled, setNotifyEnabled] = useState(true);
 
     // 剂量双向联动：照搬 DoseFormModal.handleRawChange / handleE2Change。
     // activeEster 让 quick-dose 路径传 safeEster，避免 ester 切换瞬间的错位换算。
@@ -202,6 +205,9 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setEndDate(planToEdit.endDateH ? toLocalDateStr(new Date(planToEdit.endDateH * 3600000)) : '');
             setLeadMinutes(String(planToEdit.leadMinutes));
             setEnabled(planToEdit.enabled);
+            // 旧 plan 可能没有 notifyEnabled 字段（旧版本未加 per-plan 通知开关），
+            // 缺省时默认 true（保持原有行为：通知栏通知照常发）。
+            setNotifyEnabled(planToEdit.notifyEnabled ?? true);
 
             // Patch extras: detect mode from which field is populated. A legacy
             // plan with only a total mg dose falls back to "dose" mode so the
@@ -284,6 +290,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setEndDate('');
             setLeadMinutes('5');
             setEnabled(true);
+            setNotifyEnabled(true);
         }
     }, [isOpen, planToEdit]);
 
@@ -508,7 +515,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             startDateH: startH,
             endDateH: endH,
             enabled,
-            leadMinutes: Number.isFinite(lead) ? lead : 5,
+            notifyEnabled,
+            leadMinutes: Number.isFinite(lead) ? Math.min(Math.max(lead, 0), 30) : 5,
             extras,
             createdAtH: planToEdit?.createdAtH ?? nowH,
             updatedAtH: nowH,
@@ -542,7 +550,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         isOpen, enabled, startDate,
         ester, route, rawDoseStr,
         scheduleKind, intervalDays, weekdays, times,
-        endDate, leadMinutes,
+        endDate, leadMinutes, notifyEnabled,
         patchMode, patchRate,
         gelSite, gelProductId, gelArea, gelCoverage, gelCoApplied, gelWash,
         slTier, useCustomTheta, customTheta,
@@ -1179,40 +1187,70 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                         </div>
                     </div>
 
-                    {/* Lead minutes + enabled */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="block text-sm font-bold"
-                                style={{ color: 'var(--text-secondary)' }}>
-                                {t('plan.field.lead_minutes') || '提前提醒（分钟）'}
-                            </label>
-                            <input
-                                type="number"
-                                min="0"
-                                step="1"
-                                value={leadMinutes}
-                                onChange={(e) => setLeadMinutes(e.target.value)}
-                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                    {/* Lead minutes + Android 通知 + 启用计划 */}
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* 提前提醒（分钟）范围：0-30 — 上限受「该用药了」弹窗 on_time 窗口 due-30min 约束 */}
+                            <div className="space-y-1">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {t('plan.field.lead_minutes') || '提前提醒（分钟）范围：0-30'}
+                                </label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="30"
+                                    step="1"
+                                    value={leadMinutes}
+                                    onChange={(e) => {
+                                        // 输入时即时 clamp 到 [0, 30]，避免用户填越界后保存报错
+                                        const raw = e.target.value;
+                                        if (raw === '') { setLeadMinutes(''); return; }
+                                        const n = parseInt(raw, 10);
+                                        if (!Number.isFinite(n)) return;
+                                        setLeadMinutes(String(Math.min(Math.max(n, 0), 30)));
+                                    }}
+                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                    style={{
+                                        background: 'var(--bg-card-hover)',
+                                        border: '1px solid var(--border-primary)',
+                                        color: 'var(--text-primary)',
+                                    }}
+                                />
+                            </div>
+                            {/* 安卓通知 toggle — 控制该 plan 是否发通知栏通知。无副标题。 */}
+                            <div className="flex items-center justify-between p-3 rounded-xl"
                                 style={{
                                     background: 'var(--bg-card-hover)',
                                     border: '1px solid var(--border-primary)',
-                                    color: 'var(--text-primary)',
-                                }}
-                            />
+                                }}>
+                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                    {t('plan.field.notify_enabled') || '安卓通知'}
+                                </p>
+                                <label className="inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="sr-only peer"
+                                        checked={notifyEnabled}
+                                        onChange={(e) => setNotifyEnabled(e.target.checked)}
+                                    />
+                                    <div className="relative w-11 h-6 rounded-full transition-colors"
+                                        style={{ background: notifyEnabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
+                                        <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                            style={{ transform: notifyEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                    </div>
+                                </label>
+                            </div>
                         </div>
+                        {/* 启用计划 toggle — 单独一行（与安卓通知解耦），无副标题。 */}
                         <div className="flex items-center justify-between p-3 rounded-xl"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
-                            <div>
-                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                    {t('plan.field.enabled') || '启用'}
-                                </p>
-                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                    {t('plan.field.enabled_desc') || '启用后会在通知栏发送提醒'}
-                                </p>
-                            </div>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                {t('plan.field.enabled') || '启用计划'}
+                            </p>
                             <label className="inline-flex items-center cursor-pointer">
                                 <input
                                     type="checkbox"

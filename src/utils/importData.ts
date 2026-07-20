@@ -189,6 +189,10 @@ export const sanitizeImportedPlans = (raw: unknown): Plan[] => {
             if (leadMinutes === null) return null;
             const enabled = (entry as { enabled?: unknown }).enabled;
             if (typeof enabled !== 'boolean') return null;
+            // notifyEnabled 缺省 true（旧 plan 没有此字段时按"通知照常发"处理），
+            // 这样旧数据导入不会因为新增字段而变成不通知。
+            const notifyEnabledRaw = (entry as { notifyEnabled?: unknown }).notifyEnabled;
+            const notifyEnabled = typeof notifyEnabledRaw === 'boolean' ? notifyEnabledRaw : true;
             const endDateH = (entry as { endDateH?: unknown }).endDateH;
             const label = (entry as { label?: unknown }).label;
             const extras = isRecord(entry.extras) ? entry.extras as PlanExtras : {};
@@ -200,6 +204,7 @@ export const sanitizeImportedPlans = (raw: unknown): Plan[] => {
                 schedule: entry.schedule,
                 startDateH,
                 enabled,
+                notifyEnabled,
                 leadMinutes,
                 extras,
                 createdAtH,

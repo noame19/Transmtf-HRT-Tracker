@@ -286,6 +286,9 @@ object NotificationScheduler {
 
         for (plan in plans) {
             if (!plan.enabled) continue
+            // 2026-07-20 新增：per-plan 通知栏通知开关。关闭后该 plan 不调度 AlarmManager，
+            // 但 app 内「该用药了」弹窗仍正常显示（弹窗由 plan.enabled + 当前时间驱动）。
+            if (!plan.notifyEnabled) continue
             val moments = planUpcomingMoments(plan, now, horizonMs)
             for ((moment, isoTime) in moments) {
                 val requestCode = (plan.id.hashCode() xor isoTime.hashCode())
@@ -505,6 +508,9 @@ object NotificationScheduler {
         /** Minutes before each scheduled due time the alarm should fire —
          *  matches the `leadMinutes` field on the JS Plan type. 0 = at-time. */
         val leadMinutes: Int = 0,
+        /** Per-plan 通知栏通知开关。关闭后该 plan 不调度 AlarmManager。
+         *  缺省 true（旧数据兼容：旧 plan 没有此字段时按"通知照常发"处理）。 */
+        val notifyEnabled: Boolean = true,
     )
 
     private fun parsePlans(json: String): List<ParsedPlan> {
@@ -538,8 +544,9 @@ object NotificationScheduler {
             val endMs = if (obj.has("endDateH") && !obj.isNull("endDateH")) {
                 obj.optLong("endDateH") * 3600000L
             } else null
-            val leadMinutes = obj.optInt("leadMinutes", 0).coerceIn(0, 24 * 60)
-            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, startCal, endMs, leadMinutes))
+            val leadMinutes = obj.optInt("leadMinutes", 0).coerceIn(0, 30)
+            val notifyEnabled = obj.optBoolean("notifyEnabled", true)
+            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, startCal, endMs, leadMinutes, notifyEnabled))
         }
         return out
     }

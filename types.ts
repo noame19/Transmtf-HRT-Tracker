@@ -204,7 +204,14 @@ export interface Plan {
     /** Optional end. Absent = open-ended. */
     endDateH?: number;
     enabled: boolean;        // soft-disable toggle (hard-delete is a separate op)
-    /** "Remind N minutes BEFORE scheduled time" — 0 = at-time. */
+    /** Android 通知栏通知开关（per-plan）。关闭后该 plan 不发通知栏通知，
+     *  但 app 内「该用药了」弹窗仍正常显示（弹窗由 plan.enabled + 当前时间驱动，
+     *  不依赖通知栏）。全局 remindersEnabled = false 时所有 plan 的通知都不发，
+     *  这是 plan 级别的细粒度控制。默认 true（旧数据兼容）。 */
+    notifyEnabled: boolean;
+    /** "Remind N minutes BEFORE scheduled time" — 0 = at-time, 最大 30 分钟
+     *  （受「该用药了」弹窗 on_time 窗口 due-30min 约束：提前 ≤30 分钟才能
+     *  保证用户进 app 还能看到弹窗）。 */
     leadMinutes: number;
     /** Per-plan label shown in the notification body (e.g. "EV 5mg/5d IM"). */
     label?: string;
