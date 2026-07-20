@@ -675,14 +675,28 @@ const SettingsPage: React.FC = () => {
                          *  to doze). Tapping anywhere on the row opens the
                          *  settings page — we don't expose a separate
                          *  "go to settings" button because the row itself is
-                         *  the affordance. */}
+                         *  the affordance.
+                         *
+                         *  Implementation note: the row used to be a <button>,
+                         *  but the inner Toggle is itself a <button>, and
+                         *  nested <button> is invalid HTML (browsers
+                         *  "auto-fix" the DOM, which breaks click handling +
+                         *  a11y). The row is now a div with role="button" +
+                         *  keyboard handlers, keeping click + Tab + Enter. */}
                         <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
-                            <button
-                                type="button"
-                                onClick={openBatteryOptSettings}
-                                disabled={!isTauri || batteryOptBusy}
-                                className="flex w-full items-center justify-between gap-3 text-left transition btn-press-glass disabled:opacity-60"
+                            <div
+                                role="button"
+                                tabIndex={(!isTauri || batteryOptBusy) ? -1 : 0}
+                                onClick={() => { if (!(!isTauri || batteryOptBusy)) openBatteryOptSettings(); }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        if (!(!isTauri || batteryOptBusy)) openBatteryOptSettings();
+                                    }
+                                }}
+                                aria-disabled={!isTauri || batteryOptBusy}
                                 aria-label={t('settings.battery_opt.title') || '关闭系统电池优化'}
+                                className={`flex w-full items-center justify-between gap-3 text-left transition btn-press-glass ${(!isTauri || batteryOptBusy) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                                 <div className="flex items-start gap-3 min-w-0">
                                     <BatteryCharging
@@ -704,7 +718,7 @@ const SettingsPage: React.FC = () => {
                                     onChange={() => { /* read-only — open via row tap */ }}
                                     disabled
                                 />
-                            </button>
+                            </div>
                         </div>
                     </div>
                 </section>
