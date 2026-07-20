@@ -148,7 +148,19 @@ const SettingsPage: React.FC = () => {
 
     const { t, lang, setLang } = useTranslation();
     const { showDialog } = useDialog();
-    const { remindersEnabled, setRemindersEnabled } = useAppData();
+    const {
+        events, setEvents,
+        labResults, setLabResults,
+        gelProducts, setGelProducts,
+        plans, setPlans,
+        remindersEnabled, setRemindersEnabled,
+        postponeLog, setPostponeLog,
+        dueLog, setDueLog,
+        applyE2LearningToCPA, setApplyE2LearningToCPA,
+        applyCPAInhibitionToE2, setApplyCPAInhibitionToE2,
+        calibrationModel, setCalibrationModel,
+        calibrationMode, setCalibrationMode,
+    } = useAppData();
 
     /**
      * Battery-optimization row state. `null` = "haven't checked yet"
@@ -205,8 +217,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
-    const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
-    const { isDark, setIsDark } = useTheme();
+    const { isDark, setIsDark, themeColor, setThemeColor } = useTheme();
     const navigate = useNavigate();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -224,18 +235,45 @@ const SettingsPage: React.FC = () => {
         { value: 'ja', label: '日本語', icon: <img src={flagJP} alt="JP" className="w-5 h-5 rounded-sm object-contain" /> },
     ]), []);
 
+    /**
+     * Apply a backup payload onto the live app state. Every v3 section is
+     * strictly opt-in: `null` means "the backup did not carry this section,
+     * leave the device's local state alone". Sections present but EMPTY
+     * (e.g. `plans: []`) are applied as-is so a user can clear a stale list
+     * by re-importing a clean backup.
+     *
+     * Each setter goes through the matching context provider so its
+     * `useEffect`-driven localStorage sync takes care of persistence; we
+     * only re-write `hrt-events` / `hrt-lab-results` keys explicitly because
+     * those flows have additional bookkeeping (per-dose weight migration,
+     * legacy `hrt-weight` mirror).
+     */
     const processImportedData = (parsed: unknown): boolean => {
         try {
             const fallbackWeight = importFallbackWeight(parsed, DEFAULT_WEIGHT_KG);
-            const { events: newEvents, labResults: newLabResults, gelProducts: newGelProducts, migratedCount } =
-                parseImportedBackup(parsed, fallbackWeight);
+            const parsedImport = parseImportedBackup(parsed, fallbackWeight);
+            const {
+                events: newEvents,
+                labResults: newLabResults,
+                gelProducts: newGelProducts,
+                plans: newPlans,
+                postponeLog: newPostponeLog,
+                dueLog: newDueLog,
+                prefs: newPrefs,
+                calibration: newCalibration,
+                migratedCount,
+            } = parsedImport;
 
-            if (!importHasContent({ events: newEvents, labResults: newLabResults, gelProducts: newGelProducts, migratedCount })) {
+            if (!importHasContent(parsedImport)) {
                 throw new Error('No valid entries');
             }
 
             const nextEvents = newEvents.length > 0 ? newEvents : events;
             const nextLabResults = newLabResults ?? labResults;
+            const nextGelProducts = newGelProducts ?? gelProducts;
+            const nextPlans = newPlans ?? plans;
+            const nextPostponeLog = newPostponeLog ?? postponeLog;
+            const nextDueLog = newDueLog ?? dueLog;
 
             if (newEvents.length > 0) {
                 setEvents(newEvents);
@@ -257,17 +295,69 @@ const SettingsPage: React.FC = () => {
                 writeCustomGelProducts(newGelProducts);
             }
 
+            // v3 sections ────────────────────────────────────────────────
+            // Replace plan list verbatim when present. `setPlans` enforces
+            // conflict rules, so an orphan (ester, route, enabled) tuple in
+            // the import can't put the user into an inconsistent state.
+            if (newPlans !== null) {
+                setPlans(newPlans);
+            }
+            // Frozen compliance / postpone history — replacing, not merging,
+            // because IDs were already UUIDs from the source device; merging
+            // would silently double-count on the new device.
+            if (newPostponeLog !== null) setPostponeLog(newPostponeLog);
+            if (newDueLog !== null) setDueLog(newDueLog);
+
+            // Calibration + global reminder toggle. Each setter's useEffect
+            // already rewrites the matching localStorage key.
+            if (newCalibration !== null) {
+                if (newCalibration.model !== undefined) setCalibrationModel(newCalibration.model);
+                if (newCalibration.mode !== undefined) setCalibrationMode(newCalibration.mode);
+                if (newCalibration.applyE2LearningToCPA !== undefined) setApplyE2LearningToCPA(newCalibration.applyE2LearningToCPA);
+                if (newCalibration.applyCPAInhibitionToE2 !== undefined) setApplyCPAInhibitionToE2(newCalibration.applyCPAInhibitionToE2);
+            }
+
+            // Reminders toggle lives outside calibration for historical reasons
+            // (it predates the prefs block in the Settings UI). Apply via the
+            // same setter the toggle row uses so the Android side re-syncs on
+            // its next effect tick.
+            if (newPrefs !== null) {
+                if (newPrefs.remindersEnabled !== undefined) setRemindersEnabled(newPrefs.remindersEnabled);
+                // Theme + lang live in their own contexts; their setters'
+                // useEffects write hrt-theme-color / hrt-lang / hrt-dark-mode
+                // and refire the FOUC-safe early-bird in index.html on reload.
+                if (newPrefs.lang !== undefined) setLang(newPrefs.lang as typeof lang);
+                if (newPrefs.themeColor !== undefined) setThemeColor(newPrefs.themeColor as typeof themeColor);
+                if (newPrefs.darkMode !== undefined) setIsDark(newPrefs.darkMode);
+            }
+
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
             localStorage.setItem('hrt-last-data-updated', lastModified);
-            const langValue = localStorage.getItem('hrt-lang') || lang;
+            // Data hash must reflect the post-apply state so cloud-sync's
+            // "did anything change?" check doesn't spuriously re-upload.
+            const langForHash = newPrefs?.lang ?? localStorage.getItem('hrt-lang') ?? lang;
+            const themeColorForHash = newPrefs?.themeColor ?? localStorage.getItem('hrt-theme-color') ?? themeColor;
+            const darkModeForHash = newPrefs?.darkMode ?? isDark;
+            const remindersForHash = newPrefs?.remindersEnabled ?? remindersEnabled;
+            const calibrationModelForHash = newCalibration?.model ?? calibrationModel;
+            const calibrationModeForHash = newCalibration?.mode ?? calibrationMode;
+            const applyE2LearningForHash = newCalibration?.applyE2LearningToCPA ?? applyE2LearningToCPA;
+            const applyCPAInhibitionForHash = newCalibration?.applyCPAInhibitionToE2 ?? applyCPAInhibitionToE2;
             const dataHash = computeDataHash({
                 events: nextEvents,
                 weight: latestEventWeight(nextEvents),
                 labResults: nextLabResults,
-                lang: langValue,
-                gelProducts: newGelProducts ?? gelProducts,
-                ...readExtraSyncFields(),
+                lang: langForHash,
+                calibrationModel: calibrationModelForHash,
+                calibrationMode: calibrationModeForHash,
+                applyE2LearningToCPA: applyE2LearningForHash,
+                applyCPAInhibitionToE2: applyCPAInhibitionForHash,
+                themeColor: themeColorForHash,
+                darkMode: darkModeForHash,
+                gelProducts: nextGelProducts,
+                plans: nextPlans,
+                remindersEnabled: remindersForHash,
             });
             localStorage.setItem('hrt-data-hash', dataHash);
             window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-import', lastModified } }));
@@ -335,20 +425,59 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    /**
+     * Snapshot every section that can be migrated to another device. v3 schema
+     * is intentionally a SUPERSET of v2's top-level keys (weight / events /
+     * labResults / gelProducts) — older readers still recognise the v2 keys,
+     * while a v3-aware importer picks up the prefs / calibration / plans /
+     * reminderLog blocks too. Keep `meta.version` bumped; the importer uses
+     * it to dispatch to the right parser.
+     *
+     * `personalModel` is intentionally omitted: events + labResults are the
+     * authoritative inputs, and `replayPersonalModel` rebuilds the EKF from
+     * scratch after import. Shipping the trained theta only saves ~1s on a
+     * warm cache and risks diverging from a stale `labResults` set.
+     */
+    const buildExportPayload = (): string => {
+        const exportData = {
+            meta: {
+                version: 3,
+                schema: 'hrt-tracker-v3',
+                exportedAt: new Date().toISOString(),
+            },
+            // —— v2-compatible top-level keys ——
+            weight: latestEventWeight(events),
+            events,
+            labResults,
+            gelProducts,
+            // —— v3 sections ——
+            prefs: {
+                lang,
+                themeColor,
+                darkMode: isDark,
+                remindersEnabled,
+            },
+            calibration: {
+                model: calibrationModel,
+                mode: calibrationMode,
+                applyE2LearningToCPA,
+                applyCPAInhibitionToE2,
+            },
+            plans,
+            reminderLog: {
+                postponeLog,
+                dueLog,
+            },
+        };
+        return JSON.stringify(exportData, null, 2);
+    };
+
     const handleQuickExport = () => {
         if (events.length === 0 && labResults.length === 0 && gelProducts.length === 0) {
             showDialog('alert', t('drawer.empty_export'));
             return;
         }
-
-        const exportData = {
-            meta: { version: 2, exportedAt: new Date().toISOString() },
-            weight: latestEventWeight(events),
-            events,
-            labResults,
-            gelProducts,
-        };
-        const payload = JSON.stringify(exportData, null, 2);
+        const payload = buildExportPayload();
 
         // ── Web fallback: navigator.clipboard. Android 走原 invoke 路径，行为不变。
         if (!isTauri) {
@@ -420,14 +549,10 @@ const SettingsPage: React.FC = () => {
             showDialog('alert', t('drawer.empty_export'));
             return;
         }
-        const exportData = {
-            meta: { version: 2, exportedAt: new Date().toISOString() },
-            weight: latestEventWeight(events),
-            events,
-            labResults,
-            gelProducts,
-        };
-        await downloadFile(JSON.stringify(exportData, null, 2), `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
+        await downloadFile(
+            buildExportPayload(),
+            `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`
+        );
     };
 
     const handleClearAllEvents = () => {

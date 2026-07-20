@@ -28,7 +28,7 @@ const DUE_LOG_KEY = 'hrt-due-log';
 
 /** Single postpone action, logged so the heatmap KPI can show
  *  "本plan推迟数" / "本月推迟数" without parsing plan state deltas. */
-interface PostponeLogEntry {
+export interface PostponeLogEntry {
     id: string;
     planId: string;
     /** Local-date key YYYY-MM identifying the month this postpone counts
@@ -42,7 +42,7 @@ interface PostponeLogEntry {
  *  the user interacts with a reminder, OR auto-filled as 'skipped' on
  *  app startup for past due days the user never touched. Frozen in time
  *  so plan edits / disables can never "rewrite history". */
-interface DueLogEntry {
+export interface DueLogEntry {
     id: string;
     planId: string;
     /** Local-date key YYYY-MM-DD for the due day (NOT the interaction time). */
@@ -50,6 +50,11 @@ interface DueLogEntry {
     status: 'taken' | 'skipped' | 'postponed';
     tsMs: number;
 }
+
+/** Top-level envelope version (semantic). Bump when adding/removing/renaming
+ *  top-level keys so the importer can dispatch to the right parser. */
+export const BACKUP_SCHEMA_VERSION_V2 = 2;
+export const BACKUP_SCHEMA_VERSION_V3 = 3;
 
 export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
@@ -118,10 +123,12 @@ interface AppDataContextType {
     /** Per-postpone log entries. Persisted to localStorage so the heatmap
      *  "本月推迟数" KPI survives reloads without needing to diff plan state. */
     postponeLog: PostponeLogEntry[];
+    setPostponeLog: React.Dispatch<React.SetStateAction<PostponeLogEntry[]>>;
     addPostponeLogEntry: (planId: string, days: number) => void;
     /** Per-plan-fire-day compliance record (frozen history). Powers the
      *  "计划达成率" KPI in 口径 C — editing a plan cannot erase past misses. */
     dueLog: DueLogEntry[];
+    setDueLog: React.Dispatch<React.SetStateAction<DueLogEntry[]>>;
     /** Upsert (insert or update) a dueLog entry. If an entry exists for the
      *  same (planId, dateKey), its status is updated; otherwise a new entry
      *  is appended. `dateKey` is the due-day's local date (YYYY-MM-DD), NOT
@@ -835,8 +842,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         remindersEnabled,
         setRemindersEnabled,
         postponeLog,
+        setPostponeLog,
         addPostponeLogEntry,
         dueLog,
+        setDueLog,
         upsertDueLogEntry,
     };
 
