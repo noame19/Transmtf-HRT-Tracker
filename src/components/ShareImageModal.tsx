@@ -85,6 +85,8 @@ const ShareImageModal: React.FC<Props> = ({
     const [savedPath, setSavedPath] = useState('');
     const printRef = useRef<HTMLDivElement>(null);
     const dialogRef = useFocusTrap(isOpen, onClose);
+    // 探测 Tauri 环境：仅安卓才有 window.__TAURI_INTERNALS__；web 预览时走浏览器原生下载
+    const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
 
     const now = useMemo(() => new Date(), [isOpen]); // eslint-disable-line
     const h = now.getTime() / 3600000;
@@ -306,10 +308,23 @@ const ShareImageModal: React.FC<Props> = ({
                 imagePlaceholder:
                     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
             });
+            const filename = `hrt-share-${now.toISOString().slice(0, 10)}.png`;
+
+            // ── Web fallback: 直接用 data URL 触发浏览器下载。安卓走原 invoke 路径，行为不变。
+            if (!isTauri) {
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setSavedPath(filename);
+                return;
+            }
+
             // dataUrl 形如 "data:image/png;base64,XXXX" → 去掉前缀取 base64 部分
             const commaIdx = dataUrl.indexOf(',');
             const b64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
-            const filename = `hrt-share-${now.toISOString().slice(0, 10)}.png`;
             const path = await invoke<string>('save_data_to_download', {
                 subdir: 'HRT Tracker',
                 filename,
