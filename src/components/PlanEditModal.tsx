@@ -20,10 +20,12 @@ import {
     GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
     GEL_COAPPLICATION_ORDER, type GelProductSpec,
     resolveGelCoverageArea, isAntiandrogen,
+    SL_TIER_ORDER, SublingualTierParams,
+    getToE2Factor,
 } from '../../logic';
 import { findConflicts, validatePlan } from '../utils/planSchedule';
 import { analyzePlanCompliance } from '../utils/planCompliance';
-import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info } from 'lucide-react';
+import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info, Clock } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -58,9 +60,11 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     // Form state
     const [route, setRoute] = useState<Route>(Route.injection);
     const [ester, setEster] = useState<Ester>(Ester.EV);
-    // 初始为空 — isOpen effect 会按 (route, ester) + per-drug memo + DEFAULT_DOSE_MAP 填入。
-    // 2026-07-20：以前硬编码 '5'，导致切到 CPA/黄体酮/凝胶时默认值全错。
-    const [doseStr, setDoseStr] = useState('');
+    // 2026-07-20 改造：拆成「药物剂量」「等效 E2」两个联动输入框（照搬 DoseFormModal 的同款写法），
+    // 让用药计划弹窗跟用药记录弹窗在剂量输入 UI 上完全一致。
+    const [rawDoseStr, setRawDoseStr] = useState('');
+    const [e2DoseStr, setE2DoseStr] = useState('');
+    const [lastEditedField, setLastEditedField] = useState<'raw' | 'bio'>('bio');
     const [useCustomDose, setUseCustomDose] = useState(false);
 
     // Patch-specific state — mirrors DoseFormModal so a plan's "贴片" entry
@@ -82,6 +86,11 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [gelCoApplied, setGelCoApplied] = useState<number>(0);
     const [gelWash, setGelWash] = useState('');
 
+    // SL 字段 — 2026-07-20 照搬 DoseFormModal：含服时长档位 + 自定义 θ。
+    const [slTier, setSlTier] = useState(2);
+    const [useCustomTheta, setUseCustomTheta] = useState(false);
+    const [customTheta, setCustomTheta] = useState('');
+
     // 跟踪 drugKey，防止 route/ester 切换时 per-drug effect 重复触发
     // (DoseFormModal 同款写法)。空 ref = 未 hydrate。
     const prevDrugKeyRef = useRef<string | null>(null);
@@ -97,6 +106,73 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [leadMinutes, setLeadMinutes] = useState('5');
     const [enabled, setEnabled] = useState(true);
 
+    // 剂量双向联动：照搬 DoseFormModal.handleRawChange / handleE2Change。
+    // activeEster 让 quick-dose 路径传 safeEster，避免 ester 切换瞬间的错位换算。
+    const handleRawChange = (val: string, activeEster: Ester = ester) => {
+        setRawDoseStr(val);
+        setLastEditedField('raw');
+        const v = parseFloat(val);
+        if (!isNaN(v)) {
+            const factor = getToE2Factor(activeEster) || 1;
+            const e2Equivalent = v * factor;
+            setE2DoseStr(e2Equivalent.toFixed(3));
+        } else {
+            setE2DoseStr('');
+        }
+    };
+    const handleE2Change = (val: string, activeEster: Ester = ester) => {
+        setE2DoseStr(val);
+        setLastEditedField('bio');
+        const v = parseFloat(val);
+        if (!isNaN(v)) {
+            const factor = getToE2Factor(activeEster) || 1;
+            if (activeEster === Ester.E2) {
+                setRawDoseStr(v.toFixed(3));
+            } else {
+                setRawDoseStr((v / factor).toFixed(3));
+            }
+        } else {
+            setRawDoseStr('');
+        }
+    };
+
+    // QuickDosePanel 档位预设：单位是化合物 mg（不是 E2 当量）。
+    // E2 直接走 handleE2Change（化合物 mg == E2 mg），其他化合物走 handleRawChange。
+    const applyQuickDose = (mg: number, activeEster: Ester) => {
+        const val = String(mg);
+        if (activeEster === Ester.E2) {
+            handleE2Change(val, activeEster);
+        } else {
+            handleRawChange(val, activeEster);
+        }
+    };
+
+    // Manual / preset 切换：照搬 DoseFormModal.toggleCustomDose，
+    // 离开 manual 时清掉非预设值，避免隐藏的 custom dose 被静默保存。
+    const toggleCustomDose = (activeEster: Ester) => {
+        const next = !useCustomDose;
+        if (!next) {
+            const current = parseFloat(activeEster === Ester.E2 ? e2DoseStr : rawDoseStr);
+            if (!isPresetDose(route, activeEster, current)) {
+                setRawDoseStr('');
+                setE2DoseStr('');
+            }
+        }
+        setUseCustomDose(next);
+    };
+
+    // SL 字段 → extras（照搬 DoseFormModal.slExtras）。
+    const slExtras = useMemo(() => {
+        if (route !== Route.sublingual) return null;
+        if (useCustomTheta) {
+            const parsed = parseFloat(customTheta);
+            const theta = Number.isFinite(parsed) ? parsed : 0.11;
+            const clamped = Math.max(0, Math.min(1, theta));
+            return { [ExtraKey.sublingualTheta]: clamped };
+        }
+        return { [ExtraKey.sublingualTier]: slTier };
+    }, [route, useCustomTheta, customTheta, slTier]);
+
     // Hydrate from `planToEdit` whenever the modal opens. Reset all fields first
     // so a stale field doesn't leak across opens.
     useEffect(() => {
@@ -104,7 +180,16 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         if (planToEdit) {
             setRoute(planToEdit.route);
             setEster(planToEdit.ester);
-            setDoseStr(String(planToEdit.doseMG));
+            // 编辑模式：planToEdit.doseMG 是化合物 mg；按 ester 换算系数反算等效 E2
+            // （照搬 DoseFormModal 编辑分支的逻辑）。
+            const factor = getToE2Factor(planToEdit.ester) || 1;
+            setRawDoseStr(planToEdit.doseMG.toFixed(3));
+            setE2DoseStr((planToEdit.doseMG * factor).toFixed(3));
+            setLastEditedField(planToEdit.ester === Ester.E2 ? 'bio' : 'raw');
+            setUseCustomDose(
+                hasQuickDosePanel(planToEdit.route, planToEdit.ester) &&
+                !isPresetDose(planToEdit.route, planToEdit.ester, planToEdit.doseMG)
+            );
             setScheduleKind(planToEdit.schedule.kind);
             if (planToEdit.schedule.kind === 'every_n_days') {
                 setIntervalDays(String(planToEdit.schedule.intervalDays));
@@ -126,6 +211,9 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             if (typeof rate === 'number' && rate > 0) {
                 setPatchMode('rate');
                 setPatchRate(String(rate));
+                setE2DoseStr('');
+                setRawDoseStr('');
+                setLastEditedField('bio');
             } else {
                 setPatchMode('dose');
                 setPatchRate('');
@@ -142,16 +230,36 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setGelCoApplied(typeof coAppRaw === 'number' && Number.isFinite(coAppRaw) ? Math.round(coAppRaw) : 0);
             const washRaw = planExtras[ExtraKey.gelWashAfterH];
             setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : '');
+
+            // SL extras（照搬 DoseFormModal 编辑分支）。
+            if (planToEdit.route === Route.sublingual) {
+                if (planExtras[ExtraKey.sublingualTier] !== undefined) {
+                    setSlTier(planExtras[ExtraKey.sublingualTier]);
+                    setUseCustomTheta(false);
+                    setCustomTheta('');
+                } else if (planExtras[ExtraKey.sublingualTheta] !== undefined) {
+                    setUseCustomTheta(true);
+                    setCustomTheta(String(planExtras[ExtraKey.sublingualTheta]));
+                } else {
+                    setUseCustomTheta(false);
+                    setCustomTheta('');
+                }
+            } else {
+                setUseCustomTheta(false);
+                setCustomTheta('');
+            }
         } else {
             // 新建计划：默认 (route, ester) 按 readLastDrug()，与 DoseFormModal 一致，
             // 让用户接着上次用的东西继续（避免每次都从 EV 肌注 5mg 起步）。
-            // doseStr / gel 字段由独立 effect 按 per-drug memo + DEFAULT_DOSE_MAP / 上次凝胶事件预填。
+            // rawDoseStr / e2DoseStr / gel / SL 字段由独立 effect 按 per-drug memo +
+            // DEFAULT_DOSE_MAP / 上次凝胶事件预填。
             const last = readLastDrug();
             const initRoute: Route = last?.route ?? Route.injection;
             const initEster: Ester = last?.ester ?? Ester.EV;
             setRoute(initRoute);
             setEster(initEster);
-            setDoseStr('');
+            setRawDoseStr('');
+            setE2DoseStr('');
             setUseCustomDose(false);
             setPatchMode('dose');
             setPatchRate('');
@@ -161,6 +269,9 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setGelCoverage(GEL_COVERAGE_DEFAULT_IDX);
             setGelCoApplied(0);
             setGelWash('');
+            setSlTier(2);
+            setUseCustomTheta(false);
+            setCustomTheta('');
             setScheduleKind('every_n_days');
             setIntervalDays('5');
             setWeekdays([1, 3, 5]);
@@ -181,7 +292,19 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         }
     }, [availableEsters, ester]);
 
-    // Per-drug dose defaulting — 2026-07-20 改造。
+    // 切换 ester 时让 rawDose / e2Dose 跟随当前 lastEditedField 同步（照搬 DoseFormModal ester-sync effects）。
+    useEffect(() => {
+        if (lastEditedField === 'raw' && rawDoseStr) {
+            handleRawChange(rawDoseStr);
+        }
+    }, [ester]);
+    useEffect(() => {
+        if (lastEditedField === 'bio' && e2DoseStr) {
+            handleE2Change(e2DoseStr);
+        }
+    }, [ester]);
+
+    // Per-drug dose defaulting — 2026-07-20 改造，照搬 DoseFormModal 同款 effect。
     // 新计划首次进入某个 (route, ester) 时：优先 per-drug memo (DoseFormModal 已写入)，
     // 其次 DEFAULT_DOSE_MAP 医学推荐，再次回退到空。用户在 modal 内手动切换 (route, ester)
     // 时也走同一逻辑：让"用药计划"和"用药记录"两个表单在剂量默认值上完全一致。
@@ -194,9 +317,38 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         const key = drugKeyOf(route, ester);
         if (prevDrugKeyRef.current === key) return;
         prevDrugKeyRef.current = key;
+
         const memo = readDoseByDrug()[key];
-        setDoseStr(getDefaultDoseFor(route, ester, memo));
-        setUseCustomDose(hasQuickDosePanel(route, ester) && !isPresetDose(route, ester, parseFloat(getDefaultDoseFor(route, ester, memo))));
+        if (memo) {
+            setRawDoseStr(memo.rawDose ?? '');
+            setE2DoseStr(memo.e2Dose ?? '');
+            setPatchMode(memo.patchMode ?? 'dose');
+            setPatchRate(memo.patchRate ?? '');
+            setSlTier(memo.slTier ?? 2);
+            setUseCustomTheta(memo.useCustomTheta ?? false);
+            setCustomTheta(memo.customTheta ?? '');
+            setUseCustomDose(memo.customDose ?? false);
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+        } else {
+            // 无 memo：按 DEFAULT_DOSE_MAP 取默认（化合物 mg）。
+            const defaultDose = getDefaultDoseFor(route, ester);
+            setRawDoseStr(defaultDose);
+            // 用 lastEditedField 走一次换算，自动算出 e2DoseStr。
+            setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
+            if (defaultDose) {
+                if (ester === Ester.E2) handleE2Change(defaultDose, ester);
+                else handleRawChange(defaultDose, ester);
+            } else {
+                setE2DoseStr('');
+            }
+            setPatchMode('dose');
+            setPatchRate('');
+            setSlTier(2);
+            setUseCustomTheta(false);
+            setCustomTheta('');
+            setUseCustomDose(false);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, planToEdit, route, ester]);
 
     // 新计划首次进入凝胶 route 时，从最近一次凝胶用药记录预填所有凝胶字段。
@@ -214,7 +366,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setGelSite(last.gelSite);
             const prod = findGelProduct(last.productId);
             setGelArea(last.areaCM2 > 0 ? String(last.areaCM2) : String(prod.defaultAreaCM2));
-            setGelCoverage(last.coverage >= 0 ? last.coverage : GEL_COVERAGE_DEFAULT_IDX);
+            // A legacy last-gel (coverage -1) reuses its raw area as "manual".
+            setGelCoverage(last.coverage >= 0 ? last.coverage : GEL_COVERAGE_MANUAL_IDX);
             setGelCoApplied(last.coApplied > 0 ? last.coApplied : 0);
             setGelWash(last.washAfterH > 0 ? String(last.washAfterH) : '');
         }
@@ -246,12 +399,6 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setPatchMode('dose');
             setPatchRate('');
         }
-        if (route !== Route.gel) {
-            // Don't reset product/site/co-applied — they may carry the user's
-            // last gel input (mirrors DoseFormModal). We only zero out the
-            // *values* specific to the gel route that would be wrong on other
-            // routes (no-op since we never read these unless route===gel).
-        }
     }, [route]);
 
     /** Coverage-template option label, mirroring DoseFormModal's gelCoverageLabel. */
@@ -281,11 +428,16 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         }
     };
 
+    // safeEster：route/ester 切换瞬间如果 ester 不在当前 route 的合法列表里，
+    // 用 availableEsters[0] 兜底，让 QuickDosePanel / doseGuide 跟实际渲染一致。
+    // 照搬 DoseFormModal.safeEster。
+    const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
+
     /** Build a Plan object from the current form state. Pure w.r.t. component
      *  state — used both by the compliance-preview useMemo and by handleSave.
      *  Centralising avoids drift between what we *preview* and what we *save*. */
     const buildDraft = (): Plan => {
-        const dose = parseFloat(doseStr);
+        const dose = parseFloat(rawDoseStr);
         const lead = parseInt(leadMinutes, 10);
 
         const startD = parseLocalDate(startDate);
@@ -315,6 +467,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             // so the generated DoseEvent reads as "total dose, no rate" — same
             // invariant DoseFormModal respects on edit.
             delete extras[ExtraKey.releaseRateUGPerDay];
+        }
+        if (route === Route.sublingual && slExtras) {
+            Object.assign(extras, slExtras);
+        } else if (route !== Route.sublingual) {
+            delete extras[ExtraKey.sublingualTier];
+            delete extras[ExtraKey.sublingualTheta];
         }
         if (route === Route.gel) {
             extras[ExtraKey.gelSite] = gelSite;
@@ -378,11 +536,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         isOpen, enabled, startDate,
-        ester, route, doseStr,
+        ester, route, rawDoseStr,
         scheduleKind, intervalDays, weekdays, times,
         endDate, leadMinutes,
         patchMode, patchRate,
         gelSite, gelProductId, gelArea, gelCoverage, gelCoApplied, gelWash,
+        slTier, useCustomTheta, customTheta,
         planToEdit?.id, planToEdit?.createdAtH,
         plans, events, gelProducts,
     ]);
@@ -430,10 +589,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     // 剂量参考档位 — 与 DoseFormModal 同款卡片（低/中/高/超高/超出参考范围）。
-    // 2026-07-20：从 utils/doseForm.computeDoseGuide 统一取，让两个表单在视觉档位上一致。
+    // 2026-07-20 改造：从 utils/doseForm.computeDoseGuide 统一取值，
+    // 传入 safeEster + e2DoseStr（照搬 DoseFormModal：用药记录弹窗档位卡片读的是等效 E2），
+    // 让两个表单在「舌下 EV 2mg → 1.5 mg/天」这种语义上一字不差。
     const doseGuide = useMemo(
-        () => computeDoseGuide(route, ester, isAntiandrogen, patchMode, patchRate, doseStr),
-        [route, ester, patchMode, patchRate, doseStr],
+        () => computeDoseGuide(route, safeEster, isAntiandrogen, patchMode, patchRate, e2DoseStr),
+        [route, safeEster, patchMode, patchRate, e2DoseStr],
     );
     const guideUnitLabel = doseGuide?.config ? t(`dose.guide.unit.${doseGuide.config.unitKey}`) : '';
     const guideRangeText = doseGuide?.config
@@ -454,6 +615,15 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const guideBadgeClass = doseGuide?.level ? LEVEL_BADGE_STYLES[doseGuide.level] : '';
 
     if (!isOpen) return null;
+
+    // SL 字段当前档位对应的 θ 值，照搬 DoseFormModal。
+    const tierKey = SL_TIER_ORDER[slTier] || 'standard';
+    const currentTheta = SublingualTierParams[tierKey]?.theta || 0.11;
+    const activeTheta = useCustomTheta
+        ? (slExtras && slExtras[ExtraKey.sublingualTheta] !== undefined
+            ? slExtras[ExtraKey.sublingualTheta]!
+            : 0.11)
+        : currentTheta;
 
     return (
         <div
@@ -529,6 +699,14 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                 }))}
                             />
                         )}
+
+                        {/* EU 警告 — 照搬 DoseFormModal：仅肌注 EU 时显示 */}
+                        {route === Route.injection && ester === Ester.EU && (
+                            <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
+                                {t('ester.EU_note')}
+                            </div>
+                        )}
+
                         {route !== Route.patchRemove && (
                             <div className="space-y-3">
                                 {/* Patch-specific: dose vs release-rate toggle, mirroring DoseFormModal */}
@@ -559,8 +737,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                                 </label>
                                                 <input
                                                     type="number" inputMode="decimal" min="0.01" step="0.01"
-                                                    value={doseStr}
-                                                    onChange={(e) => setDoseStr(e.target.value)}
+                                                    value={rawDoseStr}
+                                                    onChange={(e) => setRawDoseStr(e.target.value)}
                                                     className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                                     style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                                 />
@@ -585,41 +763,62 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                         )}
                                     </>
                                 ) : (
-                                    /* Non-patch routes (incl. gel). 2026-07-20 改造：
-                                     * 有档位预设的 (route, ester) 走 QuickDosePanel（与 DoseFormModal 同款按钮 + 手动切换），
-                                     * 其它回退到简单数字输入框。剂量参考档位徽章按 (route, ester) 自动展示在下方。 */
-                                    hasQuickDosePanel(route, ester) ? (
-                                        <QuickDosePanel
-                                            route={route}
-                                            ester={ester}
-                                            rawDose={doseStr}
-                                            e2Dose={doseStr}
-                                            useCustomDose={useCustomDose}
-                                            onToggleCustom={() => setUseCustomDose(!useCustomDose)}
-                                            onSelectPreset={(mg) => { setDoseStr(String(mg)); setUseCustomDose(false); }}
-                                            onCustomChange={(val) => setDoseStr(val)}
-                                        />
-                                    ) : (
-                                        <div className="space-y-1">
-                                            <label className="block text-sm font-bold"
-                                                style={{ color: 'var(--text-secondary)' }}>
-                                                {route === Route.gel ? (t('plan.field.gel_dose') || '剂量') : (t('plan.field.dose') || '剂量')} (mg)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                inputMode="decimal"
-                                                min="0.01"
-                                                step="0.01"
-                                                value={doseStr}
-                                                onChange={(e) => setDoseStr(e.target.value)}
-                                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                                style={{
-                                                    background: 'var(--bg-card-hover)',
-                                                    border: '1px solid var(--border-primary)',
-                                                    color: 'var(--text-primary)',
-                                                }}
+                                    /* 非贴片（含凝胶）：照搬 DoseFormModal 的输入框分支。
+                                     * 有档位预设的 (route, ester) 走 QuickDosePanel，
+                                     * 其它走「药物剂量 + 等效 E2」双输入框联动。 */
+                                    (route !== Route.patchApply || patchMode === 'dose') && (
+                                        hasQuickDosePanel(route, safeEster) ? (
+                                            <QuickDosePanel
+                                                route={route}
+                                                ester={safeEster}
+                                                rawDose={rawDoseStr}
+                                                e2Dose={e2DoseStr}
+                                                useCustomDose={useCustomDose}
+                                                onToggleCustom={() => toggleCustomDose(safeEster)}
+                                                onSelectPreset={(mg) => applyQuickDose(mg, safeEster)}
+                                                onCustomChange={(val) => safeEster === Ester.E2 ? handleE2Change(val, safeEster) : handleRawChange(val, safeEster)}
                                             />
-                                        </div>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {(safeEster !== Ester.E2) && (
+                                                        <div className={`space-y-2 ${ (safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) || isAntiandrogen(safeEster) ? 'col-span-2' : '' }`}>
+                                                            <label className="block text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.dose_raw')}</label>
+                                                            <input
+                                                                type="number" inputMode="decimal"
+                                                                min="0"
+                                                                step="0.001"
+                                                                value={rawDoseStr} onChange={e => handleRawChange(e.target.value)}
+                                                                className="w-full p-4 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono"
+                                                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                                                placeholder="0.0"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {!(safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) && !isAntiandrogen(safeEster) && (
+                                                        <div className={`space-y-2 ${(safeEster === Ester.E2 && route !== Route.gel && route !== Route.oral && route !== Route.sublingual) ? "col-span-2" : ""}`}>
+                                                            <label className="block text-xs font-bold text-pink-400 uppercase tracking-wider">
+                                                                {t('field.dose_e2')}
+                                                            </label>
+                                                            <input
+                                                                type="number" inputMode="decimal"
+                                                                min="0"
+                                                                step="0.001"
+                                                                value={e2DoseStr} onChange={e => handleE2Change(e.target.value)}
+                                                                className="w-full p-4 rounded-xl focus:ring-2 outline-none font-bold font-mono"
+                                                                style={{ background: 'var(--bg-soft-rose)', border: '1px solid var(--border-soft-rose)', color: 'var(--accent-500)' }}
+                                                                placeholder="0.0"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {(safeEster === Ester.EV && (route === Route.injection || route === Route.sublingual || route === Route.oral)) && (
+                                                    <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                                                        {t('field.dose_e2')}: {e2DoseStr ? `${e2DoseStr} mg` : '--'}
+                                                    </p>
+                                                )}
+                                            </>
+                                        )
                                     )
                                 )}
 
@@ -655,6 +854,56 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                     </div>
                                 )}
 
+                                {/* SL 字段 — 2026-07-20 照搬 DoseFormModal：含服时长档位 + 自定义 θ */}
+                                {route === Route.sublingual && (
+                                    <div className="bg-[var(--bg-soft-teal)] p-4 rounded-2xl border border-[var(--border-soft-teal)] space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-sm font-bold text-[var(--text-bold-teal)] flex items-center gap-2">
+                                                <Clock size={16} /> {t('field.sl_duration')}
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium text-[var(--text-icon-teal)]">{t('field.sl_custom')}</span>
+                                                <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-[var(--toggle-track-off)]'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
+                                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomTheta ? 'translate-x-4' : ''}`} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {!useCustomTheta ? (
+                                            <div className="space-y-3">
+                                                <input
+                                                    type="range" min="0" max="3" step="1"
+                                                    value={slTier} onChange={e => setSlTier(parseInt(e.target.value))}
+                                                    className="w-full h-2 bg-[var(--track-teal)] rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                                />
+                                                <div className="flex justify-between text-xs font-medium text-[var(--text-icon-teal)]">
+                                                    <span>{t('sl.mode.quick')}</span>
+                                                    <span>{t('sl.mode.casual')}</span>
+                                                    <span>{t('sl.mode.standard')}</span>
+                                                    <span>{t('sl.mode.strict')}</span>
+                                                </div>
+                                                <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
+                                                    <span>Absorption θ ≈ {currentTheta.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-[var(--border-med-teal)] rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }} placeholder="0.0 - 1.0" />
+                                                <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
+                                                    <span>Absorption θ ≈ {activeTheta.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3 items-start p-3 bg-[var(--bg-tip-card)] rounded-xl border border-[var(--border-soft-teal)]">
+                                            <Info className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
+                                            <p className="text-xs text-[var(--text-soft-teal)] leading-relaxed text-justify">
+                                                {t('sl.instructions')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Gel-specific: site / product / coverage / wash, mirroring DoseFormModal */}
                                 {route === Route.gel && (
                                     <div className="space-y-3 pt-3 border-t" style={{ borderColor: 'var(--border-secondary)' }}>
@@ -671,7 +920,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                                     ? [{ value: String(gelProductId), label: t('gel.product.missing') || '已删除' }]
                                                     : []),
                                                 ...allGelProducts.map((p) => ({
-                                                    value: String(p.id),
+                                                    value: p.id,
                                                     label: p.name || t(p.nameKey),
                                                 })),
                                             ]}
@@ -685,6 +934,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                                 label: t(`gel.site.${GEL_SITE_ORDER[idx]}`),
                                             }))}
                                         />
+                                        {/* Scrotal 警告 — 照搬 DoseFormModal：仅凝胶 scrotal 部位时显示 */}
+                                        {GEL_SITE_ORDER[gelSite] === GelSite.scrotal && (
+                                            <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-2 rounded-lg">
+                                                {t('gel.site.scrotal_note')}
+                                            </div>
+                                        )}
                                         {GEL_SITE_ORDER[gelSite] !== GelSite.scrotal && (
                                             <>
                                                 <CustomSelect
@@ -734,6 +989,10 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                                 className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                                 style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                                             />
+                                        </div>
+                                        {/* 凝胶 β 提示 — 照搬 DoseFormModal */}
+                                        <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
+                                            {t('beta.gel')}
                                         </div>
                                     </div>
                                 )}
