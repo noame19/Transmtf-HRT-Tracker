@@ -1187,11 +1187,11 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                         </div>
                     </div>
 
-                    {/* Lead minutes + Android 通知 + 启用计划 — 同一行（桌面端），窄屏自动单列堆叠 */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Lead minutes + Android 通知 + 启用计划 — 始终同一行（手机端也保持三列同行） */}
+                    <div className="grid grid-cols-3 gap-2">
                         {/* 提前提醒（分钟）范围：0-30 — 上限受「该用药了」弹窗 on_time 窗口 due-30min 约束 */}
-                        <div className="space-y-1">
-                            <label className="block text-sm font-bold"
+                        <div className="space-y-1 min-w-0">
+                            <label className="block text-xs font-bold truncate"
                                 style={{ color: 'var(--text-secondary)' }}>
                                 {t('plan.field.lead_minutes')}
                             </label>
@@ -1209,7 +1209,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                     if (!Number.isFinite(n)) return;
                                     setLeadMinutes(String(Math.min(Math.max(n, 0), 30)));
                                 }}
-                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                className="w-full p-2 rounded-lg text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)] min-w-0"
                                 style={{
                                     background: 'var(--bg-card-hover)',
                                     border: '1px solid var(--border-primary)',
@@ -1218,48 +1218,48 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                             />
                         </div>
                         {/* 安卓通知 toggle — 控制该 plan 是否发通知栏通知。无副标题。 */}
-                        <div className="flex items-center justify-between p-3 rounded-xl"
+                        <div className="flex items-center justify-between gap-1 p-2 rounded-lg min-w-0"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
-                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                                 {t('plan.field.notify_enabled')}
                             </p>
-                            <label className="inline-flex items-center cursor-pointer">
+                            <label className="inline-flex items-center cursor-pointer shrink-0">
                                 <input
                                     type="checkbox"
                                     className="sr-only peer"
                                     checked={notifyEnabled}
                                     onChange={(e) => setNotifyEnabled(e.target.checked)}
                                 />
-                                <div className="relative w-11 h-6 rounded-full transition-colors"
+                                <div className="relative w-9 h-5 rounded-full transition-colors"
                                     style={{ background: notifyEnabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
-                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                                        style={{ transform: notifyEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                    <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                                        style={{ transform: notifyEnabled ? 'translateX(16px)' : 'translateX(0)' }} />
                                 </div>
                             </label>
                         </div>
                         {/* 启用计划 toggle — 与安卓通知解耦，单独控制整个 plan。无副标题。 */}
-                        <div className="flex items-center justify-between p-3 rounded-xl"
+                        <div className="flex items-center justify-between gap-1 p-2 rounded-lg min-w-0"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
-                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                                 {t('plan.field.enabled')}
                             </p>
-                            <label className="inline-flex items-center cursor-pointer">
+                            <label className="inline-flex items-center cursor-pointer shrink-0">
                                 <input
                                     type="checkbox"
                                     className="sr-only peer"
                                     checked={enabled}
                                     onChange={(e) => setEnabled(e.target.checked)}
                                 />
-                                <div className="relative w-11 h-6 rounded-full transition-colors"
+                                <div className="relative w-9 h-5 rounded-full transition-colors"
                                     style={{ background: enabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
-                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                                        style={{ transform: enabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                    <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+                                        style={{ transform: enabled ? 'translateX(16px)' : 'translateX(0)' }} />
                                 </div>
                             </label>
                         </div>
