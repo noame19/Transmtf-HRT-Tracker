@@ -30,6 +30,7 @@ import {
     Bell,
     BellOff,
     BatteryCharging,
+    Power,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -214,6 +215,23 @@ const SettingsPage: React.FC = () => {
             refreshBatteryOptStatus();
             setBatteryOptBusy(false);
         }, 600);
+    };
+
+    // 当 Power 图标显示为绿色（已加入系统白名单）时，点击该选项会弹一个
+    // 破坏性确认对话框 —— 用户明确点确认后才跳转到系统电池优化页面，
+    // 让用户主动移除白名单。这样避免误点「已绿色状态」就直接跳系统设置，
+    // 也提醒用户「移除白名单 = 用药通知可能延迟」。
+    const handleBatteryOptClick = async () => {
+        if (!isTauri || batteryOptBusy) return;
+        if (batteryOptIgnored === true) {
+            const ok = await showDialog(
+                'confirm',
+                t('settings.battery_opt.remove_confirm') ||
+                '移除电池优化白名单后，可能无法准时收到用药通知提醒，仍要移除？',
+            );
+            if (ok !== 'confirm') return;
+        }
+        openBatteryOptSettings();
     };
 
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -687,11 +705,11 @@ const SettingsPage: React.FC = () => {
                             <div
                                 role="button"
                                 tabIndex={(!isTauri || batteryOptBusy) ? -1 : 0}
-                                onClick={() => { if (!(!isTauri || batteryOptBusy)) openBatteryOptSettings(); }}
+                                onClick={() => { if (!(!isTauri || batteryOptBusy)) handleBatteryOptClick(); }}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         e.preventDefault();
-                                        if (!(!isTauri || batteryOptBusy)) openBatteryOptSettings();
+                                        if (!(!isTauri || batteryOptBusy)) handleBatteryOptClick();
                                     }
                                 }}
                                 aria-disabled={!isTauri || batteryOptBusy}
@@ -709,14 +727,18 @@ const SettingsPage: React.FC = () => {
                                             {t('settings.battery_opt.title') || '关闭系统电池优化'}
                                         </p>
                                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                            {t('settings.battery_opt.desc') || '关闭电池优化，允许本应用在 Android 通知栏提醒用药。'}
+                                            {batteryOptIgnored === true
+                                                ? (t('settings.battery_opt.whitelisted_desc') || '已进入系统白名单，可准时推送用药提醒')
+                                                : (t('settings.battery_opt.desc') || '关闭电池优化，允许本应用在 Android 通知栏提醒用药。')}
                                         </p>
                                     </div>
                                 </div>
-                                <Toggle
-                                    checked={batteryOptIgnored === true}
-                                    onChange={() => { /* read-only — open via row tap */ }}
-                                    disabled
+                                {/* 右侧 Power 图标：灰色=未加入白名单，绿色=已加入白名单。
+                                 * 绿色状态下再点击会触发确认对话框（handleBatteryOptClick）。 */}
+                                <Power
+                                    className="shrink-0"
+                                    size={22}
+                                    style={{ color: batteryOptIgnored === true ? '#10b981' : '#9ca3af' }}
                                 />
                             </div>
                         </div>
