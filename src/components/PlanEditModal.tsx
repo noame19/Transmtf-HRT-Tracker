@@ -1187,69 +1187,67 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                         </div>
                     </div>
 
-                    {/* Lead minutes + Android 通知 + 启用计划 */}
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* 提前提醒（分钟）范围：0-30 — 上限受「该用药了」弹窗 on_time 窗口 due-30min 约束 */}
-                            <div className="space-y-1">
-                                <label className="block text-sm font-bold"
-                                    style={{ color: 'var(--text-secondary)' }}>
-                                    {t('plan.field.lead_minutes') || '提前提醒（分钟）范围：0-30'}
-                                </label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="30"
-                                    step="1"
-                                    value={leadMinutes}
-                                    onChange={(e) => {
-                                        // 输入时即时 clamp 到 [0, 30]，避免用户填越界后保存报错
-                                        const raw = e.target.value;
-                                        if (raw === '') { setLeadMinutes(''); return; }
-                                        const n = parseInt(raw, 10);
-                                        if (!Number.isFinite(n)) return;
-                                        setLeadMinutes(String(Math.min(Math.max(n, 0), 30)));
-                                    }}
-                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                    style={{
-                                        background: 'var(--bg-card-hover)',
-                                        border: '1px solid var(--border-primary)',
-                                        color: 'var(--text-primary)',
-                                    }}
-                                />
-                            </div>
-                            {/* 安卓通知 toggle — 控制该 plan 是否发通知栏通知。无副标题。 */}
-                            <div className="flex items-center justify-between p-3 rounded-xl"
+                    {/* Lead minutes + Android 通知 + 启用计划 — 同一行（桌面端），窄屏自动单列堆叠 */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* 提前提醒（分钟）范围：0-30 — 上限受「该用药了」弹窗 on_time 窗口 due-30min 约束 */}
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold"
+                                style={{ color: 'var(--text-secondary)' }}>
+                                {t('plan.field.lead_minutes')}
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="30"
+                                step="1"
+                                value={leadMinutes}
+                                onChange={(e) => {
+                                    // 输入时即时 clamp 到 [0, 30]，保存前再做一次硬校验（handleSave）。
+                                    const raw = e.target.value;
+                                    if (raw === '') { setLeadMinutes(''); return; }
+                                    const n = parseInt(raw, 10);
+                                    if (!Number.isFinite(n)) return;
+                                    setLeadMinutes(String(Math.min(Math.max(n, 0), 30)));
+                                }}
+                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                 style={{
                                     background: 'var(--bg-card-hover)',
                                     border: '1px solid var(--border-primary)',
-                                }}>
-                                <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                    {t('plan.field.notify_enabled') || '安卓通知'}
-                                </p>
-                                <label className="inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only peer"
-                                        checked={notifyEnabled}
-                                        onChange={(e) => setNotifyEnabled(e.target.checked)}
-                                    />
-                                    <div className="relative w-11 h-6 rounded-full transition-colors"
-                                        style={{ background: notifyEnabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
-                                        <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
-                                            style={{ transform: notifyEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
-                                    </div>
-                                </label>
-                            </div>
+                                    color: 'var(--text-primary)',
+                                }}
+                            />
                         </div>
-                        {/* 启用计划 toggle — 单独一行（与安卓通知解耦），无副标题。 */}
+                        {/* 安卓通知 toggle — 控制该 plan 是否发通知栏通知。无副标题。 */}
                         <div className="flex items-center justify-between p-3 rounded-xl"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
                             <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                {t('plan.field.enabled') || '启用计划'}
+                                {t('plan.field.notify_enabled')}
+                            </p>
+                            <label className="inline-flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={notifyEnabled}
+                                    onChange={(e) => setNotifyEnabled(e.target.checked)}
+                                />
+                                <div className="relative w-11 h-6 rounded-full transition-colors"
+                                    style={{ background: notifyEnabled ? 'var(--accent-500)' : 'var(--bg-card)' }}>
+                                    <span className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                                        style={{ transform: notifyEnabled ? 'translateX(20px)' : 'translateX(0)' }} />
+                                </div>
+                            </label>
+                        </div>
+                        {/* 启用计划 toggle — 与安卓通知解耦，单独控制整个 plan。无副标题。 */}
+                        <div className="flex items-center justify-between p-3 rounded-xl"
+                            style={{
+                                background: 'var(--bg-card-hover)',
+                                border: '1px solid var(--border-primary)',
+                            }}>
+                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                {t('plan.field.enabled')}
                             </p>
                             <label className="inline-flex items-center cursor-pointer">
                                 <input

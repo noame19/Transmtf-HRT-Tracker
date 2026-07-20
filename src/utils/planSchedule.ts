@@ -342,7 +342,7 @@ function formatLocalDateTime(d: Date, _t: (k: string, fallback?: string) => stri
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PlanValidationError {
-    field: 'times' | 'interval' | 'weekdays' | 'startDate' | 'endDate' | 'dose';
+    field: 'times' | 'interval' | 'weekdays' | 'startDate' | 'endDate' | 'dose' | 'leadMinutes';
     message: string;
 }
 
@@ -350,6 +350,11 @@ export function validatePlan(plan: Plan): PlanValidationError[] {
     const errors: PlanValidationError[] = [];
     if (!Number.isFinite(plan.doseMG) || plan.doseMG <= 0) {
         errors.push({ field: 'dose', message: 'dose must be > 0' });
+    }
+    // 提前提醒分钟数必须落在 [0, 30]：上限受「该用药了」弹窗 on_time 窗口 due-30min 约束，
+    // 超过 30 分钟的提前通知会让用户进 app 时弹窗已经关了。
+    if (!Number.isFinite(plan.leadMinutes) || plan.leadMinutes < 0 || plan.leadMinutes > 30) {
+        errors.push({ field: 'leadMinutes', message: 'leadMinutes must be in [0, 30]' });
     }
     if (plan.schedule.times.length === 0) {
         errors.push({ field: 'times', message: 'at least one time required' });
