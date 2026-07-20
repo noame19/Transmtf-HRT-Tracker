@@ -139,6 +139,10 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    const { t, lang, setLang } = useTranslation();
+    const { showDialog } = useDialog();
+    const { remindersEnabled, setRemindersEnabled } = useAppData();
+
     /**
      * Re-check Android notification permission whenever reminders flip on
      * (or on mount, so users landing here from /history see the same hint).
@@ -146,6 +150,12 @@ const SettingsPage: React.FC = () => {
      * where the user dismissed the system dialog and needs a deeper route
      * — invoking `request_notification_permission` on Android re-shows the
      * dialog when possible and is a no-op once it's permanently denied.
+     *
+     * NOTE: this hook + handler must come AFTER `remindersEnabled` is
+     * destructured from useAppData (line above). Putting it earlier hits
+     * a runtime ReferenceError ("Cannot access 'remindersEnabled' before
+     * initialization") because the closure captures the binding, not its
+     * current value. TypeScript can't catch this — only a runtime render.
      */
     const [remindersPermissionGranted, setRemindersPermissionGranted] = useState<boolean | null>(null);
     useEffect(() => {
@@ -179,10 +189,6 @@ const SettingsPage: React.FC = () => {
             setRemindersPermissionGranted(granted);
         } catch { /* ignore */ }
     };
-
-    const { t, lang, setLang } = useTranslation();
-    const { showDialog } = useDialog();
-    const { remindersEnabled, setRemindersEnabled } = useAppData();
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
     const { isDark, setIsDark } = useTheme();
