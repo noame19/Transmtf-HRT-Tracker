@@ -275,8 +275,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setScheduleKind('every_n_days');
             setIntervalDays('5');
             setWeekdays([1, 3, 5]);
-            setTimes(['20:00']);
-            setStartDate(toLocalDateStr(new Date()));
+            // 时间默认值：当前时刻（对齐用药记录弹窗的「新增」默认行为），起始日期保持今天。
+            const nowInit = new Date();
+            const hh = String(nowInit.getHours()).padStart(2, '0');
+            const mm = String(nowInit.getMinutes()).padStart(2, '0');
+            setTimes([`${hh}:${mm}`]);
+            setStartDate(toLocalDateStr(nowInit));
             setEndDate('');
             setLeadMinutes('5');
             setEnabled(true);
@@ -672,12 +676,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                         </div>
                     )}
 
-                    {/* Drug */}
+                    {/* Drug — 给药方式 + 药物 组合（自定义选择器自带 label，去掉冗余小标题） */}
                     <div className="space-y-3">
-                        <label className="block text-xs font-semibold uppercase tracking-wider"
-                            style={{ color: 'var(--text-tertiary)' }}>
-                            {t('plan.field.drug') || '药物'}
-                        </label>
                         <CustomSelect
                             label={t('field.route')}
                             value={route}
