@@ -348,8 +348,25 @@ const SettingsPage: React.FC = () => {
             labResults,
             gelProducts,
         };
+        const payload = JSON.stringify(exportData, null, 2);
 
-        invoke('clipboard_write_text', { text: JSON.stringify(exportData, null, 2) }).then(() => {
+        // ── Web fallback: navigator.clipboard. Android 走原 invoke 路径，行为不变。
+        if (!isTauri) {
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(payload).then(
+                    () => showDialog('alert', t('drawer.export_copied')),
+                    (err: any) => {
+                        const msg = err?.message || String(err);
+                        showDialog('alert', `${t('drawer.export_failed') || 'Copy failed'}: ${msg}`);
+                    }
+                );
+            } else {
+                showDialog('alert', t('drawer.export_failed') || 'Copy failed: clipboard not supported');
+            }
+            return;
+        }
+
+        invoke('clipboard_write_text', { text: payload }).then(() => {
             showDialog('alert', t('drawer.export_copied'));
         }).catch((error: any) => {
             const msg = error?.message || String(error);
@@ -358,6 +375,28 @@ const SettingsPage: React.FC = () => {
     };
 
     const downloadFile = async (data: string, filename: string) => {
+        // ── Web fallback: Blob + <a download>. Android 走原 invoke 路径，行为不变。
+        if (!isTauri) {
+            try {
+                const blob = new Blob([data], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                showDialog(
+                    'alert',
+                    t('drawer.export_saved').replace('{path}', filename) || `已保存 ${filename}`
+                );
+            } catch (err: any) {
+                const msg = err?.message || String(err) || 'unknown';
+                showDialog('alert', `${t('drawer.export_failed')}: ${msg}`);
+            }
+            return;
+        }
         try {
             // text 走 base64 编码（btoa + unescape(encodeURIComponent) 是 UTF-8 → base64 的老 trick，
             // 跨 Android WebView 兼容性最好）
