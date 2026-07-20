@@ -1187,11 +1187,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                         </div>
                     </div>
 
-                    {/* Lead minutes + Android 通知 + 启用计划 — 始终同一行（手机端也保持三列同行） */}
+                    {/* Lead minutes + Android 通知 + 启用计划 — 始终同一行（手机端也保持三列同行）；
+                       label 文字放不下时自动换行成两行，控件在 label 下面；不截断不省略。 */}
                     <div className="grid grid-cols-3 gap-2">
                         {/* 提前提醒（分钟）范围：0-30 — 上限受「该用药了」弹窗 on_time 窗口 due-30min 约束 */}
                         <div className="space-y-1 min-w-0">
-                            <label className="block text-xs font-bold truncate"
+                            <label className="block text-xs font-bold leading-tight break-words"
                                 style={{ color: 'var(--text-secondary)' }}>
                                 {t('plan.field.lead_minutes')}
                             </label>
@@ -1218,15 +1219,15 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                             />
                         </div>
                         {/* 安卓通知 toggle — 控制该 plan 是否发通知栏通知。无副标题。 */}
-                        <div className="flex items-center justify-between gap-1 p-2 rounded-lg min-w-0"
+                        <div className="flex flex-col items-stretch gap-1 p-2 rounded-lg min-w-0"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
-                            <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-xs font-bold leading-tight break-words" style={{ color: 'var(--text-primary)' }}>
                                 {t('plan.field.notify_enabled')}
                             </p>
-                            <label className="inline-flex items-center cursor-pointer shrink-0">
+                            <label className="inline-flex items-center justify-end cursor-pointer">
                                 <input
                                     type="checkbox"
                                     className="sr-only peer"
@@ -1241,15 +1242,15 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                             </label>
                         </div>
                         {/* 启用计划 toggle — 与安卓通知解耦，单独控制整个 plan。无副标题。 */}
-                        <div className="flex items-center justify-between gap-1 p-2 rounded-lg min-w-0"
+                        <div className="flex flex-col items-stretch gap-1 p-2 rounded-lg min-w-0"
                             style={{
                                 background: 'var(--bg-card-hover)',
                                 border: '1px solid var(--border-primary)',
                             }}>
-                            <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-xs font-bold leading-tight break-words" style={{ color: 'var(--text-primary)' }}>
                                 {t('plan.field.enabled')}
                             </p>
-                            <label className="inline-flex items-center cursor-pointer shrink-0">
+                            <label className="inline-flex items-center justify-end cursor-pointer">
                                 <input
                                     type="checkbox"
                                     className="sr-only peer"
