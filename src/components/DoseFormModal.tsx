@@ -774,8 +774,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
 
     const doseGuide = useMemo(
-        () => computeDoseGuide(route, safeEster, isAntiandrogen, patchMode, patchRate, e2Dose),
-        [route, safeEster, patchMode, patchRate, e2Dose],
+        // 传 rawDose 不是 e2Dose：EV 选 2mg 时 e2Dose≈1.53，但 DOSE_GUIDE_CONFIG 阈值
+        // 单位是化合物本身 mg（cheatsheet 口径）。E2 时 rawDose == e2Dose，无影响。
+        () => computeDoseGuide(route, safeEster, isAntiandrogen, patchMode, patchRate, rawDose),
+        [route, safeEster, patchMode, patchRate, rawDose],
     );
 
     const dialogRef = useFocusTrap(isOpen, onClose);

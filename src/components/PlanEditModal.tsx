@@ -20,10 +20,11 @@ import {
     GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
     GEL_COAPPLICATION_ORDER, type GelProductSpec,
     resolveGelCoverageArea, isAntiandrogen,
+    SL_TIER_ORDER, SublingualTierParams,
 } from '../../logic';
 import { findConflicts, validatePlan } from '../utils/planSchedule';
 import { analyzePlanCompliance } from '../utils/planCompliance';
-import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info } from 'lucide-react';
+import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info, Clock } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -70,6 +71,14 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [patchMode, setPatchMode] = useState<'dose' | 'rate'>('dose');
     const [patchRate, setPatchRate] = useState('');
 
+    // Sublingual tier / theta — 2026-07-20 补齐，让「用药计划」和「用药记录」
+    // 在含服给药时 θ 参数完全一致。如果计划没设 → 默认 tier=2（standard, θ=0.11），
+    // 而用户在 DoseFormModal 改了 tier=1 → record 用 tier=1。两条路径血药浓度会偏移。
+    // DoseFormModal 同款字段，照搬以保持行为一致。
+    const [slTier, setSlTier] = useState(2);
+    const [useCustomTheta, setUseCustomTheta] = useState(false);
+    const [customTheta, setCustomTheta] = useState('');
+
     // Gel-specific state — mirrors DoseFormModal so the plan's gel context
     // flows into auto-generated DoseEvents (smart-prefill reads these verbatim).
     const allGelProducts = useMemo(() => getAllGelProducts(gelProducts), [gelProducts]);
@@ -87,6 +96,19 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const prevDrugKeyRef = useRef<string | null>(null);
     // 跟踪 gel 是否已预填，避免 route 反复横跳时重复预填。
     const gelPrefilledRef = useRef(false);
+
+    // slExtras 派生 — DoseFormModal 同款。route===sublingual 时根据 useCustomTheta
+    // 决定写 sublingualTheta 还是 sublingualTier 到 extras。
+    const slExtras = useMemo(() => {
+        if (route !== Route.sublingual) return null;
+        if (useCustomTheta) {
+            const parsed = parseFloat(customTheta);
+            const theta = Number.isFinite(parsed) ? parsed : 0.11;
+            const clamped = Math.max(0, Math.min(1, theta));
+            return { [ExtraKey.sublingualTheta]: clamped };
+        }
+        return { [ExtraKey.sublingualTier]: slTier };
+    }, [route, useCustomTheta, customTheta, slTier]);
 
     const [scheduleKind, setScheduleKind] = useState<PlanSchedule['kind']>('every_n_days');
     const [intervalDays, setIntervalDays] = useState('5');
@@ -142,6 +164,24 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setGelCoApplied(typeof coAppRaw === 'number' && Number.isFinite(coAppRaw) ? Math.round(coAppRaw) : 0);
             const washRaw = planExtras[ExtraKey.gelWashAfterH];
             setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : '');
+
+            // Sublingual tier / theta — 与 DoseFormModal 同款 hydrate。
+            if (route === Route.sublingual) {
+                if (planExtras[ExtraKey.sublingualTier] !== undefined) {
+                    setSlTier(planExtras[ExtraKey.sublingualTier] as number);
+                    setUseCustomTheta(false);
+                    setCustomTheta('');
+                } else if (planExtras[ExtraKey.sublingualTheta] !== undefined) {
+                    setUseCustomTheta(true);
+                    setCustomTheta(String(planExtras[ExtraKey.sublingualTheta]));
+                } else {
+                    setUseCustomTheta(false);
+                    setCustomTheta('');
+                }
+            } else {
+                setUseCustomTheta(false);
+                setCustomTheta('');
+            }
         } else {
             // 新建计划：默认 (route, ester) 按 readLastDrug()，与 DoseFormModal 一致，
             // 让用户接着上次用的东西继续（避免每次都从 EV 肌注 5mg 起步）。
@@ -197,6 +237,17 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         const memo = readDoseByDrug()[key];
         setDoseStr(getDefaultDoseFor(route, ester, memo));
         setUseCustomDose(hasQuickDosePanel(route, ester) && !isPresetDose(route, ester, parseFloat(getDefaultDoseFor(route, ester, memo))));
+        // Sublingual tier / theta 跟随 per-drug memo（与 DoseFormModal 行为一致），
+        // 确保计划生成的 record 和用户在 DoseFormModal 直接记录的 record 用同一个 θ。
+        if (memo) {
+            setSlTier(memo.slTier ?? 2);
+            setUseCustomTheta(memo.useCustomTheta ?? false);
+            setCustomTheta(memo.customTheta ?? '');
+        } else {
+            setSlTier(2);
+            setUseCustomTheta(false);
+            setCustomTheta('');
+        }
     }, [isOpen, planToEdit, route, ester]);
 
     // 新计划首次进入凝胶 route 时，从最近一次凝胶用药记录预填所有凝胶字段。
@@ -334,6 +385,15 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             if (Number.isFinite(washNum) && washNum > 0) {
                 extras[ExtraKey.gelWashAfterH] = washNum;
             }
+        }
+        // Sublingual tier / theta — 2026-07-20 补齐，与 DoseFormModal 同款写入策略：
+        // useCustomTheta 写 sublingualTheta（覆盖），否则写 sublingualTier（覆盖）。
+        // route 切走时清掉这两个 key，避免下一次保存的非 SL 计划携带 stale theta/tier。
+        if (route === Route.sublingual && slExtras) {
+            Object.assign(extras, slExtras);
+        } else {
+            delete extras[ExtraKey.sublingualTier];
+            delete extras[ExtraKey.sublingualTheta];
         }
 
         const nowH = Date.now() / 3600000;
@@ -651,6 +711,57 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                                     {t('dose.guide.patch_rate_hint')}
                                                 </p>
                                             )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Sublingual Specifics — 2026-07-20 补齐，让计划生成的 record
+                                 * 用用户选择的 θ / tier，而不是默认 tier=2。镜像 DoseFormModal 1188-1236。 */}
+                                {route === Route.sublingual && (
+                                    <div className="bg-[var(--bg-soft-teal)] p-4 rounded-2xl border border-[var(--border-soft-teal)] space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-sm font-bold text-[var(--text-bold-teal)] flex items-center gap-2">
+                                                <Clock size={16} /> {t('field.sl_duration')}
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium text-[var(--text-icon-teal)]">{t('field.sl_custom')}</span>
+                                                <div className={`w-10 h-6 rounded-full p-1 cursor-pointer transition-colors ${useCustomTheta ? 'bg-teal-500' : 'bg-[var(--toggle-track-off)]'}`} onClick={() => setUseCustomTheta(!useCustomTheta)}>
+                                                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${useCustomTheta ? 'translate-x-4' : ''}`} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {!useCustomTheta ? (
+                                            <div className="space-y-3">
+                                                <input
+                                                    type="range" min="0" max="3" step="1"
+                                                    value={slTier} onChange={e => setSlTier(parseInt(e.target.value))}
+                                                    className="w-full h-2 bg-[var(--track-teal)] rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                                />
+                                                <div className="flex justify-between text-xs font-medium text-[var(--text-icon-teal)]">
+                                                    <span>{t('sl.mode.quick')}</span>
+                                                    <span>{t('sl.mode.casual')}</span>
+                                                    <span>{t('sl.mode.standard')}</span>
+                                                    <span>{t('sl.mode.strict')}</span>
+                                                </div>
+                                                <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
+                                                    <span>Absorption θ ≈ {SublingualTierParams[SL_TIER_ORDER[slTier] || "standard"]?.theta.toFixed(2) ?? '0.11'}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <input type="number" step="0.01" max="1" min="0" value={customTheta} onChange={e => setCustomTheta(e.target.value)} className="w-full p-3 border border-[var(--border-med-teal)] rounded-xl focus:ring-2 focus:ring-teal-500 outline-none" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }} placeholder="0.0 - 1.0" />
+                                                <div className="text-xs text-[var(--text-icon-teal)] bg-[var(--bg-info-box)] p-2 rounded-lg flex justify-between items-center">
+                                                    <span>Absorption θ ≈ {(() => { const p = parseFloat(customTheta); const v = Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : 0.11; return v.toFixed(2); })()}</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3 items-start p-3 bg-[var(--bg-tip-card)] rounded-xl border border-[var(--border-soft-teal)]">
+                                            <Info className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
+                                            <p className="text-xs text-[var(--text-soft-teal)] leading-relaxed text-justify">
+                                                {t('sl.instructions')}
+                                            </p>
                                         </div>
                                     </div>
                                 )}
