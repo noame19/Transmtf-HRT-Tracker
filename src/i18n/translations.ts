@@ -180,6 +180,8 @@ export const TRANSLATIONS_BASE = {
         "settings.reminders.title": "用药提醒",
         "settings.reminders.desc": "到点时在 Android 通知栏弹出提示，点击可一键确认。",
         "settings.reminders.permission_denied": "通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。",
+        "settings.battery_opt.title": "关闭系统电池优化",
+        "settings.battery_opt.desc": "关闭电池优化，允许本应用在 Android 通知栏提醒用药。",
 
         "drawer.title": "实用工具",
         "drawer.clear": "清空所有记录",
@@ -1098,6 +1100,8 @@ export const TRANSLATIONS_BASE = {
         "settings.reminders.title": "Medication Reminders",
         "settings.reminders.desc": "When enabled, the system notification bar fires at the scheduled time. Tap to confirm.",
         "settings.reminders.permission_denied": "Notification permission denied. Reminders cannot fire until you grant it in system settings.",
+        "settings.battery_opt.title": "Disable Battery Optimization",
+        "settings.battery_opt.desc": "Whitelist this app so the Android notification bar fires medication reminders on time.",
 
         "drawer.title": "Utilities",
         "drawer.clear": "Clear All Records",
@@ -1923,6 +1927,8 @@ export const TRANSLATIONS = {
         "settings.group.reminders": "用藥提醒",
         "settings.reminders.title": "用藥提醒",
         "settings.reminders.desc": "啟用後，Android 通知列會在到點時彈出提醒，點擊可一鍵確認。",
+        "settings.battery_opt.title": "關閉系統電池最佳化",
+        "settings.battery_opt.desc": "關閉電池最佳化，允許本應用於 Android 通知列提醒用藥。",
 
         "drawer.title": "工具選單",
         "drawer.clear": "清除所有劑量",
@@ -2493,6 +2499,8 @@ export const TRANSLATIONS = {
         "settings.reminders.title": "投薬リマインダー",
         "settings.reminders.desc": "有効にすると、予定時刻に通知バーで通知されます。タップで記録できます。",
         "settings.reminders.permission_denied": "通知権限が拒否されました。リマインダーは通知できません。",
+        "settings.battery_opt.title": "バッテリーの最適化を無効化",
+        "settings.battery_opt.desc": "バッテリー最適化をオフにすると、通知バーでの服薬リマインダーが確実に届きます。",
 
         "drawer.title": "便利ツール",
         "drawer.clear": "すべての用量を削除",

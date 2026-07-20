@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -29,6 +29,7 @@ import {
     Send,
     Bell,
     BellOff,
+    BatteryCharging,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -121,8 +122,8 @@ const SettingsPage: React.FC = () => {
      *   1. Make sure the notification channel exists.
      *   2. Ask for POST_NOTIFICATIONS permission (Android 13+) — this is
      *      a runtime permission and only triggers a dialog the first time.
-     *   3. Refresh the in-page permission state so the inline hint under
-     *      the toggle can update.
+     *   3. If the user denies the permission, surface an alert so they
+     *      know reminders won't fire even though the toggle is on.
      */
     const handleToggleReminders = async (enabled: boolean) => {
         setRemindersEnabled(enabled);
@@ -133,7 +134,13 @@ const SettingsPage: React.FC = () => {
         try {
             await invoke('ensure_notification_channel');
             const granted = await invoke<boolean>('request_notification_permission');
-            setRemindersPermissionGranted(granted);
+            if (!granted) {
+                showDialog(
+                    'alert',
+                    t('settings.reminders.permission_denied') ||
+                    '通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。',
+                );
+            }
         } catch {
             /* command may not exist yet on web/dev — fail silently */
         }
@@ -144,51 +151,59 @@ const SettingsPage: React.FC = () => {
     const { remindersEnabled, setRemindersEnabled } = useAppData();
 
     /**
-     * Re-check Android notification permission whenever reminders flip on
-     * (or on mount, so users landing here from /history see the same hint).
-     * We also expose a manual "open system settings" button for the case
-     * where the user dismissed the system dialog and needs a deeper route
-     * — invoking `request_notification_permission` on Android re-shows the
-     * dialog when possible and is a no-op once it's permanently denied.
-     *
-     * NOTE: this hook + handler must come AFTER `remindersEnabled` is
-     * destructured from useAppData (line above). Putting it earlier hits
-     * a runtime ReferenceError ("Cannot access 'remindersEnabled' before
-     * initialization") because the closure captures the binding, not its
-     * current value. TypeScript can't catch this — only a runtime render.
+     * Battery-optimization row state. `null` = "haven't checked yet"
+     * (loading or web preview); `true` = app is whitelisted / unrestricted;
+     * `false` = still subject to doze, reminders may be delayed. We re-check
+     * on mount and after the user returns from the system settings page,
+     * because they could have flipped the toggle there.
      */
-    const [remindersPermissionGranted, setRemindersPermissionGranted] = useState<boolean | null>(null);
-    useEffect(() => {
+    const [batteryOptIgnored, setBatteryOptIgnored] = useState<boolean | null>(null);
+    const [batteryOptBusy, setBatteryOptBusy] = useState(false);
+    const refreshBatteryOptStatus = useCallback(async () => {
         if (!isTauri) {
-            setRemindersPermissionGranted(null);
+            setBatteryOptIgnored(null);
             return;
         }
         const invoke = window.__TAURI_INTERNALS__?.invoke;
         if (typeof invoke !== 'function') {
-            setRemindersPermissionGranted(null);
+            setBatteryOptIgnored(null);
             return;
         }
-        let cancelled = false;
-        const check = async () => {
-            try {
-                const granted = await invoke<boolean>('request_notification_permission');
-                if (!cancelled) setRemindersPermissionGranted(granted);
-            } catch {
-                if (!cancelled) setRemindersPermissionGranted(null);
-            }
-        };
-        check();
-        return () => { cancelled = true; };
-    }, [remindersEnabled]);
+        try {
+            const ignored = await invoke<boolean>('is_battery_optimization_ignored');
+            setBatteryOptIgnored(ignored);
+        } catch {
+            setBatteryOptIgnored(null);
+        }
+    }, []);
 
-    const openNotificationSettings = async () => {
+    useEffect(() => {
+        refreshBatteryOptStatus();
+    }, [refreshBatteryOptStatus]);
+
+    /**
+     * Open the system battery-optimization settings page, then refresh
+     * the toggle when the page regains focus. Some OEM ROMs (MIUI/EMUI)
+     * use a separate "auto-start" page that we ALSO open as a follow-up,
+     * because doze alone isn't enough on those skins.
+     */
+    const openBatteryOptSettings = async () => {
+        if (!isTauri) return;
         const invoke = window.__TAURI_INTERNALS__?.invoke;
         if (typeof invoke !== 'function') return;
+        setBatteryOptBusy(true);
         try {
-            const granted = await invoke<boolean>('request_notification_permission');
-            setRemindersPermissionGranted(granted);
+            await invoke('request_ignore_battery_optimization');
         } catch { /* ignore */ }
+        // Re-check status shortly after — user returns from the settings
+        // page via the back button, at which point Android reports the
+        // new whitelist state. 600ms is generous for the round-trip.
+        window.setTimeout(() => {
+            refreshBatteryOptStatus();
+            setBatteryOptBusy(false);
+        }, 600);
     };
+
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { events, setEvents, labResults, setLabResults, gelProducts, setGelProducts } = useAppData();
     const { isDark, setIsDark } = useTheme();
@@ -482,53 +497,50 @@ const SettingsPage: React.FC = () => {
                                 </div>
                                 <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
                             </div>
-                            {/* Permission hint — sits UNDER the toggle, not as a
-                             *  full-width banner. Only shown when reminders are
-                             *  toggled on AND the OS notification permission is
-                             *  denied. We deliberately do NOT block the toggle
-                             *  itself: users can still flip the switch and we
-                             *  re-check on every render of this page. The
-                             *  "去设置" button re-invokes the runtime permission
-                             *  flow; on permanently-denied devices this reopens
-                             *  the system app-info screen via the platform
-                             *  shim. */}
-                            {remindersEnabled && remindersPermissionGranted === false && (
-                                <div
-                                    role="alert"
-                                    className="mt-3 rounded-xl px-3 py-2.5 flex items-start gap-2"
-                                    style={{
-                                        background: 'var(--bg-soft-rose)',
-                                        border: '1px solid var(--border-soft-rose)',
-                                    }}
-                                >
-                                    <AlertTriangle
-                                        size={16}
+                        </div>
+
+                        {/* Battery optimization whitelist — a sibling row to the
+                         *  reminders toggle. This is the "doze / not optimized"
+                         *  system setting; Android periodically suspends apps
+                         *  in Doze mode which delays our AlarmManager reminders
+                         *  by minutes-to-hours. Tapping the row opens the
+                         *  system battery-optimization settings page so the
+                         *  user can whitelist us. The toggle on the right is
+                         *  read-only and reflects the live status (true =
+                         *  whitelisted / not optimized, false = still subject
+                         *  to doze). Tapping anywhere on the row opens the
+                         *  settings page — we don't expose a separate
+                         *  "go to settings" button because the row itself is
+                         *  the affordance. */}
+                        <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+                            <button
+                                type="button"
+                                onClick={openBatteryOptSettings}
+                                disabled={!isTauri || batteryOptBusy}
+                                className="flex w-full items-center justify-between gap-3 text-left transition btn-press-glass disabled:opacity-60"
+                                aria-label={t('settings.battery_opt.title') || '关闭系统电池优化'}
+                            >
+                                <div className="flex items-start gap-3 min-w-0">
+                                    <BatteryCharging
                                         className="shrink-0 mt-0.5"
-                                        style={{ color: 'var(--text-soft-rose)' }}
+                                        size={20}
+                                        style={{ color: batteryOptIgnored === false ? '#f59e0b' : '#10b981' }}
                                     />
-                                    <div className="flex-1 min-w-0">
-                                        <p
-                                            className="text-xs leading-snug"
-                                            style={{ color: 'var(--text-secondary)' }}
-                                        >
-                                            {t('settings.reminders.permission_denied') ||
-                                                '通知权限未开启，提醒无法在通知栏弹出。请到系统设置中开启。'}
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                            {t('settings.battery_opt.title') || '关闭系统电池优化'}
+                                        </p>
+                                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                            {t('settings.battery_opt.desc') || '关闭电池优化，允许本应用在 Android 通知栏提醒用药。'}
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={openNotificationSettings}
-                                        className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold btn-press-glass"
-                                        style={{
-                                            background: 'var(--bg-card)',
-                                            color: 'var(--text-primary)',
-                                            border: '1px solid var(--border-primary)',
-                                        }}
-                                    >
-                                        {t('reminder.banner.open_settings') || '去设置'}
-                                    </button>
                                 </div>
-                            )}
+                                <Toggle
+                                    checked={batteryOptIgnored === true}
+                                    onChange={() => { /* read-only — open via row tap */ }}
+                                    disabled
+                                />
+                            </button>
                         </div>
                     </div>
                 </section>
