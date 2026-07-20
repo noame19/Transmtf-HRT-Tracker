@@ -1,23 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
 import CustomSelect from './CustomSelect';
+import QuickDosePanel from './QuickDosePanel';
 import { getRouteIcon } from '../utils/helpers';
 import {
     ROUTE_DISPLAY_ORDER, getAvailableEsters, getAllGelProducts,
+    hasQuickDosePanel, isPresetDose, drugKeyOf,
+    readDoseByDrug, readLastDrug, readLastGelEvent,
+    LEVEL_BADGE_STYLES, LEVEL_CONTAINER_STYLES, formatGuideNumber,
+    computeDoseGuide, getDefaultDoseFor,
+    DoseLevelKey,
 } from '../utils/doseForm';
 import {
     Ester, ExtraKey, Plan, PlanSchedule, Route,
     GelSite, GEL_SITE_ORDER, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID,
     GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
     GEL_COAPPLICATION_ORDER, type GelProductSpec,
-    resolveGelCoverageArea,
+    resolveGelCoverageArea, isAntiandrogen,
 } from '../../logic';
 import { findConflicts, validatePlan } from '../utils/planSchedule';
 import { analyzePlanCompliance } from '../utils/planCompliance';
-import { X, Save, Trash2, Calendar, Droplet, AlertTriangle } from 'lucide-react';
+import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -52,7 +58,10 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     // Form state
     const [route, setRoute] = useState<Route>(Route.injection);
     const [ester, setEster] = useState<Ester>(Ester.EV);
-    const [doseStr, setDoseStr] = useState('5');
+    // 初始为空 — isOpen effect 会按 (route, ester) + per-drug memo + DEFAULT_DOSE_MAP 填入。
+    // 2026-07-20：以前硬编码 '5'，导致切到 CPA/黄体酮/凝胶时默认值全错。
+    const [doseStr, setDoseStr] = useState('');
+    const [useCustomDose, setUseCustomDose] = useState(false);
 
     // Patch-specific state — mirrors DoseFormModal so a plan's "贴片" entry
     // can express either a total mg per application or a µg/d release rate.
@@ -72,6 +81,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [gelCoverage, setGelCoverage] = useState<number>(GEL_COVERAGE_DEFAULT_IDX);
     const [gelCoApplied, setGelCoApplied] = useState<number>(0);
     const [gelWash, setGelWash] = useState('');
+
+    // 跟踪 drugKey，防止 route/ester 切换时 per-drug effect 重复触发
+    // (DoseFormModal 同款写法)。空 ref = 未 hydrate。
+    const prevDrugKeyRef = useRef<string | null>(null);
+    // 跟踪 gel 是否已预填，避免 route 反复横跳时重复预填。
+    const gelPrefilledRef = useRef(false);
 
     const [scheduleKind, setScheduleKind] = useState<PlanSchedule['kind']>('every_n_days');
     const [intervalDays, setIntervalDays] = useState('5');
@@ -128,9 +143,16 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             const washRaw = planExtras[ExtraKey.gelWashAfterH];
             setGelWash(typeof washRaw === 'number' && washRaw > 0 ? String(washRaw) : '');
         } else {
-            setRoute(Route.injection);
-            setEster(Ester.EV);
-            setDoseStr('5');
+            // 新建计划：默认 (route, ester) 按 readLastDrug()，与 DoseFormModal 一致，
+            // 让用户接着上次用的东西继续（避免每次都从 EV 肌注 5mg 起步）。
+            // doseStr / gel 字段由独立 effect 按 per-drug memo + DEFAULT_DOSE_MAP / 上次凝胶事件预填。
+            const last = readLastDrug();
+            const initRoute: Route = last?.route ?? Route.injection;
+            const initEster: Ester = last?.ester ?? Ester.EV;
+            setRoute(initRoute);
+            setEster(initEster);
+            setDoseStr('');
+            setUseCustomDose(false);
             setPatchMode('dose');
             setPatchRate('');
             setGelSite(0);
@@ -158,6 +180,45 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setEster(availableEsters[0]);
         }
     }, [availableEsters, ester]);
+
+    // Per-drug dose defaulting — 2026-07-20 改造。
+    // 新计划首次进入某个 (route, ester) 时：优先 per-drug memo (DoseFormModal 已写入)，
+    // 其次 DEFAULT_DOSE_MAP 医学推荐，再次回退到空。用户在 modal 内手动切换 (route, ester)
+    // 时也走同一逻辑：让"用药计划"和"用药记录"两个表单在剂量默认值上完全一致。
+    // 编辑模式跳过（planToEdit 已经携带了历史 dose）。
+    useEffect(() => {
+        if (!isOpen || planToEdit) {
+            if (!isOpen) prevDrugKeyRef.current = null;
+            return;
+        }
+        const key = drugKeyOf(route, ester);
+        if (prevDrugKeyRef.current === key) return;
+        prevDrugKeyRef.current = key;
+        const memo = readDoseByDrug()[key];
+        setDoseStr(getDefaultDoseFor(route, ester, memo));
+        setUseCustomDose(hasQuickDosePanel(route, ester) && !isPresetDose(route, ester, parseFloat(getDefaultDoseFor(route, ester, memo))));
+    }, [isOpen, planToEdit, route, ester]);
+
+    // 新计划首次进入凝胶 route 时，从最近一次凝胶用药记录预填所有凝胶字段。
+    // 只读不写（计划不是真实用药记录，避免污染 hrt-dose-by-drug）。
+    useEffect(() => {
+        if (!isOpen || planToEdit || route !== Route.gel) {
+            if (!isOpen || route !== Route.gel) gelPrefilledRef.current = false;
+            return;
+        }
+        if (gelPrefilledRef.current) return;
+        gelPrefilledRef.current = true;
+        const last = readLastGelEvent(events);
+        if (last) {
+            setGelProductId(last.productId);
+            setGelSite(last.gelSite);
+            const prod = findGelProduct(last.productId);
+            setGelArea(last.areaCM2 > 0 ? String(last.areaCM2) : String(prod.defaultAreaCM2));
+            setGelCoverage(last.coverage >= 0 ? last.coverage : GEL_COVERAGE_DEFAULT_IDX);
+            setGelCoApplied(last.coApplied > 0 ? last.coApplied : 0);
+            setGelWash(last.washAfterH > 0 ? String(last.washAfterH) : '');
+        }
+    }, [isOpen, planToEdit, route, events]);
 
     const addTimeSlot = () => {
         if (times.length >= 4) return; // cap matches BatchDoseModal's timesPerDay
@@ -368,6 +429,30 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
 
     const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+    // 剂量参考档位 — 与 DoseFormModal 同款卡片（低/中/高/超高/超出参考范围）。
+    // 2026-07-20：从 utils/doseForm.computeDoseGuide 统一取，让两个表单在视觉档位上一致。
+    const doseGuide = useMemo(
+        () => computeDoseGuide(route, ester, isAntiandrogen, patchMode, patchRate, doseStr),
+        [route, ester, patchMode, patchRate, doseStr],
+    );
+    const guideUnitLabel = doseGuide?.config ? t(`dose.guide.unit.${doseGuide.config.unitKey}`) : '';
+    const guideRangeText = doseGuide?.config
+        ? [
+            `${t('dose.guide.level.low')} ≤ ${formatGuideNumber(doseGuide.config.thresholds[0])} ${guideUnitLabel}`,
+            `${t('dose.guide.level.medium')} ≤ ${formatGuideNumber(doseGuide.config.thresholds[1])} ${guideUnitLabel}`,
+            `${t('dose.guide.level.high')} ≤ ${formatGuideNumber(doseGuide.config.thresholds[2])} ${guideUnitLabel}`,
+            `${t('dose.guide.level.very_high')} ≤ ${formatGuideNumber(doseGuide.config.thresholds[3])} ${guideUnitLabel}`,
+        ].join(' · ')
+        : '';
+    const guideContainerClass = doseGuide
+        ? (
+            doseGuide.level
+                ? LEVEL_CONTAINER_STYLES[doseGuide.level]
+                : (doseGuide.showRateHint ? LEVEL_CONTAINER_STYLES.high : LEVEL_CONTAINER_STYLES.neutral)
+        )
+        : LEVEL_CONTAINER_STYLES.neutral;
+    const guideBadgeClass = doseGuide?.level ? LEVEL_BADGE_STYLES[doseGuide.level] : '';
+
     if (!isOpen) return null;
 
     return (
@@ -500,26 +585,73 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                         )}
                                     </>
                                 ) : (
-                                    /* Non-patch routes (incl. gel) just show the simple mg input. */
-                                    <div className="space-y-1">
-                                        <label className="block text-sm font-bold"
-                                            style={{ color: 'var(--text-secondary)' }}>
-                                            {route === Route.gel ? (t('plan.field.gel_dose') || '剂量') : (t('plan.field.dose') || '剂量')} (mg)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            inputMode="decimal"
-                                            min="0.01"
-                                            step="0.01"
-                                            value={doseStr}
-                                            onChange={(e) => setDoseStr(e.target.value)}
-                                            className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                            style={{
-                                                background: 'var(--bg-card-hover)',
-                                                border: '1px solid var(--border-primary)',
-                                                color: 'var(--text-primary)',
-                                            }}
+                                    /* Non-patch routes (incl. gel). 2026-07-20 改造：
+                                     * 有档位预设的 (route, ester) 走 QuickDosePanel（与 DoseFormModal 同款按钮 + 手动切换），
+                                     * 其它回退到简单数字输入框。剂量参考档位徽章按 (route, ester) 自动展示在下方。 */
+                                    hasQuickDosePanel(route, ester) ? (
+                                        <QuickDosePanel
+                                            route={route}
+                                            ester={ester}
+                                            rawDose={doseStr}
+                                            e2Dose={doseStr}
+                                            useCustomDose={useCustomDose}
+                                            onToggleCustom={() => setUseCustomDose(!useCustomDose)}
+                                            onSelectPreset={(mg) => { setDoseStr(String(mg)); setUseCustomDose(false); }}
+                                            onCustomChange={(val) => setDoseStr(val)}
                                         />
+                                    ) : (
+                                        <div className="space-y-1">
+                                            <label className="block text-sm font-bold"
+                                                style={{ color: 'var(--text-secondary)' }}>
+                                                {route === Route.gel ? (t('plan.field.gel_dose') || '剂量') : (t('plan.field.dose') || '剂量')} (mg)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                inputMode="decimal"
+                                                min="0.01"
+                                                step="0.01"
+                                                value={doseStr}
+                                                onChange={(e) => setDoseStr(e.target.value)}
+                                                className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                style={{
+                                                    background: 'var(--bg-card-hover)',
+                                                    border: '1px solid var(--border-primary)',
+                                                    color: 'var(--text-primary)',
+                                                }}
+                                            />
+                                        </div>
+                                    )
+                                )}
+
+                                {/* 剂量参考档位卡片 — 与 DoseFormModal 同款（低/中/高/超高/超出参考范围）。
+                                 * 2026-07-20：从 utils/doseForm.computeDoseGuide 统一取值，
+                                 * 贴片 dose 模式下命中 cfg.requiresRate 时提示切到释放速率模式。 */}
+                                {doseGuide && (
+                                    <div className={`p-4 rounded-2xl border ${guideContainerClass} flex gap-3`}>
+                                        <Info className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--text-tertiary)' }} />
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('dose.guide.title')}</span>
+                                                {doseGuide.level && (
+                                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${guideBadgeClass}`}>
+                                                        {t(`dose.guide.level.${doseGuide.level}`)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                {t('dose.guide.current')}: {doseGuide.value !== null ? `${formatGuideNumber(doseGuide.value)} ${guideUnitLabel}` : t('dose.guide.current_blank')}
+                                            </p>
+                                            {guideRangeText && (
+                                                <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                                                    {t('dose.guide.reference')}: {guideRangeText}
+                                                </p>
+                                            )}
+                                            {doseGuide.showRateHint && (
+                                                <p className="text-xs text-[var(--text-soft-amber)] leading-relaxed">
+                                                    {t('dose.guide.patch_rate_hint')}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

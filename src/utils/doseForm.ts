@@ -270,3 +270,173 @@ export const readLastGelEvent = (events: DoseEvent[]): LastGelPrefill | null => 
         coApplied: asNum(ex[ExtraKey.gelCoApplied], 0),
     };
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 剂量档位参考（dose guide）
+//
+// 原始定义在 DoseFormModal.tsx 顶部（line 58-78），2026-07-20 提取到此处让
+// 「新建用药计划」弹窗也能消费同一份档位定义，从而两个表单在
+// (给药方式, 药物) 下的视觉档位徽章 / 颜色 / 单位保持完全一致。
+//
+// 抗雄药物 (CPA / BICA) 不在这里写阈值——computeDoseGuide 里 `isAntiandrogen`
+// 会先 return null。`mg_dose` 用于「不分昼夜、单次剂量」的黄体酮（直肠 / 肌注）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type DoseLevelKey = 'low' | 'medium' | 'high' | 'very_high' | 'above';
+
+export type DoseGuideConfig = {
+    unitKey: 'mg_day' | 'ug_day' | 'mg_week' | 'mg_dose';
+    thresholds: [number, number, number, number];
+    /** 贴片专用：true 时 dose 模式下不计算 level，改成提示切到 release-rate 模式 */
+    requiresRate?: boolean;
+};
+
+/** 按 (给药方式, 药物) 索引的剂量档位阈值 */
+export const DOSE_GUIDE_CONFIG: Partial<Record<`${Route}:${Ester}`, DoseGuideConfig>> = {
+    // 口服 E2/EV 共用 2/4/8/12 mg/天
+    [`${Route.oral}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    [`${Route.oral}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
+    // 舌下 E2/EV 共用 1/2/4/6 mg/天（舌下吸收快，参考剂量比口服低）
+    [`${Route.sublingual}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    [`${Route.sublingual}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
+    // 贴片：µg/天，需要先填释放速率
+    [`${Route.patchApply}:${Ester.E2}`]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
+    // 凝胶：mg/天
+    [`${Route.gel}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
+    // 肌注：5 种 E2 酯共用 mg/周
+    [`${Route.injection}:${Ester.EB}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EV}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EU}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EC}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    [`${Route.injection}:${Ester.EN}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
+    // 黄体酮：mg/次（不分昼夜，按单次剂量）
+    [`${Route.rectal}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [50, 100, 150, 200] },
+    [`${Route.injection}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [12.5, 25, 50, 75] },
+};
+
+/** 档位徽章（chip）颜色 token，与 index.html 的 --bg-bold-* / --text-bold-* 一致 */
+export const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
+    low: 'bg-[var(--bg-bold-emerald)] text-[var(--text-bold-emerald)]',
+    medium: 'bg-[var(--bg-bold-sky)] text-[var(--text-bold-sky)]',
+    high: 'bg-[var(--bg-bold-amber)] text-[var(--text-bold-amber)]',
+    very_high: 'bg-[var(--bg-bold-rose)] text-[var(--text-bold-rose)]',
+    above: 'bg-[var(--bg-bold-red)] text-[var(--text-bold-red)]',
+};
+
+/** 档位卡片（容器）颜色 token */
+export const LEVEL_CONTAINER_STYLES: Record<DoseLevelKey | 'neutral', string> = {
+    low: 'bg-[var(--bg-soft-emerald)] border-[var(--border-soft-emerald)]',
+    medium: 'bg-[var(--bg-soft-sky)] border-[var(--border-soft-sky)]',
+    high: 'bg-[var(--bg-soft-amber)] border-[var(--border-soft-amber)]',
+    very_high: 'bg-[var(--bg-soft-rose)] border-[var(--border-soft-rose)]',
+    above: 'bg-[var(--bg-soft-red)] border-[var(--border-soft-red)]',
+    neutral: 'bg-[var(--bg-soft-gray)] border-[var(--border-med-gray)]',
+};
+
+/** 数字格式化（剂量参考卡片用）：整数直显；小数去尾零 */
+export const formatGuideNumber = (val: number): string => {
+    if (Number.isInteger(val)) return val.toString();
+    const rounded = val < 1 ? val.toFixed(2) : val.toFixed(1);
+    return rounded.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+};
+
+export type DoseGuideResult = {
+    config: DoseGuideConfig;
+    level: DoseLevelKey | null;
+    value: number | null;
+    /** 贴片 dose 模式下命中 cfg.requiresRate：提示切到 rate 模式 */
+    showRateHint: boolean;
+} | null;
+
+/**
+ * 计算当前 (route, ester, 输入剂量) 对应的剂量档位。
+ *
+ * - 抗雄 (CPA / BICA) → null（参考范围不同，不在本档位体系内）
+ * - (route, ester) 没在 DOSE_GUIDE_CONFIG 里 → null
+ * - 贴片 + dose 模式 + requiresRate → { level: null, value: null, showRateHint: true }
+ * - 其它：value = 当前剂量（数字或 null），level 按 thresholds 落到 5 档
+ */
+export const computeDoseGuide = (
+    route: Route,
+    ester: Ester,
+    isAntiandrogenEster: (e: Ester) => boolean,
+    patchMode: 'dose' | 'rate',
+    patchRate: string,
+    e2Dose: string,
+): DoseGuideResult => {
+    if (isAntiandrogenEster(ester)) return null;
+
+    const cfg = DOSE_GUIDE_CONFIG[drugKeyOf(route, ester)];
+    if (!cfg) return null;
+
+    if (route === Route.patchApply && patchMode === 'dose' && cfg.requiresRate) {
+        return { config: cfg, level: null, value: null, showRateHint: true };
+    }
+
+    const rawVal = route === Route.patchApply ? parseFloat(patchRate) : parseFloat(e2Dose);
+    const value = Number.isFinite(rawVal) && rawVal > 0 ? rawVal : null;
+
+    let level: DoseLevelKey | null = null;
+    if (value !== null) {
+        const [low, medium, high, veryHigh] = cfg.thresholds;
+        if (value <= low) level = 'low';
+        else if (value <= medium) level = 'medium';
+        else if (value <= high) level = 'high';
+        else if (value <= veryHigh) level = 'very_high';
+        else level = 'above';
+    }
+
+    return { config: cfg, level, value, showRateHint: false };
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (给药方式, 药物) 推荐默认剂量
+//
+// 2026-07-20 新增：让 PlanEditModal 在新计划首次进入某个 (route, ester) 组合
+// 时落到的医学推荐默认（中等等级，参考 shizu cheatsheet）。优先级：
+//   1) DoseFormModal 已写入的 per-drug memo（hrt-dose-by-drug）
+//   2) DEFAULT_DOSE_MAP[drugKeyOf(route, ester)]
+//   3) '' 空字符串（让用户手填）
+//
+// 单位与该 route 自身的单位约定一致（mg/天、mg/周、µg/天、mg/次）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 医学推荐默认剂量（中等档位）。patchApply 默认 µg/天（释放速率），其它 mg。 */
+export const DEFAULT_DOSE_MAP: Partial<Record<`${Route}:${Ester}`, number>> = {
+    // 舌下：1-4 mg，取中 = 2
+    [`${Route.sublingual}:${Ester.E2}`]: 2,
+    [`${Route.sublingual}:${Ester.EV}`]: 2,
+    // 口服：E2/EV 4-8 mg 取 4；CPA 12.5；BICA 50
+    [`${Route.oral}:${Ester.E2}`]: 4,
+    [`${Route.oral}:${Ester.EV}`]: 4,
+    [`${Route.oral}:${Ester.CPA}`]: 12.5,
+    [`${Route.oral}:${Ester.BICA}`]: 50,
+    // 肌注：5 种 E2 酯 5 mg（保留原 PlanEditModal 硬编码值）；PROG 25/50/75 取中 = 50
+    [`${Route.injection}:${Ester.EB}`]: 5,
+    [`${Route.injection}:${Ester.EV}`]: 5,
+    [`${Route.injection}:${Ester.EU}`]: 5,
+    [`${Route.injection}:${Ester.EC}`]: 5,
+    [`${Route.injection}:${Ester.EN}`]: 5,
+    [`${Route.injection}:${Ester.PROG}`]: 50,
+    // 直肠：50/100/150/200 取中 = 100
+    [`${Route.rectal}:${Ester.PROG}`]: 100,
+    // 贴片：µg/天，100-200 取低 = 100
+    [`${Route.patchApply}:${Ester.E2}`]: 100,
+    // 凝胶：3-6 mg 取低 = 3
+    [`${Route.gel}:${Ester.E2}`]: 3,
+};
+
+/**
+ * 取 (route, ester) 的默认剂量。优先 per-drug memo，其次 DEFAULT_DOSE_MAP，再次空。
+ * 调用者负责提供 memo（从 `readDoseByDrug()` 读出）；传 `undefined` 表示不查 memo。
+ */
+export const getDefaultDoseFor = (
+    route: Route,
+    ester: Ester,
+    memo?: { rawDose: string },
+): string => {
+    const memoVal = memo?.rawDose?.trim();
+    if (memoVal && Number.isFinite(parseFloat(memoVal))) return memoVal;
+    const fallback = DEFAULT_DOSE_MAP[drugKeyOf(route, ester)];
+    return fallback !== undefined ? String(fallback) : '';
+};

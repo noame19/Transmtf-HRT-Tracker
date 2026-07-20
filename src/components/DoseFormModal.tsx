@@ -12,6 +12,7 @@ import {
     isPresetDose, hasQuickDosePanel,
     drugKeyOf, readDoseByDrug, writeDoseMemo, readLastDrug,
     getAllGelProducts, readLastGelEvent,
+    LEVEL_BADGE_STYLES, LEVEL_CONTAINER_STYLES, formatGuideNumber, computeDoseGuide,
 } from '../utils/doseForm';
 import { findPatchRemoveForApply } from '../utils/patch';
 import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
@@ -42,67 +43,8 @@ interface DoseTemplate {
     customTheta: string;
 }
 
-type DoseLevelKey = 'low' | 'medium' | 'high' | 'very_high' | 'above';
-
-type DoseGuideConfig = {
-    unitKey: 'mg_day' | 'ug_day' | 'mg_week' | 'mg_dose';
-    thresholds: [number, number, number, number];
-    requiresRate?: boolean;
-};
-
-/**
- * 剂量参考档位 — 按 (给药方式, 药物) 复合键索引。
- * 抗雄 (CPA/BICA) 不在这里写阈值：useMemo 里 `isAntiandrogen(safeEster)` 会先 return null。
- * `mg_dose` 用于「不分昼夜、单次剂量」的黄体酮（直肠 / 肌注），所以不需要 day/week 后缀。
- */
-const DOSE_GUIDE_CONFIG: Partial<Record<`${Route}:${Ester}`, DoseGuideConfig>> = {
-    // 口服 E2/EV 共用 2/4/8/12 mg_day
-    [`${Route.oral}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
-    [`${Route.oral}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [2, 4, 8, 12] },
-    // 舌下 E2/EV 共用 1/2/4/6 mg_day（舌下吸收快，参考剂量比口服低）
-    [`${Route.sublingual}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
-    [`${Route.sublingual}:${Ester.EV}`]: { unitKey: 'mg_day', thresholds: [1, 2, 4, 6] },
-    // 贴片：ug_day，需要先填释放速率
-    [`${Route.patchApply}:${Ester.E2}`]: { unitKey: 'ug_day', thresholds: [100, 200, 400, 600], requiresRate: true },
-    // 凝胶：mg_day
-    [`${Route.gel}:${Ester.E2}`]: { unitKey: 'mg_day', thresholds: [1.5, 3, 6, 9] },
-    // 肌注：5 种 E2 酯共用 mg_week
-    [`${Route.injection}:${Ester.EB}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
-    [`${Route.injection}:${Ester.EV}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
-    [`${Route.injection}:${Ester.EU}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
-    [`${Route.injection}:${Ester.EC}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
-    [`${Route.injection}:${Ester.EN}`]: { unitKey: 'mg_week', thresholds: [1, 2, 4, 6] },
-    // 黄体酮：mg_dose（不分昼夜，按单次剂量）
-    [`${Route.rectal}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [50, 100, 150, 200] },
-    [`${Route.injection}:${Ester.PROG}`]: { unitKey: 'mg_dose', thresholds: [12.5, 25, 50, 75] },
-};
-
-/* Colors drive from --bg-bold-* / --text-bold-* / --bg-soft-* / --border-soft-*
- * tokens in index.html. Keeping these inline as plain class strings would
- * re-introduce the Tailwind `dark:` media-query which fights with the
- * ThemeContext's class-based .dark toggle. */
-const LEVEL_BADGE_STYLES: Record<DoseLevelKey, string> = {
-    low: 'bg-[var(--bg-bold-emerald)] text-[var(--text-bold-emerald)]',
-    medium: 'bg-[var(--bg-bold-sky)] text-[var(--text-bold-sky)]',
-    high: 'bg-[var(--bg-bold-amber)] text-[var(--text-bold-amber)]',
-    very_high: 'bg-[var(--bg-bold-rose)] text-[var(--text-bold-rose)]',
-    above: 'bg-[var(--bg-bold-red)] text-[var(--text-bold-red)]'
-};
-
-const LEVEL_CONTAINER_STYLES: Record<DoseLevelKey | 'neutral', string> = {
-    low: 'bg-[var(--bg-soft-emerald)] border-[var(--border-soft-emerald)]',
-    medium: 'bg-[var(--bg-soft-sky)] border-[var(--border-soft-sky)]',
-    high: 'bg-[var(--bg-soft-amber)] border-[var(--border-soft-amber)]',
-    very_high: 'bg-[var(--bg-soft-rose)] border-[var(--border-soft-rose)]',
-    above: 'bg-[var(--bg-soft-red)] border-[var(--border-soft-red)]',
-    neutral: 'bg-[var(--bg-soft-gray)] border-[var(--border-med-gray)]'
-};
-
-const formatGuideNumber = (val: number) => {
-    if (Number.isInteger(val)) return val.toString();
-    const rounded = val < 1 ? val.toFixed(2) : val.toFixed(1);
-    return rounded.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-};
+// 剂量参考档位 / 颜色 token / 数字格式化已在 2026-07-20 提取到 utils/doseForm.ts，
+// 让「新建用药计划」弹窗也能复用同一份档位定义。两个表单现在从同处 import。
 
 export interface DoseFormModalProps {
     isOpen: boolean;
@@ -831,30 +773,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     // data write paths read the same value even mid-route-transition.
     const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
 
-    const doseGuide = useMemo(() => {
-        // 抗雄药物 (CPA / BICA) 没有剂量提示，因为参考范围不同
-        if (isAntiandrogen(safeEster)) return null;
-
-        const cfg = DOSE_GUIDE_CONFIG[drugKeyOf(route, safeEster)];
-        if (!cfg) return null;
-        if (route === Route.patchApply && patchMode === "dose" && cfg.requiresRate) {
-            return { config: cfg, level: null, value: null, showRateHint: true as const };
-        }
-        const rawVal = route === Route.patchApply ? parseFloat(patchRate) : parseFloat(e2Dose);
-        const value = Number.isFinite(rawVal) && rawVal > 0 ? rawVal : null;
-
-        let level: DoseLevelKey | null = null;
-        if (value !== null) {
-            const [low, medium, high, veryHigh] = cfg.thresholds;
-            if (value <= low) level = 'low';
-            else if (value <= medium) level = 'medium';
-            else if (value <= high) level = 'high';
-            else if (value <= veryHigh) level = 'very_high';
-            else level = 'above';
-        }
-
-        return { config: cfg, level, value, showRateHint: false as const };
-    }, [route, patchMode, patchRate, e2Dose, safeEster]);
+    const doseGuide = useMemo(
+        () => computeDoseGuide(route, safeEster, isAntiandrogen, patchMode, patchRate, e2Dose),
+        [route, safeEster, patchMode, patchRate, e2Dose],
+    );
 
     const dialogRef = useFocusTrap(isOpen, onClose);
 
