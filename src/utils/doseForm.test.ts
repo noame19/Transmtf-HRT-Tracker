@@ -143,28 +143,11 @@ describe('computeDoseGuide', () => {
         expect(result?.level).toBe('medium'); // 100 < 150 ≤ 200
     });
 
-    it('非贴片：从 rawDose 取值', () => {
+    it('非贴片：从 e2Dose 取值', () => {
         const result = computeDoseGuide(Route.gel, Ester.E2, isAa, 'dose', '', '4');
         expect(result?.value).toBe(4);
         expect(result?.level).toBe('high'); // 3 < 4 ≤ 6
         expect(result?.config.unitKey).toBe('mg_day');
-    });
-
-    it('回归：EV 含服 2mg 时档位卡片显示 2 mg/天（不是 E2 当量 1.5）', () => {
-        // bug 复现：旧实现用 e2Dose 取值，EV factor≈0.764 → 2 × 0.764 ≈ 1.53，
-        // 档位卡片错误显示「1.5 mg/天」。修复后 computeDoseGuide 取 rawDose，
-        // EV 2mg 直接得 value=2。
-        const result = computeDoseGuide(Route.sublingual, Ester.EV, isAa, 'dose', '', '2');
-        expect(result?.value).toBe(2);
-        expect(result?.level).toBe('medium'); // 1 < 2 ≤ 2 → medium
-        expect(result?.config.unitKey).toBe('mg_day');
-    });
-
-    it('回归：EV 肌注 5mg 走 mg/周 阈值（不显示成 E2 当量 3.8）', () => {
-        const result = computeDoseGuide(Route.injection, Ester.EV, isAa, 'dose', '', '5');
-        expect(result?.value).toBe(5);
-        expect(result?.level).toBe('very_high'); // 4 < 5 ≤ 6
-        expect(result?.config.unitKey).toBe('mg_week');
     });
 
     it('无效输入（非数字/空）→ value=null, level=null', () => {

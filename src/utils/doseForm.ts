@@ -355,12 +355,6 @@ export type DoseGuideResult = {
  * - (route, ester) 没在 DOSE_GUIDE_CONFIG 里 → null
  * - 贴片 + dose 模式 + requiresRate → { level: null, value: null, showRateHint: true }
  * - 其它：value = 当前剂量（数字或 null），level 按 thresholds 落到 5 档
- *
- * @param rawDose "化合物本身 mg"（与 DOSE_GUIDE_CONFIG.thresholds 单位一致）。
- *                对 E2 来说 rawDose == e2Dose（factor=1），所以两个都给 E2 都行；
- *                对 EV/EB/EC/EN/EU/PROG 必须传 rawDose（不是 e2Dose/E2 当量），
- *                否则 EV 选 2mg 时档位卡片会显示 1.5 mg/天（= 2 × 0.764）。
- *                PlanEditModal 单一 doseStr 字段天然就是 rawDose。
  */
 export const computeDoseGuide = (
     route: Route,
@@ -368,7 +362,7 @@ export const computeDoseGuide = (
     isAntiandrogenEster: (e: Ester) => boolean,
     patchMode: 'dose' | 'rate',
     patchRate: string,
-    rawDose: string,
+    e2Dose: string,
 ): DoseGuideResult => {
     if (isAntiandrogenEster(ester)) return null;
 
@@ -379,7 +373,7 @@ export const computeDoseGuide = (
         return { config: cfg, level: null, value: null, showRateHint: true };
     }
 
-    const rawVal = route === Route.patchApply ? parseFloat(patchRate) : parseFloat(rawDose);
+    const rawVal = route === Route.patchApply ? parseFloat(patchRate) : parseFloat(e2Dose);
     const value = Number.isFinite(rawVal) && rawVal > 0 ? rawVal : null;
 
     let level: DoseLevelKey | null = null;
