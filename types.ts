@@ -120,6 +120,11 @@ export interface DoseEvent {
     doseMG: number; // Dose in mg (of the ester/compound), NOT E2-equivalent
     ester: Ester;
     weightKG: number; // Body weight at time of administration, in kg
+    /** Body height (cm) at time of administration. Optional for backward-compat
+     *  with events created before 2026-07-21 — readers treat a missing field as
+     *  "no measurement available". Form prefill falls back to the last event
+     *  with a positive height, then the legacy DEFAULT_HEIGHT_CM (160 cm). */
+    heightCm?: number;
     extras: Partial<Record<ExtraKey, number>>;
     /** UUID linking paired events (e.g. patch apply ↔ patch remove). */
     companionGroupId?: string;

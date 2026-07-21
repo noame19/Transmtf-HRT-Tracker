@@ -81,3 +81,43 @@ export function backfillEventWeights(events: DoseEvent[], legacyWeight: number):
     }
     return result;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Height (cm) helpers — symmetric to weight above. Added 2026-07-21 when
+// body-height input migrated from BasicInfoModal to DoseFormModal.
+//
+// File naming is historical (weight.ts existed long before height joined) —
+// both body-stats are managed here. If we ever add a third metric (BF%, etc.)
+// this should probably split into bodyStats.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Default height (cm) when nothing else is available. Matches the
+ *  placeholder shown on DoseFormModal's empty height input. */
+export const DEFAULT_HEIGHT_CM = 160;
+
+function findLatestPositiveHeight(events: DoseEvent[]): number | null {
+    if (!Array.isArray(events) || events.length === 0) return null;
+    let latest: DoseEvent | null = null;
+    for (const ev of events) {
+        if (!ev || typeof ev !== 'object') continue;
+        const h = (ev as { heightCm?: unknown }).heightCm;
+        if (typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue;
+        if (!latest || ev.timeH > latest.timeH) latest = ev;
+    }
+    return latest ? latest.heightCm! : null;
+}
+
+/** Most recent positive height across all events, or null. Use this when
+ *  you want a clean absence signal (vs latestEventHeight which substitutes a
+ *  default). */
+export function findLatestHeight(events: DoseEvent[]): number | null {
+    return findLatestPositiveHeight(events);
+}
+
+/** Best prefill for a brand-new dose form. Prefers the most recent dose's
+ *  height; falls back to DEFAULT_HEIGHT_CM (160) when no event carries one.
+ *  No legacy localStorage fallback exists yet — height was never stored
+ *  globally before per-event migration. */
+export function prefillHeightCM(events: DoseEvent[]): number {
+    return findLatestPositiveHeight(events) ?? DEFAULT_HEIGHT_CM;
+}

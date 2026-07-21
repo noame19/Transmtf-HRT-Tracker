@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
-import { prefillWeightKG } from '../utils/weight';
+import { prefillWeightKG, prefillHeightCM } from '../utils/weight';
 import CustomSelect from './CustomSelect';
 import QuickDosePanel from './QuickDosePanel';
 import { getRouteIcon } from '../utils/helpers';
@@ -121,6 +121,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     const [useCustomDose, setUseCustomDose] = useState(false);
     const [lastEditedField, setLastEditedField] = useState<'raw' | 'bio'>('bio');
     const [weightStr, setWeightStr] = useState("");
+    // 身高（cm）— 2026-07-21 从 BasicInfoModal 迁过来，跟体重对称：编辑时优先用
+    // eventToEdit.heightCm，新建/重置时 prefillHeightCM(allEvents)（最新用药记录的值，
+    // 无则 160）。保存时若无有效输入同样回退到 prefillHeightCM，保证事件上始终有值。
+    const [heightStr, setHeightStr] = useState("");
 
     // Tracks the drug key the per-drug dose memory was last loaded for, so the
     // memory-restore effect only fires when the user actually switches compounds.
@@ -230,6 +234,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 }
 
                 setWeightStr((eventToEdit.weightKG ?? prefillWeightKG(allEvents)).toString());
+                // 编辑模式：老事件没有 heightCm 字段（2026-07-21 之前），回退到
+                // prefillHeightCM(allEvents) 让表单不显示空白。
+                const editHeight = (eventToEdit as { heightCm?: number }).heightCm;
+                setHeightStr((editHeight ?? prefillHeightCM(allEvents)).toString());
 
             } else {
                 const nowRaw = prefillTimeOverride ?? new Date();
@@ -331,6 +339,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     // dedicated effect below (keyed on route/ester).
                 }
                 setWeightStr(prefillWeightKG(allEvents).toString());
+                setHeightStr(prefillHeightCM(allEvents).toString());
             }
         }
     }, [isOpen, eventToEdit, prefillFromPlan, prefillTimeOverride]);
@@ -664,6 +673,12 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             ? parsedWeight
             : prefillWeightKG(allEvents);
 
+        // 身高跟体重对称：用户输入无效时回退到 prefillHeightCM，确保 event 上始终有正数值。
+        const parsedHeight = parseFloat(heightStr);
+        const heightCm = (Number.isFinite(parsedHeight) && parsedHeight > 0)
+            ? parsedHeight
+            : prefillHeightCM(allEvents);
+
         // ── Paired save for "贴片" with an optional remove time ─────────────
         // When the user filled in the optional "摘下时间" field on a patch
         // record, emit TWO events sharing a fresh companionGroupId. The
@@ -694,6 +709,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 timeH,
                 doseMG: finalDose,
                 weightKG,
+                heightCm,
                 extras,
                 companionGroupId: groupId,
             };
@@ -704,6 +720,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 timeH: removeTimeH,
                 doseMG: 0,
                 weightKG,
+                heightCm,
                 extras: {},
                 companionGroupId: groupId,
             };
@@ -728,6 +745,7 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             timeH,
             doseMG: finalDose,
             weightKG,
+            heightCm,
             extras
         };
 
@@ -853,6 +871,28 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                             >
                                 <Calendar size={18} />
                             </button>
+                        </div>
+                    </div>
+
+                    {/* Body height (cm) — 2026-07-21 从 BasicInfoModal 迁过来，跟体重对称：
+                       上方一行。prefill：编辑用 eventToEdit.heightCm，新建用 prefillHeightCM(allEvents)，
+                       缺省 160。占位符跟输入上限呼应（合理人类范围 50-250 cm）。 */}
+                    <div className="space-y-2">
+                        <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{t('field.height')}</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                inputMode="decimal"
+                                min="50"
+                                max="250"
+                                step="0.1"
+                                value={heightStr}
+                                onChange={e => setHeightStr(e.target.value)}
+                                className="flex-1 p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                placeholder="160"
+                            />
+                            <span className="text-sm font-bold" style={{ color: 'var(--text-tertiary)' }}>{t('field.height_unit')}</span>
                         </div>
                     </div>
 
