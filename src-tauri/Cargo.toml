@@ -19,6 +19,10 @@ android_logger = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 jni = "0.21"
 once_cell = "1"
+# Used to encode log text (and any other Rust-side text payloads) to base64
+# before crossing the JNI String boundary. Kotlin's DownloadWriter.saveToDownloads
+# decodes on its side so binary payloads (PNG/JPEG) survive the round trip.
+base64 = "0.22"
 
 [target.'cfg(target_os = "android")'.dependencies]
 # tao 0.35 is what tauri-runtime-wry 2.x pins; we use its

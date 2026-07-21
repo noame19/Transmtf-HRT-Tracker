@@ -110,8 +110,36 @@ const SettingsPage: React.FC = () => {
         const invoke = window.__TAURI_INTERNALS__?.invoke;
         if (!invoke) return;
         try {
-            const path = await invoke('export_logs_to_download');
-            showDialog('alert', `${t('settings.debug.exported_prefix') || 'Exported to'}: ${path}`);
+            const result = await invoke<{ uri: string; displayPath: string; mime: string }>(
+                'export_logs_to_download',
+            );
+            showDialog(
+                'alert',
+                `${t('settings.debug.exported_prefix') || 'Exported to'} ${result.displayPath}`,
+                {
+                    messageNode: (
+                        <>
+                            {`${t('settings.debug.exported_prefix') || 'Exported to'} `}
+                            <a
+                                role="button"
+                                className="underline cursor-pointer break-all"
+                                style={{ color: 'var(--accent-primary, #ec4899)' }}
+                                onClick={() => {
+                                    if (!isTauri) return;
+                                    invoke('open_with_system', {
+                                        uri: result.uri,
+                                        mime: result.mime,
+                                    }).catch((e) => {
+                                        console.error('open_with_system failed', e);
+                                    });
+                                }}
+                            >
+                                {result.displayPath}
+                            </a>
+                        </>
+                    ),
+                },
+            );
         } catch (err) {
             showDialog('alert', `${err}`);
         }

@@ -188,38 +188,6 @@ fn load_notification_class<'a>(
 }
 
 #[cfg(target_os = "android")]
-fn save_to_downloads_inner(
-    env: &mut jni::JNIEnv,
-    activity: &jni::objects::JObject,
-    filename: &str,
-    content: &str,
-) -> Result<SaveDataResult, String> {
-    use jni::objects::JValue;
-    let jfilename = env
-        .new_string(filename)
-        .map_err(|e| format!("new_string(filename): {}", e))?;
-    let jcontent = env
-        .new_string(content)
-        .map_err(|e| format!("new_string(content): {}", e))?;
-    let writer_class = load_writer_class(env, activity)?;
-    let result = env
-        .call_static_method(
-            writer_class,
-            "saveToDownloads",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Lcom/smirnovayama/hrttracker/DownloadWriter$SaveResult;",
-            &[
-                JValue::Object(activity),
-                JValue::Object(&jfilename),
-                JValue::Object(&jcontent),
-            ],
-        )
-        .map_err(|e| format!("call_static_method: {}", e))?
-        .l()
-        .map_err(|e| format!("call_static_method.l(): {}", e))?;
-    extract_save_result(env, &result)
-}
-
-#[cfg(target_os = "android")]
 fn save_to_downloads_with_subdir_inner(
     env: &mut jni::JNIEnv,
     activity: &jni::objects::JObject,
@@ -311,7 +279,7 @@ fn append_log(level: String, msg: String) {
 
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
-fn export_logs_to_download(_app: tauri::AppHandle) -> Result<String, String> {
+fn export_logs_to_download(_app: tauri::AppHandle) -> Result<SaveDataResult, String> {
     let entries = LOG_STATE.snapshot();
     if entries.is_empty() {
         return Err("No logs captured. Enable debug mode and reproduce the issue first.".to_string());
@@ -328,8 +296,13 @@ fn export_logs_to_download(_app: tauri::AppHandle) -> Result<String, String> {
     let filename = format!("hrt-tracker-logs-{}.txt", ts);
     #[cfg(target_os = "android")]
     {
+        // Kotlin's DownloadWriter.saveToDownloads decodes base64 on its side
+        // so binary payloads (PNG/JPEG) survive the JNI String hop. We have
+        // plain text here, so encode before crossing the boundary.
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
         return with_android_env(|env, activity| {
-            save_to_downloads_inner(env, activity, &filename, &text)
+            save_to_downloads_with_subdir_inner(env, activity, "HRT Tracker", &filename, &b64)
         });
     }
     #[cfg(not(target_os = "android"))]
