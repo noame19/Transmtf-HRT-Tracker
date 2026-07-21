@@ -933,6 +933,10 @@ export const TRANSLATIONS_BASE = {
         "settings.basic.allergies": "禁忌 / 药物过敏",
         "settings.basic.hrt_start": "HRT 开始日期",
         "settings.basic.empty": "未设置",
+        "settings.basic.error.birth_future": "出生年月不能晚于今天",
+        "settings.basic.error.hrt_future": "HRT 开始日期不能晚于今天",
+        "settings.basic.error.hrt_before_birth": "HRT 开始日期不能早于出生日期",
+        "settings.basic.error.hrt_after_med": "HRT 开始日期不能晚于用药日期",
     },
 
     en: {
@@ -1867,6 +1871,10 @@ export const TRANSLATIONS_BASE = {
         "settings.basic.allergies": "Contraindications / drug allergies",
         "settings.basic.hrt_start": "HRT start date",
         "settings.basic.empty": "Not set",
+        "settings.basic.error.birth_future": "Birth year/month can't be later than today",
+        "settings.basic.error.hrt_future": "HRT start date can't be later than today",
+        "settings.basic.error.hrt_before_birth": "HRT start date can't be earlier than birth",
+        "settings.basic.error.hrt_after_med": "HRT start date can't be later than your last dose",
     },
 };
 
@@ -2393,6 +2401,10 @@ export const TRANSLATIONS = {
         "settings.basic.allergies": "禁忌 / 藥物過敏",
         "settings.basic.hrt_start": "HRT 開始日期",
         "settings.basic.empty": "未設定",
+        "settings.basic.error.birth_future": "出生年月不能晚於今天",
+        "settings.basic.error.hrt_future": "HRT 開始日期不能晚於今天",
+        "settings.basic.error.hrt_before_birth": "HRT 開始日期不能早於出生日期",
+        "settings.basic.error.hrt_after_med": "HRT 開始日期不能晚於用藥日期",
     },
 
     en: {
@@ -2901,5 +2913,9 @@ export const TRANSLATIONS = {
         "settings.basic.allergies": "禁忌・薬物アレルギー",
         "settings.basic.hrt_start": "HRT 開始日",
         "settings.basic.empty": "未設定",
+        "settings.basic.error.birth_future": "生年月は今日より後にできません",
+        "settings.basic.error.hrt_future": "HRT 開始日は今日より後にできません",
+        "settings.basic.error.hrt_before_birth": "HRT 開始日は生年月より前にはできません",
+        "settings.basic.error.hrt_after_med": "HRT 開始日は服薬日より後にはできません",
     },
 } as const;

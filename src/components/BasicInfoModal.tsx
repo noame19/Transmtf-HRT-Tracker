@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
+import { useDialog } from '../contexts/DialogContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { DoseEvent } from '../../types';
 import { isPatchRemove } from '../utils/patch';
@@ -63,6 +64,14 @@ interface BasicInfoModalProps {
     initial: BasicInfo;
     onClose: () => void;
     onSave: (next: BasicInfo) => void;
+    /** 用户从未填过 HRT 开始日期时的缺省值(YYYY-MM-DD)。
+     *  当 initial.hrtStart 为 null 且 defaultHrtStart 不为 null 时,
+     *  弹窗的 HRT 字段会预填这个值,用户可以直接确认或改写。
+     *  Save 时才写回 localStorage,所以"用户清空"或"保持默认"都会被尊重。 */
+    defaultHrtStart?: string | null;
+    /** 保存校验需要「最新用药日期」做参照,所以调用方必须传。
+     *  设计为必传,避免校验漏跑;SettingsPage 已从 useAppData 拿 events。 */
+    events: DoseEvent[];
 }
 
 /** 当前月的 YYYY-MM, 给 <input type="month"> 的 max 属性用。 */
@@ -97,16 +106,79 @@ export function earliestEventHrtDate(events: DoseEvent[]): string | null {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-interface BasicInfoModalProps {
-    isOpen: boolean;
-    initial: BasicInfo;
-    onClose: () => void;
-    onSave: (next: BasicInfo) => void;
-    /** 用户从未填过 HRT 开始日期时的缺省值(YYYY-MM-DD)。
-     *  当 initial.hrtStart 为 null 且 defaultHrtStart 不为 null 时,
-     *  弹窗的 HRT 字段会预填这个值,用户可以直接确认或改写。
-     *  Save 时才写回 localStorage,所以"用户清空"或"保持默认"都会被尊重。 */
-    defaultHrtStart?: string | null;
+/** 最新一次真实用药日期(YYYY-MM-DD 字符串)。与 earliestEventHrtDate 对称,
+ *  仅用于 BasicInfoModal 保存校验:「HRT 开始日期不能晚于用药日期」里的
+ *  「用药日期」取最新一次——如果你今天已经用了药,就不可能是「HRT 才开始」
+ *  的那天。最早一次用药的对比没意义(用户可能补录旧记录)。 */
+export function latestEventHrtDate(events: DoseEvent[]): string | null {
+    const adminEvents = events.filter((e) => !isPatchRemove(e));
+    if (adminEvents.length === 0) return null;
+    const latestMs = adminEvents.reduce(
+        (max, e) => Math.max(max, e.timeH * 3600000),
+        -Infinity,
+    );
+    if (!Number.isFinite(latestMs)) return null;
+    const d = new Date(latestMs);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** BasicInfoModal 保存校验结果。每条错误带 i18n key + 英文 fallback,
+ *  调用方拿到后用 `t(key, fallback)` 翻译。导出独立函数方便单元测试。 */
+export interface BasicInfoValidationError {
+    i18nKey: string;
+    fallback: string;
+}
+
+/** 基础信息保存校验。返回错误数组(可能为空)。
+ *
+ *  校验规则(每个都不应违反自然事实):
+ *  - 出生年月 ≤ 今天
+ *  - HRT 开始日期 ≤ 今天
+ *  - HRT 开始日期 ≥ 出生年月(补 -01 当月开始)
+ *  - HRT 开始日期 ≤ 最新用药日期(用户决定;若最新用药早于 HRT 启动,逻辑不通)
+ *
+ *  身高 50-250 由 `<input min/max>` 在 UI 层兜底,不在这里重复校验
+ *  (用户已确认沿用现有范围,JS 层只补"日期逻辑不一致"这种 cross-field 校验)。 */
+export function validateBasicInfo(
+    draft: BasicInfo,
+    events: DoseEvent[],
+    today: { month: string; day: string },
+): BasicInfoValidationError[] {
+    const errors: BasicInfoValidationError[] = [];
+
+    // 出生年月 ≤ 今天(YYYY-MM 字符串可直接字典序比较,zero-padded 等长)
+    if (draft.birth && draft.birth > today.month) {
+        errors.push({
+            i18nKey: 'settings.basic.error.birth_future',
+            fallback: '出生年月不能晚于今天',
+        });
+    }
+
+    // HRT 开始日期:三条 cross-field 校验,任意一条违例即阻断保存
+    if (draft.hrtStart) {
+        if (draft.hrtStart > today.day) {
+            errors.push({
+                i18nKey: 'settings.basic.error.hrt_future',
+                fallback: 'HRT 开始日期不能晚于今天',
+            });
+        }
+        if (draft.birth && draft.hrtStart < draft.birth + '-01') {
+            errors.push({
+                i18nKey: 'settings.basic.error.hrt_before_birth',
+                fallback: 'HRT 开始日期不能早于出生日期',
+            });
+        }
+        const latestMed = latestEventHrtDate(events);
+        if (latestMed && draft.hrtStart > latestMed) {
+            errors.push({
+                i18nKey: 'settings.basic.error.hrt_after_med',
+                fallback: 'HRT 开始日期不能晚于用药日期',
+            });
+        }
+    }
+
+    return errors;
 }
 
 const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
@@ -115,8 +187,10 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
     onClose,
     onSave,
     defaultHrtStart,
+    events,
 }) => {
     const { t } = useTranslation();
+    const { showDialog } = useDialog();
     // 打开时,把"用户从未填过 HRT 开始日期"的情况用最早用药日期预填。
     // 这里只是草稿状态,只有用户点 Save 才会写回 localStorage——
     // 取消 = 丢弃默认值,清空 = 写 null,保留 = 写默认值。三种都尊重用户。
@@ -143,7 +217,20 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
     // 出生年下限 1900-01
     const minMonth = '1900-01';
 
-    const handleSave = () => {
+    const handleSave = async () => {
+        // JS 层做 cross-field 校验:出生年月、HRT 开始日期不能晚于今天,
+        // 且 HRT 开始日期不能早于出生、不能晚于最新用药。
+        // <input min/max> 的 HTML hint 用户可以绕过,所以这里再兜一道。
+        const errors = validateBasicInfo(draft, events, { month: thisMonth, day: thisDay });
+        if (errors.length > 0) {
+            // 跟 PlanEditModal.validatePlan 同样的弹窗风格:把全部错误一次列清。
+            // 多条错误用换行分隔,避免单行堆太长被截断看不清。
+            await showDialog(
+                'alert',
+                errors.map((e) => t(e.i18nKey, e.fallback)).join('\n'),
+            );
+            return;
+        }
         onSave(draft);
         onClose();
     };

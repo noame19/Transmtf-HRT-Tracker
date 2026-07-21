@@ -1189,6 +1189,9 @@ const SettingsPage: React.FC = () => {
                 // 改写或清空都尊重用户操作。仅在 hrtStart 为 null 时生效,
                 // 已填过值的人不会再被预填覆盖。
                 defaultHrtStart={basicInfo.hrtStart ?? earliestEventHrtDate(events)}
+                // 校验需要「最新用药日期」做「HRT ≤ 最新用药」参照,
+                // 直接传 events 让 BasicInfoModal 自己算。
+                events={events}
                 onClose={() => setIsBasicInfoOpen(false)}
                 onSave={(next) => {
                     setBasicInfo(next);
