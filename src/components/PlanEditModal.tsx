@@ -659,7 +659,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="plan-modal-title"
-                className="relative rounded-3xl w-full max-w-lg md:max-w-2xl h-[90vh] md:max-h-[85vh] flex flex-col overflow-hidden modal-spring-glass glass-modal"
+                className="relative rounded-3xl w-full max-w-lg md:max-w-2xl max-h-[90vh] md:max-h-[85vh] flex flex-col overflow-clip modal-spring-glass glass-modal"
             >
                 {/* Header */}
                 <div className="p-6 md:p-8 border-b flex justify-between items-center shrink-0"
