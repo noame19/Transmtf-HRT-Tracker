@@ -44,7 +44,7 @@ import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import CustomGelManager from '../components/CustomGelManager';
 import ImportModal from '../components/ImportModal';
-import BasicInfoModal, { loadBasicInfo, saveBasicInfo, type BasicInfo } from '../components/BasicInfoModal';
+import BasicInfoModal, { loadBasicInfo, saveBasicInfo, earliestEventHrtDate, type BasicInfo } from '../components/BasicInfoModal';
 import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
@@ -1184,10 +1184,20 @@ const SettingsPage: React.FC = () => {
             <BasicInfoModal
                 isOpen={isBasicInfoOpen}
                 initial={basicInfo}
+                // 第一次打开时,如果用户没填过 HRT 开始日期,弹窗的
+                // 日期输入框预填「最早用药日期」作为推荐值;确认即保存,
+                // 改写或清空都尊重用户操作。仅在 hrtStart 为 null 时生效,
+                // 已填过值的人不会再被预填覆盖。
+                defaultHrtStart={basicInfo.hrtStart ?? earliestEventHrtDate(events)}
                 onClose={() => setIsBasicInfoOpen(false)}
                 onSave={(next) => {
                     setBasicInfo(next);
                     saveBasicInfo(next);
+                    // 让 Overview 的 MedicationHeatmap 在不重挂载的情况下
+                    // 立刻拿到新的 HRT 开始日期并刷新「开始HRT」KPI。
+                    window.dispatchEvent(new CustomEvent('hrt-local-data-updated', {
+                        detail: { key: 'hrt-basic-info' },
+                    }));
                 }}
             />
 

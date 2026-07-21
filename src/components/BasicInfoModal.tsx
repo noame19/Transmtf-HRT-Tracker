@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import type { DoseEvent } from '../../types';
+import { isPatchRemove } from '../utils/patch';
 
 /**
  * 健康/身份相关的可选基本信息。
@@ -75,14 +77,62 @@ function currentDay(): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const BasicInfoModal: React.FC<BasicInfoModalProps> = ({ isOpen, initial, onClose, onSave }) => {
+/** 从用药记录里挑出最早的真实用药日期(YYYY-MM-DD 字符串)。
+ *  - 跳过 patch remove 事件,apply↔remove 配对算 1 次
+ *  - 没有事件时返回 null
+ *
+ *  BasicInfoModal 用它做"用户从没填过 HRT 开始日期"时的缺省值预填
+ *  (用户在弹窗里看到的最早用药日期,确认或改写都行)。导出给 SettingsPage
+ *  调用方避免重复实现。 */
+export function earliestEventHrtDate(events: DoseEvent[]): string | null {
+    const adminEvents = events.filter((e) => !isPatchRemove(e));
+    if (adminEvents.length === 0) return null;
+    const earliestMs = adminEvents.reduce(
+        (min, e) => Math.min(min, e.timeH * 3600000),
+        Infinity,
+    );
+    if (!Number.isFinite(earliestMs)) return null;
+    const d = new Date(earliestMs);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+interface BasicInfoModalProps {
+    isOpen: boolean;
+    initial: BasicInfo;
+    onClose: () => void;
+    onSave: (next: BasicInfo) => void;
+    /** 用户从未填过 HRT 开始日期时的缺省值(YYYY-MM-DD)。
+     *  当 initial.hrtStart 为 null 且 defaultHrtStart 不为 null 时,
+     *  弹窗的 HRT 字段会预填这个值,用户可以直接确认或改写。
+     *  Save 时才写回 localStorage,所以"用户清空"或"保持默认"都会被尊重。 */
+    defaultHrtStart?: string | null;
+}
+
+const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
+    isOpen,
+    initial,
+    onClose,
+    onSave,
+    defaultHrtStart,
+}) => {
     const { t } = useTranslation();
-    const [draft, setDraft] = useState<BasicInfo>(initial);
+    // 打开时,把"用户从未填过 HRT 开始日期"的情况用最早用药日期预填。
+    // 这里只是草稿状态,只有用户点 Save 才会写回 localStorage——
+    // 取消 = 丢弃默认值,清空 = 写 null,保留 = 写默认值。三种都尊重用户。
+    const initialDraft = React.useMemo<BasicInfo>(
+        () => ({
+            ...initial,
+            hrtStart: initial.hrtStart ?? defaultHrtStart ?? null,
+        }),
+        [initial, defaultHrtStart],
+    );
+    const [draft, setDraft] = useState<BasicInfo>(initialDraft);
 
     // 打开时重新载入,防止打开时外部更新了 localStorage 但 draft 还是旧的
     useEffect(() => {
-        if (isOpen) setDraft(initial);
-    }, [isOpen, initial]);
+        if (isOpen) setDraft(initialDraft);
+    }, [isOpen, initialDraft]);
 
     const dialogRef = useFocusTrap(isOpen, onClose);
 

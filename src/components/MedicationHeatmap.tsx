@@ -8,6 +8,7 @@ import { isPatchRemove } from '../utils/patch';
 import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
 import { isE2Family } from '../../logic';
 import type { PostponeLogEntry, DueLogEntry } from '../contexts/AppDataContext';
+import { loadBasicInfo } from './BasicInfoModal';
 import {
     buildHeatmapRange,
     HEATMAP_COLOR_BY_CATEGORY,
@@ -211,6 +212,26 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
         : ZOOM_LEVELS[zoomLevel].cellSize;
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
+    // ── Basic info: HRT start date ─────────────────────────────────────
+    // 首次渲染时从 localStorage 读取,后续监听 SettingsPage 在保存基础信息
+    // 时派发的 `hrt-local-data-updated` 事件 (key='hrt-basic-info') 同步
+    // 刷新。否则底部 tab 切来切去,Overview 不会重新挂载,KPI 会停在旧值。
+    const [basicInfoHrtStart, setBasicInfoHrtStart] = useState<string | null>(
+        () => loadBasicInfo().hrtStart,
+    );
+    useEffect(() => {
+        const onLocalDataUpdated = (e: Event) => {
+            const detail = (e as CustomEvent<{ key?: string }>).detail;
+            if (detail?.key === 'hrt-basic-info') {
+                setBasicInfoHrtStart(loadBasicInfo().hrtStart);
+            }
+        };
+        window.addEventListener('hrt-local-data-updated', onLocalDataUpdated as EventListener);
+        return () => {
+            window.removeEventListener('hrt-local-data-updated', onLocalDataUpdated as EventListener);
+        };
+    }, []);
+
     // Render ALL weeks from the data range (not just the last N weeks) so the
     // user can drag back to view history that's older than the 2M / 3M / 6M
     // zoom labels. Cropping to a slice here would make the older history
@@ -292,8 +313,8 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 
     // ── KPI stats (right side card stack) ─────────────────────────────────
     const stats = useMemo(
-        () => computeStats(events, todayRef, plans, postponeLog, dueLog),
-        [events, todayRef, plans, postponeLog, dueLog]
+        () => computeStats(events, todayRef, plans, postponeLog, dueLog, basicInfoHrtStart),
+        [events, todayRef, plans, postponeLog, dueLog, basicInfoHrtStart]
     );
 
     // ── Tooltip state ─────────────────────────────────────────────────────
@@ -773,17 +794,48 @@ function computeStats(
     plans?: Plan[],
     postponeLog?: PostponeLogEntry[],
     dueLog?: DueLogEntry[],
+    basicInfoHrtStart?: string | null,
 ): KpiStats {
     // Filter out patch remove events so apply↔remove pairs count as 1 dose.
     const adminEvents = events.filter((e) => !isPatchRemove(e));
 
-    // KPI #1: starting HRT — earliest admin event → today, in days.
+    // KPI #1: starting HRT — start date = MIN(BasicInfo.hrtStart, earliest
+    // admin event). 场景:用户晚于真实 HRT 启动日才下载 app 开始记录,
+    // 仅用最早事件会低估 HRT 时长;BasicInfo 里有用户声明的"真实开始日"
+    // 时,以更早的那个为准。如果 BasicInfo 填得比记录还晚(填错或记录早于
+    // HRT 启动),退回最早记录作为保守下界。
     let hrtStartLabel = '';
-    if (adminEvents.length > 0) {
-        const earliestMs = adminEvents.reduce((min, e) => Math.min(min, e.timeH * 3600000), Infinity);
-        const earliest = new Date(earliestMs);
-        const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-        const days = Math.max(0, Math.round((todayMid.getTime() - earliest.getTime()) / 86400000));
+    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+
+    // Parse BasicInfo.hrtStart (YYYY-MM-DD) → local-midnight ms.
+    // loadBasicInfo 已 regex 校验 /^\d{4}-\d{2}-\d{2}$/,但此处再守一道
+    // 以防 localStorage 被手工篡改。
+    let basicInfoStartMs: number | null = null;
+    if (basicInfoHrtStart && /^\d{4}-\d{2}-\d{2}$/.test(basicInfoHrtStart)) {
+        const [y, m, d] = basicInfoHrtStart.split('-').map(Number);
+        if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+            basicInfoStartMs = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
+        }
+    }
+
+    // 最早真实用药事件 → ms(或 null)。
+    const earliestEventMs = adminEvents.length > 0
+        ? adminEvents.reduce((min, e) => Math.min(min, e.timeH * 3600000), Infinity)
+        : null;
+
+    // 取两个有效源中更早的那个。两个都为 null 时 KPI 保持空串
+    // (与"无任何记录时显示空"行为一致)。
+    let startMs: number | null = null;
+    if (basicInfoStartMs !== null && earliestEventMs !== null) {
+        startMs = Math.min(basicInfoStartMs, earliestEventMs);
+    } else if (basicInfoStartMs !== null) {
+        startMs = basicInfoStartMs;
+    } else if (earliestEventMs !== null) {
+        startMs = earliestEventMs;
+    }
+
+    if (startMs !== null) {
+        const days = Math.max(0, Math.round((todayMid.getTime() - startMs) / 86400000));
         hrtStartLabel = formatHrtStart(days);
     }
 

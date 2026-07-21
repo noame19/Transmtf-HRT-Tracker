@@ -7,7 +7,7 @@ export default defineConfig({
     test: {
         environment: 'node',
         include: ['**/*.test.ts', '**/*.test.tsx'],
-        exclude: ['node_modules/**', 'src-tauri/**', 'dist/**'],
+        exclude: ['node_modules/**', 'src-tauri/**', 'dist/**', '.worktrees/**'],
         // Tests that need browser globals (window, localStorage) run under
         // happy-dom; everything else stays in node for speed.
         environmentMatchGlobs: [
