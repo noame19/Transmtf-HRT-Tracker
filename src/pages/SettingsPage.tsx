@@ -195,10 +195,38 @@ const SettingsPage: React.FC = () => {
     }, [refreshBatteryOptStatus]);
 
     /**
+     * Re-check battery-optimization status whenever the WebView regains
+     * focus. This is the critical fallback for the "user changed the
+     * toggle in the system settings and came back to the app" path —
+     * the post-jump setTimeout() only covers an immediate back-press;
+     * if the user lingers in system settings, switches apps, or even
+     * kills+relaunches, this listener will still fire on the next
+     * visible transition and update the Power icon colour.
+     *
+     * We skip the refresh while a jump is in flight (batteryOptBusy)
+     * to avoid clobbering the busy state with stale data.
+     */
+    useEffect(() => {
+        if (typeof document === 'undefined') return;
+        const onVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (batteryOptBusy) return;
+            refreshBatteryOptStatus();
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [refreshBatteryOptStatus, batteryOptBusy]);
+
+    /**
      * Open the system battery-optimization settings page, then refresh
      * the toggle when the page regains focus. Some OEM ROMs (MIUI/EMUI)
      * use a separate "auto-start" page that we ALSO open as a follow-up,
-     * because doze alone isn't enough on those skins.
+     * because doze alone isn't enough on those skins. Note: the
+     * `visibilitychange` listener above is the durable fallback for
+     * users who don't return to the app immediately — this setTimeout
+     * only covers the "instant back-press" path.
      */
     const openBatteryOptSettings = async () => {
         if (!isTauri) return;
