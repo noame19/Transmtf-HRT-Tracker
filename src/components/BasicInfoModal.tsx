@@ -151,7 +151,7 @@ export function validateBasicInfo(
     if (draft.birth && draft.birth > today.month) {
         errors.push({
             i18nKey: 'settings.basic.error.birth_future',
-            fallback: '出生年月不能晚于今天',
+            fallback: '出生年月 晚于 今天',
         });
     }
 
@@ -160,20 +160,20 @@ export function validateBasicInfo(
         if (draft.hrtStart > today.day) {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_future',
-                fallback: 'HRT 开始日期不能晚于今天',
+                fallback: 'HRT 开始日期 晚于 今天',
             });
         }
         if (draft.birth && draft.hrtStart < draft.birth + '-01') {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_before_birth',
-                fallback: 'HRT 开始日期不能早于出生日期',
+                fallback: 'HRT 开始日期 早于 出生年月',
             });
         }
         const latestMed = latestEventHrtDate(events);
         if (latestMed && draft.hrtStart > latestMed) {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_after_med',
-                fallback: 'HRT 开始日期不能晚于用药日期',
+                fallback: '现在的 HRT 开始日期 晚于 最新的用药记录日期',
             });
         }
     }
