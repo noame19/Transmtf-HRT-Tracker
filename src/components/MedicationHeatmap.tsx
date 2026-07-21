@@ -607,7 +607,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 // 只有底色变浅)。Today 仍然走紫色短路,Past 走历史色块分支,这两个常量
 // 仅出现在 cellBackground 的 plan-fire 分支里——专属于「未来」语义。
 const PLAN_FIRE_ESTRADIOL    = 'rgba(245, 164, 255, 0.5)';
-const PLAN_FIRE_ANTIANDROGEN = 'rgba(149, 208, 246, 0.5)';
+const PLAN_FIRE_ANTIANDROGEN = 'rgba(97, 220, 255, 0.5)';
 
 /** Resolve the on-screen colour for a single plan-fire category. Today (and
  *  anything past / not-a-plan-fire-day) should fall through to the historical
