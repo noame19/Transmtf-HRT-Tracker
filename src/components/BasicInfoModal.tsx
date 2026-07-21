@@ -124,11 +124,14 @@ export function latestEventHrtDate(events: DoseEvent[]): string | null {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** BasicInfoModal 保存校验结果。每条错误带 i18n key + 英文 fallback,
- *  调用方拿到后用 `t(key, fallback)` 翻译。导出独立函数方便单元测试。 */
+/** BasicInfoModal 保存校验结果。每条错误带 i18n key + 英文 fallback + 占位符参数。
+ *  调用方拿到后用 `t(key, fallback)` 翻译,然后 .replaceAll('{k}', v) 把具体数值
+ *  填进文案（例如把 `{hrtStart}` 换成 `'2026-08-15'`），让用户看到「xx 晚于 xx」
+ *  的精确值。导出独立函数方便单元测试。 */
 export interface BasicInfoValidationError {
     i18nKey: string;
     fallback: string;
+    params?: Record<string, string>;
 }
 
 /** 基础信息保存校验。返回错误数组(可能为空)。
@@ -152,7 +155,8 @@ export function validateBasicInfo(
     if (draft.birth && draft.birth > today.month) {
         errors.push({
             i18nKey: 'settings.basic.error.birth_future',
-            fallback: '出生年月 晚于 今天',
+            fallback: '出生年月 {birth} 晚于 今天 {today}',
+            params: { birth: draft.birth, today: today.day },
         });
     }
 
@@ -161,20 +165,23 @@ export function validateBasicInfo(
         if (draft.hrtStart > today.day) {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_future',
-                fallback: 'HRT 开始日期 晚于 今天',
+                fallback: 'HRT 开始日期 {hrtStart} 晚于 今天 {today}',
+                params: { hrtStart: draft.hrtStart, today: today.day },
             });
         }
         if (draft.birth && draft.hrtStart < draft.birth + '-01') {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_before_birth',
-                fallback: 'HRT 开始日期 早于 出生年月',
+                fallback: 'HRT 开始日期 {hrtStart} 早于 出生年月 {birth}',
+                params: { hrtStart: draft.hrtStart, birth: draft.birth },
             });
         }
         const latestMed = latestEventHrtDate(events);
         if (latestMed && draft.hrtStart > latestMed) {
             errors.push({
                 i18nKey: 'settings.basic.error.hrt_after_med',
-                fallback: '现在的 HRT 开始日期 晚于 最新的用药记录日期',
+                fallback: '现在的 HRT 开始日期 {hrtStart} 晚于 最新的用药记录日期 {latestMed}',
+                params: { hrtStart: draft.hrtStart, latestMed },
             });
         }
     }
@@ -229,11 +236,22 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
         // <input min/max> 的 HTML hint 用户可以绕过,所以这里再兜一道。
         const errors = validateBasicInfo(draft, events, { month: thisMonth, day: thisDay });
         if (errors.length > 0) {
-            // 跟 PlanEditModal.validatePlan 同样的弹窗风格:把全部错误一次列清。
-            // 多条错误用换行分隔,避免单行堆太长被截断看不清。
+            // 弹窗渲染:1/2/3/4 编号 + 具体数值,让用户一眼看到是哪两个量冲突。
+            // params 占位符 ({hrtStart} / {birth} / {today} / {latestMed}) 替换成实际值。
+            // 标题用独立 i18n 键「基础信息有误」,与 PlanEditModal.validatePlan 同款风格。
+            const detailLines = errors.map((e, idx) => {
+                const text = t(e.i18nKey, e.fallback);
+                const replaced = e.params
+                    ? Object.entries(e.params).reduce(
+                        (acc, [k, v]) => acc.replaceAll(`{${k}}`, v),
+                        text,
+                    )
+                    : text;
+                return `${idx + 1}. ${replaced}`;
+            });
             await showDialog(
                 'alert',
-                errors.map((e) => t(e.i18nKey, e.fallback)).join('\n'),
+                `${t('settings.basic.error_title', '基础信息有误，请逐条核对后重试')}\n\n${detailLines.join('\n')}`,
             );
             return;
         }
