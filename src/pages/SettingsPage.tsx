@@ -42,6 +42,7 @@ import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import CustomGelManager from '../components/CustomGelManager';
 import ImportModal from '../components/ImportModal';
+import BasicInfoModal, { loadBasicInfo, saveBasicInfo, type BasicInfo } from '../components/BasicInfoModal';
 import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
@@ -70,6 +71,23 @@ const readExtraSyncFields = () => {
         darkMode: darkRaw === '1' || darkRaw === 'true',
     };
 };
+
+/**
+ * 用一行短文描述用户已填写的基础信息,作为设置页列表的副标题。
+ * 全部为空时返回空串,让调用方兜底显示 "未设置"。
+ *
+ * 顺序固定:治疗路线 · 出生年月 · 身高 · HRT 开始。
+ * 「禁忌/过敏」是自由文本,可能很长,这里不放进副标题(避免溢出
+ * 截断后看不清主信息),但 modal 内仍可编辑。
+ */
+function basicInfoSummary(info: BasicInfo, t: (key: string) => string): string {
+    const parts: string[] = [];
+    if (info.route) parts.push(t(`settings.basic.route.${info.route === 'MtF' ? 'MtF' : 'NB'}`));
+    if (info.birth) parts.push(info.birth);
+    if (info.heightCm != null) parts.push(`${info.heightCm} cm`);
+    if (info.hrtStart) parts.push(`${t('settings.basic.hrt_start')}: ${info.hrtStart}`);
+    return parts.join(' · ');
+}
 
 const SettingsPage: React.FC = () => {
     const [debugMode, setDebugMode] = useState<boolean>(
@@ -300,6 +318,8 @@ const SettingsPage: React.FC = () => {
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
     const [isModelInfoOpen, setIsModelInfoOpen] = useState(false);
     const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+    const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(false);
+    const [basicInfo, setBasicInfo] = useState<BasicInfo>(() => loadBasicInfo());
     const [pendingImportText, setPendingImportText] = useState<string | null>(null);
 
     const languageOptions = useMemo(() => ([
@@ -697,6 +717,34 @@ const SettingsPage: React.FC = () => {
                         {t('nav.settings') || 'Settings'}
                     </h1>
                 </div>
+
+                {/* Basic Info Section — treatment route / birth / height / allergies / HRT start.
+                 *  Click the row to open the BasicInfoModal form. The description under the title
+                 *  shows a short summary of currently stored values, or "未设置" if empty, so users
+                 *  can tell at a glance whether they've already filled this in. */}
+                <section className="space-y-2">
+                    <h2 className={sectionTitleClass} style={{ color: 'var(--text-tertiary)' }}>
+                        {t('settings.group.basic') || '基础信息'}
+                    </h2>
+                    <div className="overflow-hidden rounded-2xl glass-card">
+                        <button
+                            onClick={() => setIsBasicInfoOpen(true)}
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-soft-rose)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <User className="text-pink-500 shrink-0" size={20} />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">{t('settings.basic.title')}</p>
+                                <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
+                                    {basicInfoSummary(basicInfo, t) || (t('settings.basic.empty') || '未设置')}
+                                </p>
+                            </div>
+                            <ChevronRight size={18} style={{ color: 'var(--text-tertiary)' }} className="shrink-0" />
+                        </button>
+                    </div>
+                </section>
 
                 {/* Appearance Section */}
                 <section className="space-y-2">
@@ -1098,6 +1146,16 @@ const SettingsPage: React.FC = () => {
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
                 onImportJson={importEventsFromJson}
+            />
+
+            <BasicInfoModal
+                isOpen={isBasicInfoOpen}
+                initial={basicInfo}
+                onClose={() => setIsBasicInfoOpen(false)}
+                onSave={(next) => {
+                    setBasicInfo(next);
+                    saveBasicInfo(next);
+                }}
             />
 
             <PasswordInputModal

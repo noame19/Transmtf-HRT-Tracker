@@ -921,6 +921,18 @@ export const TRANSLATIONS_BASE = {
         "heatmap.weekday_fri": "五",
         "heatmap.weekday_sat": "六",
         "heatmap.weekday_sun": "日",
+
+        "settings.group.basic": "基础信息",
+        "settings.basic.title": "基础信息",
+        "settings.basic.desc": "治疗路线、出生年月、身高、禁忌 / 药物过敏、HRT 开始时间。仅本机保存，不上传。",
+        "settings.basic.route": "治疗路线",
+        "settings.basic.route.MtF": "MtF（男跨女）",
+        "settings.basic.route.NB": "Non-binary（非二元）",
+        "settings.basic.birth": "出生年月",
+        "settings.basic.height": "身高（cm）",
+        "settings.basic.allergies": "禁忌 / 药物过敏",
+        "settings.basic.hrt_start": "HRT 开始年月",
+        "settings.basic.empty": "未设置",
     },
 
     en: {
@@ -1843,6 +1855,18 @@ export const TRANSLATIONS_BASE = {
         "heatmap.weekday_fri": "Fri",
         "heatmap.weekday_sat": "Sat",
         "heatmap.weekday_sun": "Sun",
+
+        "settings.group.basic": "Basic Info",
+        "settings.basic.title": "Basic Info",
+        "settings.basic.desc": "Treatment route, birth year/month, height, contraindications / drug allergies, HRT start date. Stored locally only, never uploaded.",
+        "settings.basic.route": "Treatment route",
+        "settings.basic.route.MtF": "MtF (Male to Female)",
+        "settings.basic.route.NB": "Non-binary",
+        "settings.basic.birth": "Birth year/month",
+        "settings.basic.height": "Height (cm)",
+        "settings.basic.allergies": "Contraindications / drug allergies",
+        "settings.basic.hrt_start": "HRT start year/month",
+        "settings.basic.empty": "Not set",
     },
 };
 
@@ -2357,6 +2381,18 @@ export const TRANSLATIONS = {
         "overview.due.this_weekday": "本{day}",
         "overview.due.next_weekday": "下{day}",
         "reminder.confirm.aria_pending_suffix": "，再點一次確認",
+
+        "settings.group.basic": "基本資料",
+        "settings.basic.title": "基本資料",
+        "settings.basic.desc": "治療路線、出生年月、身高、禁忌 / 藥物過敏、HRT 開始時間。僅本機保存，不上傳。",
+        "settings.basic.route": "治療路線",
+        "settings.basic.route.MtF": "MtF（男跨女）",
+        "settings.basic.route.NB": "Non-binary（非二元）",
+        "settings.basic.birth": "出生年月",
+        "settings.basic.height": "身高（cm）",
+        "settings.basic.allergies": "禁忌 / 藥物過敏",
+        "settings.basic.hrt_start": "HRT 開始年月",
+        "settings.basic.empty": "未設定",
     },
 
     en: {
@@ -2853,5 +2889,17 @@ export const TRANSLATIONS = {
         "error.invalidDate": "無効な日付。",
         "error.patch_remove_before_apply": "除去時刻は貼付時刻より後にしてください。",
         "reminder.confirm.aria_pending_suffix": "、もう一度タップで確認",
+
+        "settings.group.basic": "基本情報",
+        "settings.basic.title": "基本情報",
+        "settings.basic.desc": "治療経路、生年月日、身長、禁忌・薬物アレルギー、HRT 開始時期。端末内のみ保存、アップロードしません。",
+        "settings.basic.route": "治療経路",
+        "settings.basic.route.MtF": "MtF（男性→女性）",
+        "settings.basic.route.NB": "ノンバイナリー",
+        "settings.basic.birth": "生年月",
+        "settings.basic.height": "身長（cm）",
+        "settings.basic.allergies": "禁忌・薬物アレルギー",
+        "settings.basic.hrt_start": "HRT 開始年月",
+        "settings.basic.empty": "未設定",
     },
 } as const;
