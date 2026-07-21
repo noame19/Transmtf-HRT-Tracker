@@ -135,6 +135,18 @@ fn load_opener_class<'a>(
     load_class_by_name(env, activity, "com/smirnovayama/hrttracker/FileOpener")
 }
 
+/// Convenience: `load_class_by_name` wrapped for DownloadManager (the
+/// list/read/delete counterpart to DownloadWriter). Injected alongside
+/// the writer so the auto-backup restore + 6-month-cleanup flows can
+/// walk the Downloads tree from Rust.
+#[cfg(target_os = "android")]
+fn load_download_manager_class<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    activity: &jni::objects::JObject,
+) -> Result<jni::objects::JClass<'a>, String> {
+    load_class_by_name(env, activity, "com/smirnovayama/hrttracker/DownloadManager")
+}
+
 /// Pull the three String fields off a Kotlin `DownloadWriter.SaveResult` and
 /// re-package as a serde-serialisable Rust struct. The Kotlin data class is
 /// generated as `DownloadWriter$SaveResult` in JVM type terms, with `getUri`,
@@ -397,6 +409,231 @@ fn open_with_system(
     {
         Err("open_with_system only available on Android".to_string())
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DownloadManager plumbing (Android file ops on the Downloads folder)
+//
+// Three commands back the auto-backup feature: listing what backup files
+// already exist under a sub-directory (drives the "restore from backup"
+// dropdown + the 6-month cleanup sweep), reading a specific backup so the
+// JS side can pipe it into the existing import flow, and deleting a backup
+// file the JS side has decided is stale. Kotlin lives in DownloadManager.kt;
+// the JNI class + method names below MUST stay in lock-step with the
+// `@JvmStatic` declarations there. The web (non-Android) builds return an
+// empty list / error string so the JS side can degrade gracefully instead
+// of exploding when `__TAURI_INTERNALS__` is undefined.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize, Clone)]
+struct DownloadFileInfo {
+    /// Bare filename without subdir prefix — what `save_data_to_download`
+    /// would have produced. JS uses this as both the dropdown label and
+    /// the dedup key when re-reading / deleting.
+    filename: String,
+    /// MediaStore content:// URI on API 29+, `file://...` on legacy.
+    /// Surfaced so a follow-up `read_download_file` can be a direct
+    /// round-trip without re-listing; JS currently re-passes `filename`
+    /// and lets Kotlin re-resolve, but keeping the field in the struct
+    /// future-proofs against a performance-driven switch.
+    uri: String,
+    /// File size in bytes. `0` if the underlying provider doesn't surface it
+    /// (legacy `listFiles` does; some MediaStore rows may not). Used by JS
+    /// to short-circuit "definitely empty" candidates.
+    size_bytes: i64,
+    /// Last-modified timestamp in milliseconds since epoch. Aligns with
+    /// `Date.now()` on the JS side so the 180-day cutoff is a straight
+    /// numeric compare without a parse step.
+    modified_at_ms: i64,
+}
+
+#[derive(serde::Serialize)]
+struct DownloadFileContent {
+    /// Base64 of the raw file bytes (same encoding `save_data_to_download`
+    /// accepts on the way in, so the round-trip is lossless). `atob()` on
+    /// the JS side turns this back into the exact JSON string the writer
+    /// stored — JS can then pipe it straight into `processImportedData`.
+    content_b64: String,
+}
+
+/// Walk the public Downloads tree and return every file under
+/// `{subdir}/`. On non-Android builds this returns an empty vec (not an
+/// error) — the JS side uses the empty result to hide the restore
+/// dropdown on web instead of throwing a user-facing "Android only" toast.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn list_download_files(_app: tauri::AppHandle, subdir: String) -> Result<Vec<DownloadFileInfo>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let jsubdir = env
+                .new_string(&subdir)
+                .map_err(|e| format!("new_string(subdir): {}", e))?;
+            let cls = load_download_manager_class(env, activity)?;
+            // Returns DownloadManager$FileInfo[] — a Java array of data
+            // class instances, each carrying (filename, uri, sizeBytes,
+            // modifiedAtMs). We unmarshal one row at a time.
+            let array = env
+                .call_static_method(
+                    cls,
+                    "listFiles",
+                    "(Landroid/content/Context;Ljava/lang/String;)[Lcom/smirnovayama/hrttracker/DownloadManager$FileInfo;",
+                    &[JValue::Object(activity), JValue::Object(&jsubdir)],
+                )
+                .map_err(|e| format!("call_static_method(listFiles): {}", e))?
+                .l()
+                .map_err(|e| format!("listFiles.l: {}", e))?;
+            let array_ref = jni::objects::JObjectArray::from(array);
+            let len = env
+                .get_array_length(&array_ref)
+                .map_err(|e| format!("get_array_length: {}", e))?;
+            let mut out: Vec<DownloadFileInfo> = Vec::with_capacity(len as usize);
+            for i in 0..len {
+                let row = env
+                    .get_object_array_element(&array_ref, i)
+                    .map_err(|e| format!("get_object_array_element({}): {}", i, e))?;
+                let row_obj = jni::objects::JObject::from(row);
+                let filename = read_jstring_field(env, &row_obj, "filename")?;
+                let uri = read_jstring_field(env, &row_obj, "uri")?;
+                let size_bytes = env
+                    .get_field(&row_obj, "sizeBytes", "J")
+                    .map_err(|e| format!("get_field(sizeBytes): {}", e))?
+                    .j()
+                    .map_err(|e| format!("sizeBytes.j: {}", e))?;
+                let modified_at_ms = env
+                    .get_field(&row_obj, "modifiedAtMs", "J")
+                    .map_err(|e| format!("get_field(modifiedAtMs): {}", e))?
+                    .j()
+                    .map_err(|e| format!("modifiedAtMs.j: {}", e))?;
+                out.push(DownloadFileInfo {
+                    filename,
+                    uri,
+                    size_bytes,
+                    modified_at_ms,
+                });
+            }
+            Ok(out)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = subdir;
+        Ok(Vec::new())
+    }
+}
+
+/// Read the bytes of a specific file under `{subdir}/`. Returned as
+/// base64 so the JNI String hop stays binary-safe (same encoding
+/// `save_data_to_download` accepts on write — JS atob → JSON.parse is
+/// the round-trip path). On non-Android this returns an error so a
+/// misguided web call can't silently treat an empty string as success.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn read_download_file(
+    _app: tauri::AppHandle,
+    subdir: String,
+    filename: String,
+) -> Result<DownloadFileContent, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let jsubdir = env
+                .new_string(&subdir)
+                .map_err(|e| format!("new_string(subdir): {}", e))?;
+            let jfilename = env
+                .new_string(&filename)
+                .map_err(|e| format!("new_string(filename): {}", e))?;
+            let cls = load_download_manager_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "readFile",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Lcom/smirnovayama/hrttracker/DownloadManager$FileContent;",
+                    &[JValue::Object(activity), JValue::Object(&jsubdir), JValue::Object(&jfilename)],
+                )
+                .map_err(|e| format!("call_static_method(readFile): {}", e))?
+                .l()
+                .map_err(|e| format!("readFile.l: {}", e))?;
+            let result_obj = jni::objects::JObject::from(result);
+            let content_b64 = read_jstring_field(env, &result_obj, "contentB64")?;
+            Ok(DownloadFileContent { content_b64 })
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (subdir, filename);
+        Err("read_download_file only available on Android".to_string())
+    }
+}
+
+/// Delete a file under `{subdir}/`. Returns `true` if a row was
+/// actually removed, `false` if the file was already gone (the latter
+/// is treated as success by the JS cleanup loop so a previous partial
+/// run doesn't re-trigger).
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn delete_download_file(
+    _app: tauri::AppHandle,
+    subdir: String,
+    filename: String,
+) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let jsubdir = env
+                .new_string(&subdir)
+                .map_err(|e| format!("new_string(subdir): {}", e))?;
+            let jfilename = env
+                .new_string(&filename)
+                .map_err(|e| format!("new_string(filename): {}", e))?;
+            let cls = load_download_manager_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "deleteFile",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
+                    &[JValue::Object(activity), JValue::Object(&jsubdir), JValue::Object(&jfilename)],
+                )
+                .map_err(|e| format!("call_static_method(deleteFile): {}", e))?
+                .z()
+                .map_err(|e| format!("deleteFile.z: {}", e))?;
+            Ok(result)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (subdir, filename);
+        Err("delete_download_file only available on Android".to_string())
+    }
+}
+
+/// Pull a `String` field off a Kotlin data class via the auto-generated
+/// `getXxx()` accessor. Kotlin compiles `val filename: String` into a
+/// `private final String filename` field + a `public String getFilename()`
+/// method; we hit the FIELD directly (descriptor `Ljava/lang/String;`)
+/// instead of the getter so we don't depend on whether the property was
+/// declared `val` (getter) or `var` (getter+setter).
+#[cfg(target_os = "android")]
+fn read_jstring_field(
+    env: &mut jni::JNIEnv,
+    obj: &jni::objects::JObject,
+    field_name: &str,
+) -> Result<String, String> {
+    let raw = env
+        .get_field(obj, field_name, "Ljava/lang/String;")
+        .map_err(|e| format!("get_field({}): {}", field_name, e))?
+        .l()
+        .map_err(|e| format!("{}.l: {}", field_name, e))?;
+    if raw.is_null() {
+        return Ok(String::new());
+    }
+    let jstr = env
+        .get_string((&raw).into())
+        .map_err(|e| format!("get_string({}): {}", field_name, e))?;
+    Ok(jstr.into())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -737,6 +974,9 @@ pub fn run() {
             save_data_to_download,
             open_with_system,
             clipboard_write_text,
+            list_download_files,
+            read_download_file,
+            delete_download_file,
             ensure_notification_channel,
             request_notification_permission,
             is_battery_optimization_ignored,

@@ -83,8 +83,12 @@ jobs:
           KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
           mkdir -p "$KOTLIN_DIR"
           cp src-tauri/scripts/DownloadWriter.kt "$KOTLIN_DIR/"
-          echo "--- DownloadWriter.kt injected ---"
-          ls -la "$KOTLIN_DIR/DownloadWriter.kt"
+          # DownloadManager.kt backs list/read/delete for the auto-backup
+          # restore dropdown + 6-month cleanup. Keep it next to the writer
+          # so the Kotlin package matches what Rust looks up via JNI.
+          cp src-tauri/scripts/DownloadManager.kt "$KOTLIN_DIR/"
+          echo "--- DownloadWriter.kt + DownloadManager.kt injected ---"
+          ls -la "$KOTLIN_DIR/"
 
       - name: Patch AndroidManifest.xml with WRITE_EXTERNAL_STORAGE (maxSdkVersion=28)
         run: |

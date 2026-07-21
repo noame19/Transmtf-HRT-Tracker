@@ -85,8 +85,12 @@ jobs:
           KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
           mkdir -p "$KOTLIN_DIR"
           cp src-tauri/scripts/DownloadWriter.kt "$KOTLIN_DIR/"
-          echo "--- DownloadWriter.kt injected ---"
-          ls -la "$KOTLIN_DIR/DownloadWriter.kt"
+          # DownloadManager.kt backs list/read/delete — the auto-backup
+          # restore dropdown + 6-month cleanup sweep. Lives next to the
+          # writer so the Kotlin package matches what Rust looks up via JNI.
+          cp src-tauri/scripts/DownloadManager.kt "$KOTLIN_DIR/"
+          echo "--- DownloadWriter.kt + DownloadManager.kt injected ---"
+          ls -la "$KOTLIN_DIR/"
 
       - name: Inject notification Kotlin sources into generated Android project
         run: |
@@ -365,6 +369,14 @@ jobs:
           # present in dex but every method was gone.
           -keep class com.smirnovayama.hrttracker.DownloadWriter { *; }
           -keep class com.smirnovayama.hrttracker.DownloadWriter$* { *; }
+
+          # Same rationale for DownloadManager — list/read/delete of files
+          # in the public Downloads folder, used by the auto-backup
+          # restore dropdown and the 6-month cleanup sweep. The Rust
+          # invoke_handler pulls it in by class name + method signature,
+          # so R8 must keep every @JvmStatic method intact.
+          -keep class com.smirnovayama.hrttracker.DownloadManager { *; }
+          -keep class com.smirnovayama.hrttracker.DownloadManager$* { *; }
 
           # Same rationale for the notification bridge. AlarmManager fires
           # the receivers via Intent action lookups, so the class + method
