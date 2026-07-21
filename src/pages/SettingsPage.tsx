@@ -37,9 +37,15 @@ import {
 
 import { decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
-import { writeCustomGelProducts } from '../utils/doseForm';
+import { writeCustomGelProducts, readDoseTemplates, readDoseByDrug, readLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
 import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
+import {
+    BACKUP_SUBDIR,
+    BACKUP_RETENTION_MS,
+    formatBackupTimestamp,
+    parseBackupTimestamp,
+} from '../utils/backup';
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import CustomGelManager from '../components/CustomGelManager';
@@ -347,6 +353,10 @@ const SettingsPage: React.FC = () => {
                 dueLog: newDueLog,
                 prefs: newPrefs,
                 calibration: newCalibration,
+                basicInfo: newBasicInfo,
+                doseTemplates: newDoseTemplates,
+                doseByDrug: newDoseByDrug,
+                doseLastDrug: newDoseLastDrug,
                 migratedCount,
             } = parsedImport;
 
@@ -417,6 +427,28 @@ const SettingsPage: React.FC = () => {
                 if (newPrefs.darkMode !== undefined) setIsDark(newPrefs.darkMode);
             }
 
+            // v4 sections ────────────────────────────────────────────────
+            // 基础信息：写 localStorage 同步持久化，并更新 React state 让
+            // BasicInfoModal 立刻看到新值（不依赖下次 mount）。
+            if (newBasicInfo !== null) {
+                saveBasicInfo(newBasicInfo);
+                setBasicInfo(newBasicInfo);
+                window.dispatchEvent(new CustomEvent('hrt-local-data-updated', {
+                    detail: { key: 'hrt-basic-info' },
+                }));
+            }
+            // 用药录入模板 / 表单记忆 / 上次选用：直接写 localStorage 即可，
+            // DoseFormModal 是受控组件，会在下次打开时通过 useState initializer 重新读。
+            if (newDoseTemplates !== null) {
+                localStorage.setItem('hrt-dose-templates', JSON.stringify(newDoseTemplates));
+            }
+            if (newDoseByDrug !== null) {
+                localStorage.setItem('hrt-dose-by-drug', JSON.stringify(newDoseByDrug));
+            }
+            if (newDoseLastDrug !== null) {
+                localStorage.setItem('hrt-dose-last-drug', JSON.stringify(newDoseLastDrug));
+            }
+
             const lastModified = new Date().toISOString();
             localStorage.setItem('hrt-last-modified', lastModified);
             localStorage.setItem('hrt-last-data-updated', lastModified);
@@ -469,6 +501,10 @@ const SettingsPage: React.FC = () => {
             if (confirmation !== 'confirm') {
                 return false;
             }
+
+            // 自动备份当前状态：用户已经确认要覆盖，万一选错文件/后悔，
+            // 至少能从一个可识别的恢复点回滚。
+            await silentBackup('import');
 
             if (
                 isRecord(parsed) &&
@@ -527,8 +563,8 @@ const SettingsPage: React.FC = () => {
     const buildExportPayload = (): string => {
         const exportData = {
             meta: {
-                version: 3,
-                schema: 'hrt-tracker-v3',
+                version: 4,
+                schema: 'hrt-tracker-v4',
                 exportedAt: new Date().toISOString(),
             },
             // —— v2-compatible top-level keys ——
@@ -554,8 +590,137 @@ const SettingsPage: React.FC = () => {
                 postponeLog,
                 dueLog,
             },
+            // —— v4 sections ——
+            // 基础信息（性别认同 / 出生 / 身高 / 过敏史 / HRT 开始日期）
+            basicInfo: loadBasicInfo(),
+            // 用户在 DoseFormModal 里手动另存的"快速录入"模板
+            doseTemplates: readDoseTemplates(),
+            // 每个 (给药方式, 药物) 组合的表单预填记忆
+            doseByDrug: readDoseByDrug(),
+            // 上次选用的 (route, ester) — 一条最小记录
+            doseLastDrug: readLastDrug(),
         };
         return JSON.stringify(exportData, null, 2);
+    };
+
+    /**
+     * Sweep auto-backups under the HRT Tracker subdir whose parsed
+     * timestamp is older than the retention window (180d). Files that
+     * don't match the auto-backup convention are left alone — manual
+     * exports owned by the user must never be auto-pruned.
+     *
+     * Best-effort: failures (list not supported on this build, file gone
+     * between list and delete, IO errors) are swallowed silently. The
+     * sweep is a hygiene measure, not a correctness requirement — a
+     * failed cleanup never blocks the backup that follows.
+     *
+     * On non-Tauri builds (web) this is a no-op — we have no way to
+     * list the user's Downloads folder from a browser sandbox.
+     */
+    const cleanupOldBackups = async (): Promise<void> => {
+        if (!isTauri) return;
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke !== 'function') return;
+        let files: Array<{ filename: string; modifiedAtMs: number }>;
+        try {
+            files = await invoke<Array<{ filename: string; modifiedAtMs: number }>>(
+                'list_download_files',
+                { subdir: BACKUP_SUBDIR },
+            );
+        } catch (err) {
+            console.warn('[auto-backup] list_download_files failed; skipping cleanup', err);
+            return;
+        }
+        const cutoff = Date.now() - BACKUP_RETENTION_MS;
+        const stale = files.filter((f) => {
+            // Prefer the in-filename timestamp (survives copy / folder move)
+            // over the filesystem mtime — if a file was somehow copied with
+            // a fresh mtime but an old embedded timestamp, the filename is
+            // the source of truth.
+            const stamp = parseBackupTimestamp(f.filename);
+            const ts = stamp ? stamp.getTime() : f.modified_at_ms;
+            return ts < cutoff;
+        });
+        for (const f of stale) {
+            try {
+                await invoke('delete_download_file', {
+                    subdir: BACKUP_SUBDIR,
+                    filename: f.filename,
+                });
+            } catch (err) {
+                console.warn(`[auto-backup] delete ${f.filename} failed`, err);
+            }
+        }
+    };
+
+    /**
+     * Silent pre-flight backup — capture the current local state to the
+     * HRT Tracker subdir RIGHT BEFORE a destructive operation (import or
+     * clear). Runs without any UI prompt:
+     *
+     *   1. Sweep auto-backups older than 180d (cleanupOldBackups).
+     *   2. Build the same export payload as the manual "导出" button.
+     *   3. Write it as `hrt-backup-pre-{reason}-{ISO local time}.json`.
+     *
+     * Filename includes the ISO local timestamp so the cleanup sweep can
+     * later decide staleness without consulting filesystem metadata, and
+     * so the restore-from-backup dropdown can sort by recency.
+     *
+     * Both platforms:
+     *   - Web: Blob + `<a download>` (browser-managed Downloads folder)
+     *   - Android: Tauri `save_data_to_download` (MediaStore-backed
+     *     Downloads/HRT Tracker/)
+     *
+     * Failures are swallowed so a backup hiccup never blocks the user's
+     * actual destructive intent (they already confirmed). Empty payloads
+     * are skipped — saving a `[]` snapshot wastes IO and pollutes the
+     * restore list with no-data entries.
+     */
+    const silentBackup = async (reason: 'import' | 'clear'): Promise<void> => {
+        if (events.length === 0 && labResults.length === 0 && gelProducts.length === 0) {
+            return;
+        }
+        // Cleanup runs first so the listing operation we do next sees a
+        // smaller set; failures here don't block the backup.
+        await cleanupOldBackups();
+
+        const payload = buildExportPayload();
+        const filename = `hrt-backup-pre-${reason}-${formatBackupTimestamp()}.json`;
+
+        // Web: silently trigger a browser download (same shape as
+        // downloadFile's web fallback, minus the success toast).
+        if (!isTauri) {
+            try {
+                const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (err) {
+                console.warn('[auto-backup] web save failed', err);
+            }
+            return;
+        }
+
+        // Android: route through the existing Tauri writer so the file
+        // lands in the same Downloads/HRT Tracker/ tree the manual
+        // export uses.
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke !== 'function') return;
+        try {
+            const b64 = btoa(unescape(encodeURIComponent(payload)));
+            await invoke('save_data_to_download', {
+                subdir: BACKUP_SUBDIR,
+                filename,
+                contentB64: b64,
+            });
+        } catch (err) {
+            console.warn('[auto-backup] tauri save failed', err);
+        }
     };
 
     const handleQuickExport = () => {
@@ -674,27 +839,34 @@ const SettingsPage: React.FC = () => {
         );
     };
 
-    const handleClearAllEvents = () => {
+    const handleClearAllEvents = async () => {
         if (!events.length) return;
 
-        showDialog('confirm', t('drawer.clear_confirm'), () => {
-            setEvents([]);
-            localStorage.setItem('hrt-events', JSON.stringify([]));
-            const lastModified = new Date().toISOString();
-            localStorage.setItem('hrt-last-modified', lastModified);
-            localStorage.setItem('hrt-last-data-updated', lastModified);
-            const langValue = localStorage.getItem('hrt-lang') || lang;
-            const dataHash = computeDataHash({
-                events: [],
-                weight: DEFAULT_WEIGHT_KG,
-                labResults,
-                lang: langValue,
-                gelProducts,
-                ...readExtraSyncFields(),
-            });
-            localStorage.setItem('hrt-data-hash', dataHash);
-            window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-events', lastModified } }));
+        // 用 Promise 版 showDialog 取代回调版：silentBackup 是 async，
+        // 必须在确认弹窗关掉、等备份写入磁盘之后再清空 events，避免
+        // 「events 已经在内存里清空、但备份文件还没落盘」的窗口。
+        const confirmation = await showDialog('confirm', t('drawer.clear_confirm'));
+        if (confirmation !== 'confirm') return;
+
+        // 自动备份当前状态：清空是不可逆操作，先快照一份。
+        await silentBackup('clear');
+
+        setEvents([]);
+        localStorage.setItem('hrt-events', JSON.stringify([]));
+        const lastModified = new Date().toISOString();
+        localStorage.setItem('hrt-last-modified', lastModified);
+        localStorage.setItem('hrt-last-data-updated', lastModified);
+        const langValue = localStorage.getItem('hrt-lang') || lang;
+        const dataHash = computeDataHash({
+            events: [],
+            weight: DEFAULT_WEIGHT_KG,
+            labResults,
+            lang: langValue,
+            gelProducts,
+            ...readExtraSyncFields(),
         });
+        localStorage.setItem('hrt-data-hash', dataHash);
+        window.dispatchEvent(new CustomEvent('hrt-local-data-updated', { detail: { key: 'hrt-events', lastModified } }));
     };
 
     const sectionTitleClass = "px-1 text-xs font-bold uppercase tracking-wider";
@@ -1179,6 +1351,7 @@ const SettingsPage: React.FC = () => {
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
                 onImportJson={importEventsFromJson}
+                isTauri={isTauri}
             />
 
             <BasicInfoModal
