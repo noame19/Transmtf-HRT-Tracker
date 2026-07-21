@@ -19,7 +19,7 @@ export interface BasicInfo {
     heightCm: number | null;
     /** 自由文本, 多行 */
     allergies: string;
-    /** YYYY-MM, 例如 '2024-03' */
+    /** YYYY-MM-DD, 例如 '2024-03-15' */
     hrtStart: string | null;
 }
 
@@ -45,7 +45,7 @@ export function loadBasicInfo(): BasicInfo {
             birth: typeof obj.birth === 'string' && /^\d{4}-\d{2}$/.test(obj.birth) ? obj.birth : null,
             heightCm: typeof obj.heightCm === 'number' && obj.heightCm >= 50 && obj.heightCm <= 250 ? obj.heightCm : null,
             allergies: typeof obj.allergies === 'string' ? obj.allergies : '',
-            hrtStart: typeof obj.hrtStart === 'string' && /^\d{4}-\d{2}$/.test(obj.hrtStart) ? obj.hrtStart : null,
+            hrtStart: typeof obj.hrtStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(obj.hrtStart) ? obj.hrtStart : null,
         };
     } catch {
         return { ...EMPTY_BASIC_INFO };
@@ -69,6 +69,12 @@ function currentYearMonth(): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** 今天的 YYYY-MM-DD, 给 <input type="date"> 的 max 属性用。 */
+function currentDay(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const BasicInfoModal: React.FC<BasicInfoModalProps> = ({ isOpen, initial, onClose, onSave }) => {
     const { t } = useTranslation();
     const [draft, setDraft] = useState<BasicInfo>(initial);
@@ -83,6 +89,7 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({ isOpen, initial, onClos
     if (!isOpen) return null;
 
     const thisMonth = currentYearMonth();
+    const thisDay = currentDay();
     // 出生年下限 1900-01
     const minMonth = '1900-01';
 
@@ -186,6 +193,22 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({ isOpen, initial, onClos
                             />
                         </div>
 
+                        {/* HRT 开始日期:完整年月日,精度比「出生年月」更细 */}
+                        <div>
+                            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
+                                {t('settings.basic.hrt_start')}
+                            </label>
+                            <input
+                                type="date"
+                                min="1900-01-01"
+                                max={thisDay}
+                                value={draft.hrtStart ?? ''}
+                                onChange={(e) => setDraft({ ...draft, hrtStart: e.target.value || null })}
+                                className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-pink-300 text-sm"
+                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                            />
+                        </div>
+
                         {/* 禁忌/药物过敏:多行文本 */}
                         <div>
                             <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
@@ -196,22 +219,6 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({ isOpen, initial, onClos
                                 maxLength={500}
                                 value={draft.allergies}
                                 onChange={(e) => setDraft({ ...draft, allergies: e.target.value })}
-                                className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-pink-300 text-sm"
-                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
-                            />
-                        </div>
-
-                        {/* HRT 开始年月 */}
-                        <div>
-                            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
-                                {t('settings.basic.hrt_start')}
-                            </label>
-                            <input
-                                type="month"
-                                min={minMonth}
-                                max={thisMonth}
-                                value={draft.hrtStart ?? ''}
-                                onChange={(e) => setDraft({ ...draft, hrtStart: e.target.value || null })}
                                 className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-pink-300 text-sm"
                                 style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
                             />

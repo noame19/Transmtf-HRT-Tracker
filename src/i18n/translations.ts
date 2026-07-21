@@ -931,7 +931,7 @@ export const TRANSLATIONS_BASE = {
         "settings.basic.birth": "出生年月",
         "settings.basic.height": "身高（cm）",
         "settings.basic.allergies": "禁忌 / 药物过敏",
-        "settings.basic.hrt_start": "HRT 开始年月",
+        "settings.basic.hrt_start": "HRT 开始日期",
         "settings.basic.empty": "未设置",
     },
 
@@ -1865,7 +1865,7 @@ export const TRANSLATIONS_BASE = {
         "settings.basic.birth": "Birth year/month",
         "settings.basic.height": "Height (cm)",
         "settings.basic.allergies": "Contraindications / drug allergies",
-        "settings.basic.hrt_start": "HRT start year/month",
+        "settings.basic.hrt_start": "HRT start date",
         "settings.basic.empty": "Not set",
     },
 };
@@ -2391,7 +2391,7 @@ export const TRANSLATIONS = {
         "settings.basic.birth": "出生年月",
         "settings.basic.height": "身高（cm）",
         "settings.basic.allergies": "禁忌 / 藥物過敏",
-        "settings.basic.hrt_start": "HRT 開始年月",
+        "settings.basic.hrt_start": "HRT 開始日期",
         "settings.basic.empty": "未設定",
     },
 
@@ -2899,7 +2899,7 @@ export const TRANSLATIONS = {
         "settings.basic.birth": "生年月",
         "settings.basic.height": "身長（cm）",
         "settings.basic.allergies": "禁忌・薬物アレルギー",
-        "settings.basic.hrt_start": "HRT 開始年月",
+        "settings.basic.hrt_start": "HRT 開始日",
         "settings.basic.empty": "未設定",
     },
 } as const;

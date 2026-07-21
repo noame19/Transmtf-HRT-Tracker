@@ -73,21 +73,10 @@ const readExtraSyncFields = () => {
 };
 
 /**
- * 用一行短文描述用户已填写的基础信息,作为设置页列表的副标题。
- * 全部为空时返回空串,让调用方兜底显示 "未设置"。
- *
- * 顺序固定:治疗路线 · 出生年月 · 身高 · HRT 开始。
- * 「禁忌/过敏」是自由文本,可能很长,这里不放进副标题(避免溢出
- * 截断后看不清主信息),但 modal 内仍可编辑。
+ * 基础信息设置项 — 点击后弹出 BasicInfoModal 编辑表单。
+ * 列表副标题用静态描述(`settings.basic.desc`),与其它设置项风格一致,
+ * 不在列表行直接暴露具体填写值(避免过敏文本溢出截断 / 隐私意外泄露)。
  */
-function basicInfoSummary(info: BasicInfo, t: (key: string) => string): string {
-    const parts: string[] = [];
-    if (info.route) parts.push(t(`settings.basic.route.${info.route === 'MtF' ? 'MtF' : 'NB'}`));
-    if (info.birth) parts.push(info.birth);
-    if (info.heightCm != null) parts.push(`${info.heightCm} cm`);
-    if (info.hrtStart) parts.push(`${t('settings.basic.hrt_start')}: ${info.hrtStart}`);
-    return parts.join(' · ');
-}
 
 const SettingsPage: React.FC = () => {
     const [debugMode, setDebugMode] = useState<boolean>(
@@ -737,9 +726,6 @@ const SettingsPage: React.FC = () => {
                             <User className="text-pink-500 shrink-0" size={20} />
                             <div className="min-w-0 flex-1">
                                 <p className="text-sm font-bold">{t('settings.basic.title')}</p>
-                                <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>
-                                    {basicInfoSummary(basicInfo, t) || (t('settings.basic.empty') || '未设置')}
-                                </p>
                             </div>
                             <ChevronRight size={18} style={{ color: 'var(--text-tertiary)' }} className="shrink-0" />
                         </button>
