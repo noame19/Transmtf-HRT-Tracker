@@ -23,7 +23,7 @@ const E2_CONC_COLOR = '#F1405D';   // E2 浓度主文字(标签/副标题/数值
 const E2_CONC_SOFT  = '#FF7C80';   // E2 浓度弱化(单位 + 卡片渐变底)
 const AA_CONC_COLOR = '#00B0F0';   // 抗雄浓度(全部文字 + 渐变底)
 // 右栏 用药时间/下次计划（两卡统一）：
-const PLAN_MAIN = '#8A61E6';       // 计划主文字(下次计划/药名/大号时间/相对日)
+const PLAN_MAIN = '#9E75FA';       // 计划主文字(下次计划/药名/大号时间/相对日)
 const PLAN_SOFT = '#9999FF';       // 上次用药行 + 顶部分隔线
 const PLAN_BADGE = '#02CB90';      // 途径徽章(绿)
 const PLAN_HOLD_GRAY = '#868686';  // 含服时长(灰)
