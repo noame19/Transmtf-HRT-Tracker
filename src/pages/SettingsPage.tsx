@@ -6,6 +6,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppData } from '../contexts/AppDataContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { THEME_PRESETS, type ThemeColorId } from '../contexts/ThemeContext';
 import { API_ORIGIN } from '../api/config';
 import {
     Languages,
@@ -26,6 +27,7 @@ import {
     FileDown,
     User,
     ChevronRight,
+    ChevronDown,
     Send,
     Bell,
     BellOff,
@@ -308,6 +310,7 @@ const SettingsPage: React.FC = () => {
     const [isModelInfoOpen, setIsModelInfoOpen] = useState(false);
     const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
     const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(false);
+    const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [basicInfo, setBasicInfo] = useState<BasicInfo>(() => loadBasicInfo());
     const [pendingImportText, setPendingImportText] = useState<string | null>(null);
 
@@ -738,16 +741,60 @@ const SettingsPage: React.FC = () => {
                         {t('settings.group.appearance') || 'Appearance'}
                     </h2>
                     <div className="rounded-2xl glass-card p-5 space-y-5">
-                        {/* Theme Color */}
+                        {/* Theme Color — 折叠卡。折叠时右侧显示当前主题色块 + 名称;
+                 *  点击整行展开内联颜色选择器。展开后箭头旋转 90°。
+                 *  切换主题色不改变展开状态,符合用户预期。
+                 *
+                 *  这里用 div + role="button" 而不是 <button>,因为展开状态下
+                 *  内嵌 ThemePicker 的色块按钮也是 <button>,而 <button>
+                 *  嵌套在 HTML 中无效,部分浏览器会自动修正 DOM 破坏事件处理。 */}
                         <div>
-                            <div className="flex items-start gap-3 mb-4">
-                                <Palette size={20} style={{ color: 'var(--accent-500)' }} />
-                                <div>
+                            <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setIsThemePickerOpen(v => !v)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setIsThemePickerOpen(v => !v);
+                                    }
+                                }}
+                                aria-expanded={isThemePickerOpen}
+                                aria-controls="theme-picker-panel"
+                                className="flex w-full items-center gap-3 text-left transition btn-press-glass"
+                            >
+                                <Palette size={20} style={{ color: 'var(--accent-500)' }} className="shrink-0" />
+                                <div className="min-w-0 flex-1">
                                     <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('settings.theme.title')}</p>
                                     <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('settings.theme.desc')}</p>
                                 </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span
+                                        className="w-5 h-5 rounded-full shadow-sm"
+                                        style={{
+                                            background: `linear-gradient(135deg, ${THEME_PRESETS[themeColor].colors[400]}, ${THEME_PRESETS[themeColor].colors[500]})`,
+                                        }}
+                                        aria-hidden="true"
+                                    />
+                                    <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                                        {THEME_PRESETS[themeColor].zh}
+                                    </span>
+                                    <ChevronDown
+                                        size={16}
+                                        style={{
+                                            color: 'var(--text-tertiary)',
+                                            transform: isThemePickerOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.2s ease',
+                                        }}
+                                        aria-hidden="true"
+                                    />
+                                </div>
                             </div>
-                            <ThemePicker />
+                            {isThemePickerOpen && (
+                                <div id="theme-picker-panel" className="mt-4 pl-8">
+                                    <ThemePicker />
+                                </div>
+                            )}
                         </div>
 
                         {/* Dark Mode */}
