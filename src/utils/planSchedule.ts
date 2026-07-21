@@ -343,41 +343,75 @@ function formatLocalDateTime(d: Date, _t: (k: string, fallback?: string) => stri
 
 export interface PlanValidationError {
     field: 'times' | 'interval' | 'weekdays' | 'startDate' | 'endDate' | 'dose' | 'leadMinutes';
+    /** 英文 fallback —— 用于翻译缺失时直接展示,也方便 vitest 断言。 */
     message: string;
+    /** i18n 翻译键（plan.error.*）。调用方用 `t(key, message)` 翻译。 */
+    messageKey: string;
+    /** 需要替换的占位符(形如 `{time}`)。调用方遍历 .replace。无占位符时可省略。 */
+    params?: Record<string, string>;
 }
 
 export function validatePlan(plan: Plan): PlanValidationError[] {
     const errors: PlanValidationError[] = [];
     if (!Number.isFinite(plan.doseMG) || plan.doseMG <= 0) {
-        errors.push({ field: 'dose', message: 'dose must be > 0' });
+        errors.push({
+            field: 'dose',
+            message: 'dose must be > 0',
+            messageKey: 'plan.error.dose_invalid',
+        });
     }
     // 提前提醒分钟数必须落在 [0, 30]：上限受「该用药了」弹窗 on_time 窗口 due-30min 约束，
     // 超过 30 分钟的提前通知会让用户进 app 时弹窗已经关了。
     if (!Number.isFinite(plan.leadMinutes) || plan.leadMinutes < 0 || plan.leadMinutes > 30) {
-        errors.push({ field: 'leadMinutes', message: 'leadMinutes must be in [0, 30]' });
+        errors.push({
+            field: 'leadMinutes',
+            message: 'leadMinutes must be in [0, 30]',
+            messageKey: 'plan.error.lead_invalid',
+        });
     }
     if (plan.schedule.times.length === 0) {
-        errors.push({ field: 'times', message: 'at least one time required' });
+        errors.push({
+            field: 'times',
+            message: 'at least one time required',
+            messageKey: 'plan.error.times_required',
+        });
     }
     for (const t of plan.schedule.times) {
         if (parseHHMM(t) === null) {
-            errors.push({ field: 'times', message: `invalid HH:MM "${t}"` });
+            errors.push({
+                field: 'times',
+                message: `invalid HH:MM "${t}"`,
+                messageKey: 'plan.error.invalid_time',
+                params: { time: t },
+            });
         }
     }
     switch (plan.schedule.kind) {
         case 'every_n_days':
             if (!Number.isFinite(plan.schedule.intervalDays) || plan.schedule.intervalDays < 1) {
-                errors.push({ field: 'interval', message: 'interval must be ≥ 1 day' });
+                errors.push({
+                    field: 'interval',
+                    message: 'interval must be ≥ 1 day',
+                    messageKey: 'plan.error.interval_invalid',
+                });
             }
             break;
         case 'weekly':
             if (!plan.schedule.weekdays || plan.schedule.weekdays.length === 0) {
-                errors.push({ field: 'weekdays', message: 'pick at least one weekday' });
+                errors.push({
+                    field: 'weekdays',
+                    message: 'pick at least one weekday',
+                    messageKey: 'plan.error.weekdays_required',
+                });
             }
             break;
     }
     if (plan.endDateH !== undefined && plan.endDateH <= plan.startDateH) {
-        errors.push({ field: 'endDate', message: 'endDate must be after startDate' });
+        errors.push({
+            field: 'endDate',
+            message: 'endDate must be after startDate',
+            messageKey: 'plan.error.end_after_start',
+        });
     }
     return errors;
 }

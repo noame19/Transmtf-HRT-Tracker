@@ -567,7 +567,20 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         // conflict for an obviously broken form.
         const errors = validatePlan(draft);
         if (errors.length > 0) {
-            await showDialog('alert', `${t('plan.error.invalid') || '计划有误'}：${errors.map((e) => e.message).join('；')}`);
+            // 走 i18n 翻译键（plan.error.*），缺失时回退到 validatePlan 的英文 message。
+            // 有 params 的错误（如 invalid_time）做占位符替换，跟现有 t(...).replace() 风格一致。
+            const detailLines = errors.map((e) => {
+                const text = t(e.messageKey, e.message);
+                if (!e.params) return text;
+                return Object.entries(e.params).reduce(
+                    (acc, [k, v]) => acc.replaceAll(`{${k}}`, v),
+                    text,
+                );
+            });
+            await showDialog(
+                'alert',
+                `${t('plan.error.invalid', '计划有误')}：\n${detailLines.join('\n')}`,
+            );
             return;
         }
 
