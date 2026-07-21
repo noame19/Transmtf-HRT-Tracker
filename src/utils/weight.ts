@@ -4,11 +4,13 @@ export const DEFAULT_WEIGHT_KG = 70;
 const LEGACY_WEIGHT_STORAGE_KEY = 'hrt-weight';
 
 /**
- * Internal: return the weight of the most recent event that carries a positive
- * numeric weightKG, or null when no such event exists. Tolerates null/non-object
+ * Return the weight of the most recent event that carries a positive numeric
+ * weightKG, or null when no such event exists. Tolerates null/non-object
  * entries that may sneak in through corrupted localStorage / cloud snapshots.
+ * Exported so callers (e.g. BasicInfoModal's read-only body-stats display) can
+ * distinguish "no measurement" from "fallback to default".
  */
-function findLatestPositiveWeight(events: DoseEvent[]): number | null {
+export function findLatestWeight(events: DoseEvent[]): number | null {
     if (!Array.isArray(events) || events.length === 0) return null;
     let latest: DoseEvent | null = null;
     for (const ev of events) {
@@ -26,7 +28,7 @@ function findLatestPositiveWeight(events: DoseEvent[]): number | null {
  * event has a positive numeric weight.
  */
 export function latestEventWeight(events: DoseEvent[]): number {
-    return findLatestPositiveWeight(events) ?? DEFAULT_WEIGHT_KG;
+    return findLatestWeight(events) ?? DEFAULT_WEIGHT_KG;
 }
 
 /**
@@ -37,7 +39,7 @@ export function latestEventWeight(events: DoseEvent[]): number {
  * default jump back to 70.
  */
 export function prefillWeightKG(events: DoseEvent[]): number {
-    const fromEvents = findLatestPositiveWeight(events);
+    const fromEvents = findLatestWeight(events);
     if (fromEvents !== null) return fromEvents;
     try {
         const raw = localStorage.getItem(LEGACY_WEIGHT_STORAGE_KEY);

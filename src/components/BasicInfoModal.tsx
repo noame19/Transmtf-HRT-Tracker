@@ -5,6 +5,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import type { DoseEvent } from '../../types';
 import { isPatchRemove } from '../utils/patch';
+import { findLatestWeight, findLatestHeight } from '../utils/weight';
 
 /**
  * 健康/身份相关的可选基本信息。
@@ -217,6 +218,11 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
     // 出生年下限 1900-01
     const minMonth = '1900-01';
 
+    // 只读显示身高/体重：取最新用药记录（timeH 最大，且 heightCm/weightKG > 0）。
+    // 无记录 / 无有效值 → null → UI 渲染为 "——"。
+    const displayHeightCm = findLatestHeight(events);
+    const displayWeightKg = findLatestWeight(events);
+
     const handleSave = async () => {
         // JS 层做 cross-field 校验:出生年月、HRT 开始日期不能晚于今天,
         // 且 HRT 开始日期不能早于出生、不能晚于最新用药。
@@ -303,31 +309,41 @@ const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
                             />
                         </div>
 
-                        {/* 身高 */}
+                        {/* 身高 / 体重 — 2026-07-21 起改为只读显示。
+                           数据取自最新用药记录（按 timeH 最大值，且 heightCm/weightKG > 0），
+                           没有则显示「——」。源头迁移到 DoseFormModal 后用户不再手填。
+                           BasicInfo.heightCm 字段保留在 type 上做向后兼容，但 UI 不再编辑。 */}
                         <div>
                             <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
-                                {t('settings.basic.height')}
+                                {t('settings.basic.body_stats')}
                             </label>
-                            <input
-                                type="number"
-                                inputMode="decimal"
-                                min={50}
-                                max={250}
-                                step="0.1"
-                                placeholder="—"
-                                value={draft.heightCm ?? ''}
-                                onChange={(e) => {
-                                    const raw = e.target.value;
-                                    if (raw === '') {
-                                        setDraft({ ...draft, heightCm: null });
-                                        return;
-                                    }
-                                    const n = Number(raw);
-                                    setDraft({ ...draft, heightCm: Number.isFinite(n) ? n : draft.heightCm });
-                                }}
-                                className="w-full px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-pink-300 text-sm"
-                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
-                            />
+                            <div className="grid grid-cols-2 gap-3">
+                                <div
+                                    className="rounded-xl px-4 py-3"
+                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)' }}
+                                >
+                                    <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                        {t('field.height')}
+                                    </div>
+                                    <div className="text-sm font-bold font-mono mt-1" style={{ color: 'var(--text-primary)' }}>
+                                        {displayHeightCm !== null ? `${displayHeightCm} cm` : '—'}
+                                    </div>
+                                </div>
+                                <div
+                                    className="rounded-xl px-4 py-3"
+                                    style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)' }}
+                                >
+                                    <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                        {t('field.weight')}
+                                    </div>
+                                    <div className="text-sm font-bold font-mono mt-1" style={{ color: 'var(--text-primary)' }}>
+                                        {displayWeightKg !== null ? `${displayWeightKg} kg` : '—'}
+                                    </div>
+                                </div>
+                            </div>
+                            <p className="text-[11px] mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                                {t('settings.basic.body_stats_hint')}
+                            </p>
                         </div>
 
                         {/* HRT 开始日期:完整年月日,精度比「出生年月」更细 */}
