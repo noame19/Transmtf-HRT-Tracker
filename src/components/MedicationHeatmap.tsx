@@ -602,8 +602,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
 //                                          cells, just with the two future
 //                                          colours above instead of the
 //                                          historical pink + purple
-const PLAN_FIRE_ESTRADIOL    = 'rgb(245, 164, 255)';
-const PLAN_FIRE_ANTIANDROGEN = 'rgb(149, 208, 246)';
+// Future-plan colours — 2026-07-21 起 alpha 改为 0.5,把「已记录的实色」
+// 和「未来将要发生的计划色」从视觉上拉开层次(格子里的数字保持纯白,
+// 只有底色变浅)。Today 仍然走紫色短路,Past 走历史色块分支,这两个常量
+// 仅出现在 cellBackground 的 plan-fire 分支里——专属于「未来」语义。
+const PLAN_FIRE_ESTRADIOL    = 'rgba(245, 164, 255, 0.5)';
+const PLAN_FIRE_ANTIANDROGEN = 'rgba(149, 208, 246, 0.5)';
 
 /** Resolve the on-screen colour for a single plan-fire category. Today (and
  *  anything past / not-a-plan-fire-day) should fall through to the historical
