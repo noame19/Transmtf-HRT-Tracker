@@ -8,6 +8,13 @@ interface DialogOptions {
   confirmText?: string;
   cancelText?: string;
   thirdOption?: string;
+  /**
+   * Optional React node to render instead of the plain `message` string.
+   * Used by call sites that want inline links / formatting (e.g. the export
+   * toast makes the saved path clickable). When both `message` and
+   * `messageNode` are provided, `messageNode` wins.
+   */
+  messageNode?: React.ReactNode;
 }
 
 interface DialogContextType {
@@ -102,7 +109,13 @@ export const DialogProvider = ({ children }: { children: React.ReactNode }) => {
               <h3 id="dialog-title" className="text-base font-bold mb-1.5" style={{ color: 'var(--text-primary)' }}>
                 {type === 'confirm' ? t('dialog.confirm_title') : t('dialog.alert_title')}
               </h3>
-              <p id="dialog-msg" className="mb-5 leading-relaxed text-sm" style={{ color: 'var(--text-secondary)' }}>{message}</p>
+              <div
+                id="dialog-msg"
+                className="mb-5 leading-relaxed text-sm"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {options.messageNode ?? message}
+              </div>
 
               {type === 'alert' && (
                 <button

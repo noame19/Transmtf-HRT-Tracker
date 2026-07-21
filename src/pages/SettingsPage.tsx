@@ -576,12 +576,45 @@ const SettingsPage: React.FC = () => {
             // text 走 base64 编码（btoa + unescape(encodeURIComponent) 是 UTF-8 → base64 的老 trick，
             // 跨 Android WebView 兼容性最好）
             const b64 = btoa(unescape(encodeURIComponent(data)));
-            const path = await invoke<string>('save_data_to_download', {
-                subdir: 'HRT Tracker',
-                filename,
-                contentB64: b64,
-            });
-            showDialog('alert', t('drawer.export_saved').replace('{path}', path) || `已保存到 ${path}`);
+            const result = await invoke<{ uri: string; displayPath: string; mime: string }>(
+                'save_data_to_download',
+                {
+                    subdir: 'HRT Tracker',
+                    filename,
+                    contentB64: b64,
+                },
+            );
+            // 弹窗提示：「已保存到 <可点击的路径>」—— 点击路径调用系统 Intent
+            // 让用户选 app 打开（系统文件管理器 / 微信传输助手 / WPS 等）。
+            // 仅 Android 端：Tauri 这条路径必返回结构体，web 走更早的 <a download> blob 分支。
+            showDialog(
+                'alert',
+                t('drawer.export_saved').replace('{path}', result.displayPath)
+                    || `已保存到 ${result.displayPath}`,
+                {
+                    messageNode: (
+                        <>
+                            {'已保存到 '}
+                            <a
+                                role="button"
+                                className="underline cursor-pointer break-all"
+                                style={{ color: 'var(--accent-primary, #ec4899)' }}
+                                onClick={() => {
+                                    if (!isTauri) return;
+                                    invoke('open_with_system', {
+                                        uri: result.uri,
+                                        mime: result.mime,
+                                    }).catch((e) => {
+                                        console.error('open_with_system failed', e);
+                                    });
+                                }}
+                            >
+                                {result.displayPath}
+                            </a>
+                        </>
+                    ),
+                },
+            );
         } catch (err: any) {
             console.error('Failed to save file:', err);
             // 透出真实错误（来自 Rust → JNI → Kotlin 链路），下次失败能直接定位根因

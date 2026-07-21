@@ -126,6 +126,58 @@ fn load_writer_class<'a>(
     load_class_by_name(env, activity, "com/smirnovayama/hrttracker/DownloadWriter")
 }
 
+/// Convenience: `load_class_by_name` wrapped for the FileOpener.
+#[cfg(target_os = "android")]
+fn load_opener_class<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    activity: &jni::objects::JObject,
+) -> Result<jni::objects::JClass<'a>, String> {
+    load_class_by_name(env, activity, "com/smirnovayama/hrttracker/FileOpener")
+}
+
+/// Pull the three String fields off a Kotlin `DownloadWriter.SaveResult` and
+/// re-package as a serde-serialisable Rust struct. The Kotlin data class is
+/// generated as `DownloadWriter$SaveResult` in JVM type terms, with `getUri`,
+/// `getDisplayPath`, `getMime` accessor methods.
+#[cfg(target_os = "android")]
+fn extract_save_result(
+    env: &mut jni::JNIEnv,
+    jobj: &jni::objects::JObject,
+) -> Result<SaveDataResult, String> {
+    let uri = env
+        .get_field(jobj, "uri", "Ljava/lang/String;")
+        .map_err(|e| format!("get_field(uri): {}", e))?
+        .l()
+        .map_err(|e| format!("get_field(uri).l(): {}", e))?;
+    let uri_str = env
+        .get_string((&uri).into())
+        .map_err(|e| format!("get_string(uri): {}", e))?;
+
+    let display_path = env
+        .get_field(jobj, "displayPath", "Ljava/lang/String;")
+        .map_err(|e| format!("get_field(displayPath): {}", e))?
+        .l()
+        .map_err(|e| format!("get_field(displayPath).l(): {}", e))?;
+    let display_path_str = env
+        .get_string((&display_path).into())
+        .map_err(|e| format!("get_string(displayPath): {}", e))?;
+
+    let mime = env
+        .get_field(jobj, "mime", "Ljava/lang/String;")
+        .map_err(|e| format!("get_field(mime): {}", e))?
+        .l()
+        .map_err(|e| format!("get_field(mime).l(): {}", e))?;
+    let mime_str = env
+        .get_string((&mime).into())
+        .map_err(|e| format!("get_string(mime): {}", e))?;
+
+    Ok(SaveDataResult {
+        uri: uri_str.into(),
+        display_path: display_path_str.into(),
+        mime: mime_str.into(),
+    })
+}
+
 /// Convenience: `load_class_by_name` wrapped for the NotificationScheduler.
 #[cfg(target_os = "android")]
 fn load_notification_class<'a>(
@@ -141,7 +193,7 @@ fn save_to_downloads_inner(
     activity: &jni::objects::JObject,
     filename: &str,
     content: &str,
-) -> Result<String, String> {
+) -> Result<SaveDataResult, String> {
     use jni::objects::JValue;
     let jfilename = env
         .new_string(filename)
@@ -154,7 +206,7 @@ fn save_to_downloads_inner(
         .call_static_method(
             writer_class,
             "saveToDownloads",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Lcom/smirnovayama/hrttracker/DownloadWriter$SaveResult;",
             &[
                 JValue::Object(activity),
                 JValue::Object(&jfilename),
@@ -164,10 +216,7 @@ fn save_to_downloads_inner(
         .map_err(|e| format!("call_static_method: {}", e))?
         .l()
         .map_err(|e| format!("call_static_method.l(): {}", e))?;
-    let jstr = env
-        .get_string((&result).into())
-        .map_err(|e| format!("get_string: {}", e))?;
-    Ok(jstr.into())
+    extract_save_result(env, &result)
 }
 
 #[cfg(target_os = "android")]
@@ -177,7 +226,7 @@ fn save_to_downloads_with_subdir_inner(
     subdir: &str,
     filename: &str,
     content: &str,
-) -> Result<String, String> {
+) -> Result<SaveDataResult, String> {
     use jni::objects::JValue;
     let jsubdir = env
         .new_string(subdir)
@@ -193,7 +242,7 @@ fn save_to_downloads_with_subdir_inner(
         .call_static_method(
             writer_class,
             "saveToDownloads",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/smirnovayama/hrttracker/DownloadWriter$SaveResult;",
             &[
                 JValue::Object(activity),
                 JValue::Object(&jsubdir),
@@ -204,10 +253,7 @@ fn save_to_downloads_with_subdir_inner(
         .map_err(|e| format!("call_static_method: {}", e))?
         .l()
         .map_err(|e| format!("call_static_method.l(): {}", e))?;
-    let jstr = env
-        .get_string((&result).into())
-        .map_err(|e| format!("get_string: {}", e))?;
-    Ok(jstr.into())
+    extract_save_result(env, &result)
 }
 
 #[cfg(target_os = "android")]
@@ -307,6 +353,17 @@ fn clipboard_write_text(_app: tauri::AppHandle, text: String) -> Result<String, 
     }
 }
 
+/// Result returned by `save_data_to_download` on Android. The frontend
+/// surfaces `displayPath` in the "Saved to {path}" toast (e.g. "0/Download/
+/// HRT Tracker/foo.json") and uses `uri` + `mime` later if the user taps
+/// the path to open the file via `open_with_system`.
+#[derive(serde::Serialize)]
+struct SaveDataResult {
+    uri: String,
+    display_path: String,
+    mime: String,
+}
+
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
 fn save_data_to_download(
@@ -314,7 +371,7 @@ fn save_data_to_download(
     subdir: String,
     filename: String,
     content_b64: String,
-) -> Result<String, String> {
+) -> Result<SaveDataResult, String> {
     // Frontend sends `contentB64`; Tauri's ArgumentCase::Camel default rewrites
     // the param name to camelCase for IPC, so `content_b64` here matches `contentB64` from JS.
     // Base64 decode happens on the Kotlin side (DownloadWriter.saveToDownloads),
@@ -328,6 +385,44 @@ fn save_data_to_download(
     #[cfg(not(target_os = "android"))]
     {
         Err("save_data_to_download only available on Android".to_string())
+    }
+}
+
+/// Hand a previously-saved file off to the system "Open with" picker. The
+/// frontend hands us back the `uri` + `mime` that `save_data_to_download`
+/// returned, so the round-trip is fully lossless under Android 11+ scoped
+/// storage (where the on-disk path is not exposed to the app).
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn open_with_system(
+    _app: tauri::AppHandle,
+    uri: String,
+    mime: String,
+) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let juri = env
+                .new_string(&uri)
+                .map_err(|e| format!("new_string(uri): {}", e))?;
+            let jmime = env
+                .new_string(&mime)
+                .map_err(|e| format!("new_string(mime): {}", e))?;
+            let cls = load_opener_class(env, activity)?;
+            env.call_static_method(
+                cls,
+                "openWith",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
+            )
+            .map_err(|e| format!("call_static_method(openWith): {}", e))?;
+            Ok(true)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("open_with_system only available on Android".to_string())
     }
 }
 
@@ -667,6 +762,7 @@ pub fn run() {
             set_debug_mode,
             export_logs_to_download,
             save_data_to_download,
+            open_with_system,
             clipboard_write_text,
             ensure_notification_channel,
             request_notification_permission,

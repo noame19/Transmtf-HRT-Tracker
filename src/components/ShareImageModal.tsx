@@ -82,7 +82,11 @@ const ShareImageModal: React.FC<Props> = ({
     const { isDark, colors } = useTheme();
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState('');
+    // Android 端保存后返回的是 { uri, displayPath, mime }；web 端走 <a download> blob，
+    // 没有 URI，这里 savedUri/savedMime 留空，点击路径的链接自然就不触发 ACTION_VIEW。
     const [savedPath, setSavedPath] = useState('');
+    const [savedUri, setSavedUri] = useState('');
+    const [savedMime, setSavedMime] = useState('');
     const printRef = useRef<HTMLDivElement>(null);
     const dialogRef = useFocusTrap(isOpen, onClose);
     // 探测 Tauri 环境：仅安卓才有 window.__TAURI_INTERNALS__；web 预览时走浏览器原生下载
@@ -325,12 +329,17 @@ const ShareImageModal: React.FC<Props> = ({
             // dataUrl 形如 "data:image/png;base64,XXXX" → 去掉前缀取 base64 部分
             const commaIdx = dataUrl.indexOf(',');
             const b64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
-            const path = await invoke<string>('save_data_to_download', {
-                subdir: 'HRT Tracker',
-                filename,
-                contentB64: b64,
-            });
-            setSavedPath(path);
+            const result = await invoke<{ uri: string; displayPath: string; mime: string }>(
+                'save_data_to_download',
+                {
+                    subdir: 'HRT Tracker',
+                    filename,
+                    contentB64: b64,
+                },
+            );
+            setSavedPath(result.displayPath);
+            setSavedUri(result.uri);
+            setSavedMime(result.mime);
         } catch (err: any) {
             console.error('Failed to generate image:', err);
             // 透出真实错误（来自 Rust → JNI → Kotlin 链路），下次失败能直接定位根因
@@ -457,7 +466,26 @@ const ShareImageModal: React.FC<Props> = ({
 
                 {savedPath && (
                     <div className="rounded-xl border border-[var(--border-emerald-share)] bg-[var(--bg-emerald-share)] px-4 py-2 text-sm text-[var(--text-emerald-share)]">
-                        {t('share.savedTo').replace('{path}', savedPath)}
+                        {t('share.savedTo').replace('{path}', '')}
+                        {savedUri ? (
+                            <a
+                                role="button"
+                                className="underline cursor-pointer break-all ml-1"
+                                onClick={() => {
+                                    if (!isTauri) return;
+                                    invoke('open_with_system', {
+                                        uri: savedUri,
+                                        mime: savedMime,
+                                    }).catch((e) => {
+                                        console.error('open_with_system failed', e);
+                                    });
+                                }}
+                            >
+                                {savedPath}
+                            </a>
+                        ) : (
+                            savedPath
+                        )}
                     </div>
                 )}
 
