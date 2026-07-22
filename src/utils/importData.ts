@@ -18,9 +18,11 @@ import { sanitizeGelProducts, type GelProductSpec } from '../../pk';
 import {
     BACKUP_SCHEMA_VERSION_V2,
     BACKUP_SCHEMA_VERSION_V3,
+    BACKUP_SCHEMA_VERSION_V4,
     type DueLogEntry,
     type PostponeLogEntry,
 } from '../contexts/AppDataContext';
+import { type BasicInfo } from '../components/BasicInfoModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public types — what the Settings page consumes after parsing.
@@ -55,10 +57,50 @@ export interface ParsedImport {
     dueLog: DueLogEntry[] | null;
     prefs: UserPrefsBackup | null;
     calibration: CalibrationBackup | null;
+    /** v4: 基础信息（性别认同/出生/身高/过敏/HRT 开始日期）。
+     *  null = 备份文件没带 → 保留设备原值；非 null（哪怕所有字段都是 null/空串）= 覆盖。 */
+    basicInfo: BasicInfo | null;
+    /** v4: 用药录入模板列表（用户在 DoseFormModal 里手动"另存为模板"创建的）。 */
+    doseTemplates: DoseTemplateBackup[] | null;
+    /** v4: 每药表单记忆（per (route, ester) 的 rawDose/e2Dose/patchMode/slTier 等）。 */
+    doseByDrug: Record<string, DrugMemoBackup> | null;
+    /** v4: 上次选用的 (route, ester) — 一条最小记录。 */
+    doseLastDrug: { route: Route; ester: Ester } | null;
     migratedCount: number;
     /** Schema version actually detected in the file, so the importer knows
      *  whether to apply the v3-specific sections. */
-    schemaVersion: typeof BACKUP_SCHEMA_VERSION_V2 | typeof BACKUP_SCHEMA_VERSION_V3;
+    schemaVersion: typeof BACKUP_SCHEMA_VERSION_V2 | typeof BACKUP_SCHEMA_VERSION_V3 | typeof BACKUP_SCHEMA_VERSION_V4;
+}
+
+/** v4 备份里 "用户主动另存的快速录入模板" 的形状。完全镜像 DoseFormModal
+ *  内部 `DoseTemplate`，但 export 出来时去掉组件内部 ID 的耦合，便于跨版本
+ *  反序列化。 */
+export interface DoseTemplateBackup {
+    id: string;
+    name: string;
+    route: Route;
+    ester: Ester;
+    rawDose: string;
+    e2Dose: string;
+    patchMode: 'dose' | 'rate';
+    patchRate: string;
+    gelSite: number;
+    slTier: number;
+    useCustomTheta: boolean;
+    customTheta: string;
+}
+
+/** v4 备份里 "每个 (给药方式, 药物) 组合的表单记忆" 的形状。完全镜像
+ *  utils/doseForm.ts 里的 `DrugMemo`。键名形如 `${route}:${ester}`。 */
+export interface DrugMemoBackup {
+    rawDose: string;
+    e2Dose: string;
+    patchMode?: 'dose' | 'rate';
+    patchRate?: string;
+    slTier?: number;
+    useCustomTheta?: boolean;
+    customTheta?: string;
+    customDose?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -288,6 +330,124 @@ export const sanitizeImportedCalibration = (raw: unknown): CalibrationBackup | n
         && out.applyCPAInhibitionToE2 === undefined) ? null : out;
 };
 
+// ─── v4 sanitizers ─────────────────────────────────────────────────────────
+
+/** 基础信息：严格逐字段校验，避免损坏的 localStorage / 备份把脏数据塞回组件。
+ *  返回 `null` 表示备份里完全没有这块（保留设备原值）。返回非 null 表示
+ *  备份携带了这块 — 哪怕所有字段都是 null/空串，应用层也按"用户希望清空"
+ *  语义覆盖。 */
+export const sanitizeImportedBasicInfo = (raw: unknown): BasicInfo | null => {
+    if (!isRecord(raw)) return null;
+    const route = (raw as { route?: unknown }).route;
+    const birth = (raw as { birth?: unknown }).birth;
+    const heightCm = (raw as { heightCm?: unknown }).heightCm;
+    const allergies = (raw as { allergies?: unknown }).allergies;
+    const hrtStart = (raw as { hrtStart?: unknown }).hrtStart;
+    // 缺一不可视为 "备份里有这块"，至少一个字段出现就算携带。
+    const hasAny =
+        route !== undefined
+        || birth !== undefined
+        || heightCm !== undefined
+        || allergies !== undefined
+        || hrtStart !== undefined;
+    if (!hasAny) return null;
+
+    const routeOut = route === 'MtF' || route === 'Non-binary' ? route : null;
+    const birthOut = typeof birth === 'string' && /^\d{4}-\d{2}$/.test(birth) ? birth : null;
+    const hRaw = toNumber(heightCm);
+    const heightOut = hRaw !== null && hRaw >= 50 && hRaw <= 250 ? hRaw : null;
+    const allergiesOut = typeof allergies === 'string' ? allergies : '';
+    const hrtOut = typeof hrtStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(hrtStart) ? hrtStart : null;
+
+    return {
+        route: routeOut,
+        birth: birthOut,
+        heightCm: heightOut,
+        allergies: allergiesOut,
+        hrtStart: hrtOut,
+    };
+};
+
+/** 用药录入模板：每条记录必须有合法 id+name+route+ester。route/ester
+ *  不能用"未来删除"的非法枚举值。空数组表示"清空模板"。 */
+export const sanitizeImportedDoseTemplates = (raw: unknown): DoseTemplateBackup[] | null => {
+    if (!Array.isArray(raw)) return null;
+    const out: DoseTemplateBackup[] = [];
+    for (const entry of raw) {
+        if (!isRecord(entry)) continue;
+        const id = (entry as { id?: unknown }).id;
+        const name = (entry as { name?: unknown }).name;
+        const route = (entry as { route?: unknown }).route;
+        const ester = (entry as { ester?: unknown }).ester;
+        if (typeof id !== 'string' || id.length === 0) continue;
+        if (typeof name !== 'string') continue;
+        if (!isRoute(route) || !isEster(ester)) continue;
+        out.push({
+            id,
+            name,
+            route,
+            ester,
+            rawDose: typeof (entry as { rawDose?: unknown }).rawDose === 'string'
+                ? (entry as { rawDose: string }).rawDose : '',
+            e2Dose: typeof (entry as { e2Dose?: unknown }).e2Dose === 'string'
+                ? (entry as { e2Dose: string }).e2Dose : '',
+            patchMode: ((entry as { patchMode?: unknown }).patchMode === 'rate') ? 'rate' : 'dose',
+            patchRate: typeof (entry as { patchRate?: unknown }).patchRate === 'string'
+                ? (entry as { patchRate: string }).patchRate : '',
+            gelSite: toNumber((entry as { gelSite?: unknown }).gelSite) ?? 0,
+            slTier: toNumber((entry as { slTier?: unknown }).slTier) ?? 0,
+            useCustomTheta: typeof (entry as { useCustomTheta?: unknown }).useCustomTheta === 'boolean'
+                ? (entry as { useCustomTheta: boolean }).useCustomTheta : false,
+            customTheta: typeof (entry as { customTheta?: unknown }).customTheta === 'string'
+                ? (entry as { customTheta: string }).customTheta : '',
+        });
+    }
+    return out;
+};
+
+/** 每药表单记忆：键名形如 `${route}:${ester}`。每个 value 必须是合法
+ *  DrugMemo。损坏的 value 整条丢弃。 */
+export const sanitizeImportedDoseByDrug = (raw: unknown): Record<string, DrugMemoBackup> | null => {
+    if (!isRecord(raw)) return null;
+    const out: Record<string, DrugMemoBackup> = {};
+    for (const [key, val] of Object.entries(raw)) {
+        if (!isRecord(val)) continue;
+        // 键名强制 `${route}:${ester}` 形态，route/ester 必须合法。
+        const sep = key.indexOf(':');
+        if (sep <= 0 || sep >= key.length - 1) continue;
+        const route = key.slice(0, sep);
+        const ester = key.slice(sep + 1);
+        if (!isRoute(route) || !isEster(ester)) continue;
+        out[key] = {
+            rawDose: typeof (val as { rawDose?: unknown }).rawDose === 'string'
+                ? (val as { rawDose: string }).rawDose : '',
+            e2Dose: typeof (val as { e2Dose?: unknown }).e2Dose === 'string'
+                ? (val as { e2Dose: string }).e2Dose : '',
+            patchMode: (val as { patchMode?: unknown }).patchMode === 'dose' || (val as { patchMode?: unknown }).patchMode === 'rate'
+                ? (val as { patchMode: 'dose' | 'rate' }).patchMode : undefined,
+            patchRate: typeof (val as { patchRate?: unknown }).patchRate === 'string'
+                ? (val as { patchRate: string }).patchRate : undefined,
+            slTier: toNumber((val as { slTier?: unknown }).slTier) ?? undefined,
+            useCustomTheta: typeof (val as { useCustomTheta?: unknown }).useCustomTheta === 'boolean'
+                ? (val as { useCustomTheta: boolean }).useCustomTheta : undefined,
+            customTheta: typeof (val as { customTheta?: unknown }).customTheta === 'string'
+                ? (val as { customTheta: string }).customTheta : undefined,
+            customDose: typeof (val as { customDose?: unknown }).customDose === 'boolean'
+                ? (val as { customDose: boolean }).customDose : undefined,
+        };
+    }
+    return out;
+};
+
+/** 上次选用的 (route, ester) — 一条最小记录。route + ester 都得合法枚举值。 */
+export const sanitizeImportedDoseLastDrug = (raw: unknown): { route: Route; ester: Ester } | null => {
+    if (!isRecord(raw)) return null;
+    const route = (raw as { route?: unknown }).route;
+    const ester = (raw as { ester?: unknown }).ester;
+    if (!isRoute(route) || !isEster(ester)) return null;
+    return { route, ester };
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public parsers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,9 +464,10 @@ export const importFallbackWeight = (parsed: unknown, dflt: number): number => {
 /** Detect which schema version a parsed JSON object conforms to. v3 is the
  *  only one that carries `meta.version === 3`; everything else falls back to
  *  v2 semantics so older backups (even bare arrays) keep importing. */
-const detectSchemaVersion = (parsed: unknown): typeof BACKUP_SCHEMA_VERSION_V2 | typeof BACKUP_SCHEMA_VERSION_V3 => {
+const detectSchemaVersion = (parsed: unknown): typeof BACKUP_SCHEMA_VERSION_V2 | typeof BACKUP_SCHEMA_VERSION_V3 | typeof BACKUP_SCHEMA_VERSION_V4 => {
     if (isRecord(parsed) && isRecord((parsed as { meta?: unknown }).meta)) {
         const v = (parsed as { meta: { version?: unknown } }).meta.version;
+        if (v === BACKUP_SCHEMA_VERSION_V4) return BACKUP_SCHEMA_VERSION_V4;
         if (v === BACKUP_SCHEMA_VERSION_V3) return BACKUP_SCHEMA_VERSION_V3;
     }
     return BACKUP_SCHEMA_VERSION_V2;
@@ -340,6 +501,10 @@ const parseV2 = (parsed: unknown, fallbackWeight: number): ParsedImport => {
         dueLog: null,
         prefs: null,
         calibration: null,
+        basicInfo: null,
+        doseTemplates: null,
+        doseByDrug: null,
+        doseLastDrug: null,
         migratedCount,
         schemaVersion: BACKUP_SCHEMA_VERSION_V2,
     };
@@ -379,13 +544,38 @@ const parseV3 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
         dueLog,
         prefs,
         calibration,
+        // v3 备份里没有这 4 个字段 → 全部 null（保留设备原值）。
+        basicInfo: null,
+        doseTemplates: null,
+        doseByDrug: null,
+        doseLastDrug: null,
         migratedCount,
         schemaVersion: BACKUP_SCHEMA_VERSION_V3,
     };
 };
 
+const parseV4 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
+    // 先按 v3 路径解析所有 "v3 就存在的" 段，再追加 v4 专属字段。
+    const base = parseV3(parsed, fallbackWeight);
+    const basicInfo = sanitizeImportedBasicInfo(parsed.basicInfo);
+    const doseTemplates = sanitizeImportedDoseTemplates(parsed.doseTemplates);
+    const doseByDrug = sanitizeImportedDoseByDrug(parsed.doseByDrug);
+    const doseLastDrug = sanitizeImportedDoseLastDrug(parsed.doseLastDrug);
+    return {
+        ...base,
+        basicInfo,
+        doseTemplates,
+        doseByDrug,
+        doseLastDrug,
+        schemaVersion: BACKUP_SCHEMA_VERSION_V4,
+    };
+};
+
 export const parseImportedBackup = (parsed: unknown, fallbackWeight: number): ParsedImport => {
     const version = detectSchemaVersion(parsed);
+    if (version === BACKUP_SCHEMA_VERSION_V4 && isRecord(parsed)) {
+        return parseV4(parsed, fallbackWeight);
+    }
     if (version === BACKUP_SCHEMA_VERSION_V3 && isRecord(parsed)) {
         return parseV3(parsed, fallbackWeight);
     }
@@ -407,4 +597,8 @@ export const importHasContent = (p: ParsedImport): boolean =>
     || p.postponeLog !== null
     || p.dueLog !== null
     || p.prefs !== null
-    || p.calibration !== null;
+    || p.calibration !== null
+    || p.basicInfo !== null
+    || p.doseTemplates !== null
+    || p.doseByDrug !== null
+    || p.doseLastDrug !== null;

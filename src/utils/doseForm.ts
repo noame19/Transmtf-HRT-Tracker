@@ -230,6 +230,33 @@ export const writeCustomGelProducts = (products: GelProductSpec[]) => {
     }
 };
 
+// --- User-saved "dose entry templates" --------------------------------------
+//
+// 用户在 DoseFormModal 里手动"另存为模板"创建的快捷录入模板。
+// 形状只暴露在 DoseFormModal 里；这里只做"原样读写 + 坏数据静默丢弃"。
+// v4 备份用这套 read/write 函数读 / 还原，SettingsPage 和 DoseFormModal
+// 共用同一份 localStorage 序列化逻辑，避免两份维护漂移。
+const DOSE_TEMPLATES_KEY = 'hrt-dose-templates';
+
+export const readDoseTemplates = <T = unknown>(): T[] => {
+    try {
+        const saved = localStorage.getItem(DOSE_TEMPLATES_KEY);
+        if (!saved) return [];
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const writeDoseTemplates = <T = unknown>(templates: T[]) => {
+    try {
+        localStorage.setItem(DOSE_TEMPLATES_KEY, JSON.stringify(templates));
+    } catch {
+        /* quota / private mode — silently drop */
+    }
+};
+
 /** Presets followed by the user's custom products, for the product selector. */
 export const getAllGelProducts = (custom: GelProductSpec[] = readCustomGelProducts()): GelProductSpec[] =>
     [...GEL_PRODUCTS, ...custom];

@@ -55,6 +55,10 @@ export interface DueLogEntry {
  *  top-level keys so the importer can dispatch to the right parser. */
 export const BACKUP_SCHEMA_VERSION_V2 = 2;
 export const BACKUP_SCHEMA_VERSION_V3 = 3;
+/** v4 adds basicInfo / doseTemplates / doseByDrug / doseLastDrug — the
+ *  form-memory and basic-info sections that were missing from v3 backups
+ *  and would silently get lost on a fresh device install. */
+export const BACKUP_SCHEMA_VERSION_V4 = 4;
 
 export const PER_DOSE_WEIGHT_MIGRATION_EVENT = 'hrt-per-dose-weight-migrated';
 
