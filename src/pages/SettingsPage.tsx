@@ -33,6 +33,7 @@ import {
     BellOff,
     BatteryCharging,
     Power,
+    Bot,
 } from 'lucide-react';
 
 import { decryptData } from '../../logic';
@@ -50,6 +51,7 @@ import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import CustomGelManager from '../components/CustomGelManager';
 import ImportModal from '../components/ImportModal';
+import AIExportModal from '../components/AIExportModal';
 import BasicInfoModal, { loadBasicInfo, saveBasicInfo, earliestEventHrtDate, type BasicInfo } from '../components/BasicInfoModal';
 import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
@@ -316,6 +318,7 @@ const SettingsPage: React.FC = () => {
     const navigate = useNavigate();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isAIExportOpen, setIsAIExportOpen] = useState(false);
     const [isPasswordInputOpen, setIsPasswordInputOpen] = useState(false);
     const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
@@ -1175,6 +1178,20 @@ const SettingsPage: React.FC = () => {
                         </button>
 
                         <button
+                            onClick={() => setIsAIExportOpen(true)}
+                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
+                            style={{ color: 'var(--text-primary)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                            <Bot className="text-purple-500" size={20} />
+                            <div>
+                                <p className="text-sm font-bold">{t('settings.aiExport.title')}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('settings.aiExport.desc')}</p>
+                            </div>
+                        </button>
+
+                        <button
                             onClick={handleClearAllEvents}
                             disabled={!events.length}
                             className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
@@ -1383,6 +1400,18 @@ const SettingsPage: React.FC = () => {
                 onClose={() => setIsImportModalOpen(false)}
                 onImportJson={importEventsFromJson}
                 isTauri={isTauri}
+            />
+
+            <AIExportModal
+                isOpen={isAIExportOpen}
+                onClose={() => setIsAIExportOpen(false)}
+                events={events}
+                labResults={labResults}
+                plans={plans}
+                basicInfo={basicInfo ?? loadBasicInfo()}
+                postponeLog={postponeLog}
+                dueLog={dueLog}
+                lang={lang}
             />
 
             <BasicInfoModal
