@@ -37,7 +37,7 @@ import {
 
 import { decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
-import { writeCustomGelProducts, readDoseTemplates, readDoseByDrug, readLastDrug } from '../utils/doseForm';
+import { writeCustomGelProducts, readDoseTemplates, writeDoseTemplates, readDoseByDrug, writeDoseByDrug, readLastDrug, writeLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
 import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
 import {
@@ -437,16 +437,18 @@ const SettingsPage: React.FC = () => {
                     detail: { key: 'hrt-basic-info' },
                 }));
             }
-            // 用药录入模板 / 表单记忆 / 上次选用：直接写 localStorage 即可，
+            // 用药录入模板 / 表单记忆 / 上次选用：走 doseForm.ts 的写函数，
+            // 与读取端 readDoseTemplates / readDoseByDrug / readLastDrug 共用
+            // 同一份 key 约定，避免导入端写死字符串跟读端漂移。
             // DoseFormModal 是受控组件，会在下次打开时通过 useState initializer 重新读。
             if (newDoseTemplates !== null) {
-                localStorage.setItem('hrt-dose-templates', JSON.stringify(newDoseTemplates));
+                writeDoseTemplates(newDoseTemplates);
             }
             if (newDoseByDrug !== null) {
-                localStorage.setItem('hrt-dose-by-drug', JSON.stringify(newDoseByDrug));
+                writeDoseByDrug(newDoseByDrug);
             }
             if (newDoseLastDrug !== null) {
-                localStorage.setItem('hrt-dose-last-drug', JSON.stringify(newDoseLastDrug));
+                writeLastDrug(newDoseLastDrug);
             }
 
             const lastModified = new Date().toISOString();

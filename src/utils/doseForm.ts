@@ -196,6 +196,32 @@ export const readLastDrug = (): { route: Route; ester: Ester } | null => {
     }
 };
 
+/** 整体覆盖每药表单记忆。读端用 readDoseByDrug，同一份 key 约定，
+ *  避免 SettingsPage 导入端写死 localStorage 字符串跟函数内部漂移。
+ *  注意 writeDoseMemo 仍然写单个 memo（增量更新），跟本函数"整体覆盖"
+ *  语义不同——导入端是覆盖式还原，需要的是这个。 */
+export const writeDoseByDrug = <T = unknown>(memos: Record<string, T>) => {
+    try {
+        localStorage.setItem(DOSE_BY_DRUG_KEY, JSON.stringify(memos));
+    } catch {
+        /* quota / private mode — silently drop */
+    }
+};
+
+/** 整体覆盖上次选用。null 表示清除（删除 key 而不是写空对象，
+ *  跟 readLastDrug 在"无值时返回 null"的行为对齐）。 */
+export const writeLastDrug = (last: { route: Route; ester: Ester } | null) => {
+    try {
+        if (last === null) {
+            localStorage.removeItem(DOSE_LAST_DRUG_KEY);
+        } else {
+            localStorage.setItem(DOSE_LAST_DRUG_KEY, JSON.stringify(last));
+        }
+    } catch {
+        /* quota / private mode — silently drop */
+    }
+};
+
 // --- Custom transdermal-gel products ----------------------------------------
 //
 // Preset gels live in `GEL_PRODUCTS` (code). User-created products are stored
