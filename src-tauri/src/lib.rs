@@ -387,7 +387,7 @@ fn open_with_system(
 ) -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
-        use jni::objects::{JValue, JThrowable};
+        use jni::objects::{JString, JValue};
         return with_android_env(|env, activity| {
             let juri = env
                 .new_string(&uri)
@@ -405,19 +405,34 @@ fn open_with_system(
             // would return Ok(true), making the frontend think the click did
             // nothing. exception_occurred + toString + exception_clear is the
             // canonical way to surface JVM exceptions back to Rust.
+            //
+            // jni 0.21's `exception_occurred()` returns `JThrowable` directly
+            // (not Option) — an empty handle means no exception. `to_string`
+            // method must be invoked through call_method since the wrapper
+            // does not expose a convenience `to_string_lossy`.
             let _ = env.call_static_method(
                 cls,
                 "openWith",
                 "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
                 &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
             );
-            if let Some(exc) = env.exception_occurred()? {
-                env.exception_clear()?;
-                let desc = JThrowable::from(exc)
-                    .to_string_lossy(env)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| "<unknown JNI exception>".to_string());
-                return Err(format!("FileOpener.openWith threw: {}", desc));
+            let throwable = env
+                .exception_occurred()
+                .map_err(|e| format!("exception_occurred: {}", e))?;
+            if !throwable.is_null() {
+                env.exception_clear()
+                    .map_err(|e| format!("exception_clear: {}", e))?;
+                let desc = env
+                    .call_method(throwable, "toString", "()Ljava/lang/String;", &[])
+                    .map_err(|e| format!("Throwable.toString call_method: {}", e))?
+                    .l()
+                    .map_err(|e| format!("Throwable.toString.l: {}", e))?;
+                let jstr = JString::from(desc);
+                let desc_str: String = env
+                    .get_string(&jstr)
+                    .map_err(|e| format!("get_string(Throwable.toString): {}", e))?
+                    .into();
+                return Err(format!("FileOpener.openWith threw: {}", desc_str));
             }
             Ok(true)
         });
