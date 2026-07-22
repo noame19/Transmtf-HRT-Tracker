@@ -387,7 +387,7 @@ fn open_with_system(
 ) -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
-        use jni::objects::JValue;
+        use jni::objects::{JValue, JThrowable};
         return with_android_env(|env, activity| {
             let juri = env
                 .new_string(&uri)
@@ -396,13 +396,29 @@ fn open_with_system(
                 .new_string(&mime)
                 .map_err(|e| format!("new_string(mime): {}", e))?;
             let cls = load_opener_class(env, activity)?;
-            env.call_static_method(
+            // Discard the String return value — we only care whether the call
+            // *succeeded*. JNI's `call_static_method` does NOT automatically
+            // raise a Rust Err when the JVM throws; the exception stays
+            // pending on the env. Without the explicit check below, a Kotlin
+            // RuntimeException("No app available to open ...") would silently
+            // bubble into the next JNI call (or vanish entirely) and Rust
+            // would return Ok(true), making the frontend think the click did
+            // nothing. exception_occurred + toString + exception_clear is the
+            // canonical way to surface JVM exceptions back to Rust.
+            let _ = env.call_static_method(
                 cls,
                 "openWith",
                 "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
                 &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
-            )
-            .map_err(|e| format!("call_static_method(openWith): {}", e))?;
+            );
+            if let Some(exc) = env.exception_occurred()? {
+                env.exception_clear()?;
+                let desc = JThrowable::from(exc)
+                    .to_string_lossy(env)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| "<unknown JNI exception>".to_string());
+                return Err(format!("FileOpener.openWith threw: {}", desc));
+            }
             Ok(true)
         });
     }

@@ -146,6 +146,12 @@ const SettingsPage: React.FC = () => {
                                         mime: result.mime,
                                     }).catch((e) => {
                                         console.error('open_with_system failed', e);
+                                        // 把后端真实错误显出来——之前 Rust 端吞掉所有
+                                        // JVM 异常 + 用 Ok(true) 假装成功，用户看到的
+                                        // 「点击没反应」其实是 startActivity 失败但
+                                        // 被静默了。错误信息至少能告诉我们下一步往哪查。
+                                        const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
+                                        showDialog('alert', `无法唤起系统打开: ${msg}`);
                                     });
                                 }}
                             >
@@ -813,6 +819,12 @@ const SettingsPage: React.FC = () => {
                                         mime: result.mime,
                                     }).catch((e) => {
                                         console.error('open_with_system failed', e);
+                                        // 把后端真实错误显出来——之前 Rust 端吞掉所有
+                                        // JVM 异常 + 用 Ok(true) 假装成功，用户看到的
+                                        // 「点击没反应」其实是 startActivity 失败但
+                                        // 被静默了。错误信息至少能告诉我们下一步往哪查。
+                                        const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
+                                        showDialog('alert', `无法唤起系统打开: ${msg}`);
                                     });
                                 }}
                             >

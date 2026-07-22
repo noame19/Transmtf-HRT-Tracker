@@ -478,6 +478,9 @@ const ShareImageModal: React.FC<Props> = ({
                                         mime: savedMime,
                                     }).catch((e) => {
                                         console.error('open_with_system failed', e);
+                                        // 同 SettingsPage 导出 JSON：把后端真实错误显出来。
+                                        const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
+                                        alert(`无法唤起系统打开: ${msg}`);
                                     });
                                 }}
                             >

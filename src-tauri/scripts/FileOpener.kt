@@ -1,5 +1,6 @@
 package com.smirnovayama.hrttracker
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -18,9 +19,14 @@ import android.net.Uri
  * On API ≤28 the URI is file:// — those apps don't need the flag but it's
  * harmless when set.
  *
- * Returns "OK" on success, throws otherwise (the JNI caller surfaces the
- * error to JS). Note: FLAG_ACTIVITY_NEW_TASK is required because Rust
- * invokes us with the application Context, not an Activity Context.
+ * Note: FLAG_ACTIVITY_NEW_TASK is required because Rust invokes us with the
+ * application Context, not an Activity Context.
+ *
+ * Returns "OK" on success, throws otherwise. We deliberately catch and
+ * re-throw as RuntimeException so the message lands back on the Rust side
+ * via JNI — without the try/catch the Android framework would just log to
+ * logcat and Rust would return Ok(true), masking the real cause (e.g. no
+ * app handles the MIME, missing grant, security exception).
  */
 object FileOpener {
     @JvmStatic
@@ -34,7 +40,25 @@ object FileOpener {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(chooser)
+        try {
+            context.startActivity(chooser)
+        } catch (e: ActivityNotFoundException) {
+            throw RuntimeException(
+                "No app available to open files of type \"$mime\" (uri=$uriString)",
+                e
+            )
+        } catch (e: SecurityException) {
+            // e.g. another app is in foreground / chooser blocked.
+            throw RuntimeException(
+                "System refused to open \"$uriString\" (mime=$mime): ${e.message}",
+                e
+            )
+        } catch (e: Exception) {
+            throw RuntimeException(
+                "Failed to open \"$uriString\" (mime=$mime): ${e.message}",
+                e
+            )
+        }
         return "OK"
     }
 }
