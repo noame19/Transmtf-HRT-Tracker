@@ -343,6 +343,7 @@ fn clipboard_write_text(_app: tauri::AppHandle, text: String) -> Result<String, 
 /// HRT Tracker/foo.json") and uses `uri` + `mime` later if the user taps
 /// the path to open the file via `open_with_system`.
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SaveDataResult {
     uri: String,
     display_path: String,
