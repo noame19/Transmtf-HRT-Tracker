@@ -853,18 +853,35 @@ const SettingsPage: React.FC = () => {
         // 自动备份当前状态：清空是不可逆操作，先快照一份。
         await silentBackup('clear');
 
+        // 清空所有「用户数据」（事件 + 实验室结果 + 自定义凝胶 + 基础信息
+        // + 用药计划 + 录入模板 + 上次选药），但保留「用户偏好」
+        // （语言 / 主题 / 暗色 / 校准模型 / 提醒开关 / 体重等）——
+        // 后者属于设备偏好，不属于「记录」。
         setEvents([]);
+        setLabResults([]);
+        setGelProducts([]);
+        setBasicInfo(null);
+        setPlans([]);
+        writeDoseTemplates([]);
+        writeDoseByDrug<unknown>({});
+        writeLastDrug(null);
         localStorage.setItem('hrt-events', JSON.stringify([]));
+        localStorage.setItem('hrt-lab-results', JSON.stringify([]));
+        localStorage.setItem('hrt-gel-products', JSON.stringify([]));
+        localStorage.setItem('hrt-basic-info', JSON.stringify(null));
+        localStorage.setItem('hrt-plans', JSON.stringify([]));
         const lastModified = new Date().toISOString();
         localStorage.setItem('hrt-last-modified', lastModified);
         localStorage.setItem('hrt-last-data-updated', lastModified);
         const langValue = localStorage.getItem('hrt-lang') || lang;
+        // data-hash 必须用「清空后的」快照（labResults/gelProducts 传空数组），
+        // 之前传的是旧内存值，hash 跟磁盘对不上 → 后续云端冲突检测会误判。
         const dataHash = computeDataHash({
             events: [],
             weight: DEFAULT_WEIGHT_KG,
-            labResults,
+            labResults: [],
             lang: langValue,
-            gelProducts,
+            gelProducts: [],
             ...readExtraSyncFields(),
         });
         localStorage.setItem('hrt-data-hash', dataHash);
