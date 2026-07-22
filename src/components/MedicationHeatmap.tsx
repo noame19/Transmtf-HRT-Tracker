@@ -555,7 +555,7 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                     />
                     <KpiCard
                         value={stats.achievementRate > 0 ? `${Math.round(stats.achievementRate * 100)}%` : '—'}
-                        label={t('heatmap.kpi.achievement') || '计划达成率'}
+                        label={t('heatmap.kpi.achievement') || '90天达成率'}
                     />
                     <KpiCard
                         value={String(stats.monthPostponeCount)}
@@ -846,21 +846,31 @@ function computeStats(
     // KPI #2: E2 dose count — E2-family admin events only.
     const e2DoseCount = adminEvents.filter((e) => isE2Family(e.ester)).length;
 
-    // KPI #3: plan achievement rate (口径 C — frozen dueLog).
+    // KPI #3: 90-day plan achievement rate (口径 C — frozen dueLog).
     // Source of truth is the persisted dueLog (one entry per past due-day),
     // NOT a re-computation against current plan state. Each dueLog entry has
     // already been classified as taken / skipped / postponed at the time the
     // due-day passed (via reminder interaction OR the AppDataProvider startup
     // scan). Edits / disables to plans can therefore NEVER rewrite past.
-    //   numerator   = taken entries
-    //   denominator = taken + skipped (postponed excluded — user chose to
-    //                 roll forward; the day is "not applicable" rather than
-    //                 "missed")
+    //   time window = [today - 89d, today]  (90 calendar days inclusive)
+    //   numerator   = taken entries within window
+    //   denominator = taken + skipped within window (postponed excluded —
+    //                 user chose to roll forward; the day is "not applicable"
+    //                 rather than "missed")
     let achievementRate = 0;
     if (dueLog && dueLog.length > 0) {
+        // Cutoff = local midnight 89 days before today. Window covers
+        // today and the 89 days immediately before it (90 days total).
+        const todayMs = todayMid.getTime();
+        const cutoffMs = todayMs - 89 * 86400000;
         let taken = 0;
         let applicable = 0;
         for (const e of dueLog) {
+            // dateKey is YYYY-MM-DD; parse to local-midnight ms for comparison.
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(e.dateKey);
+            if (!m) continue; // malformed entry — skip silently
+            const t = new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0).getTime();
+            if (t < cutoffMs || t > todayMs) continue;
             if (e.status === 'taken') {
                 taken += 1;
                 applicable += 1;
