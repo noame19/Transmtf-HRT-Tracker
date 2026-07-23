@@ -155,6 +155,8 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const timesPerDay = Math.max(1, Math.min(4, parseInt(timesPerDayStr) || 1));
     const [timeSlots, setTimeSlots] = useState<string[]>([DEFAULT_TIMES[0]]);
     const [weightStr, setWeightStr] = useState('');
+    // 贴片佩戴天数：仅 patchApply 路径生效，配套生成 (apply, remove) 对时用
+    const [wearDaysStr, setWearDaysStr] = useState('3.5');
 
     // Preview state
     const [previewEvents, setPreviewEvents] = useState<DoseEvent[]>([]);
@@ -456,6 +458,18 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         const weightKG = (Number.isFinite(parsedWeight) && parsedWeight > 0)
             ? parsedWeight
             : prefillWeightKG(allEvents);
+
+        // 贴片：解析佩戴天数（仅 patchApply 时用）
+        let wearDays = 0;
+        if (route === Route.patchApply) {
+            const parsed = parseFloat(wearDaysStr);
+            if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 14) {
+                showDialog('alert', t('batch.wear_days_invalid') || '佩戴天数需要在 0.5–14 之间');
+                return;
+            }
+            wearDays = parsed;
+        }
+
         const current = new Date(start);
         while (current <= end) {
             for (const slot of timeSlots) {
@@ -463,15 +477,41 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                 const eventDate = new Date(current);
                 eventDate.setHours(hh, mm, 0, 0);
                 const timeH = eventDate.getTime() / 3600000;
-                events.push({
-                    id: uuidv4(),
-                    route,
-                    ester: finalEster,
-                    timeH,
-                    doseMG: finalDoseMG,
-                    weightKG,
-                    extras: { ...extrasTemplate },
-                });
+
+                if (route === Route.patchApply) {
+                    // 同时生成 (apply, remove) 对，共享 groupId
+                    const groupId = uuidv4();
+                    events.push({
+                        id: uuidv4(),
+                        route: Route.patchApply,
+                        ester: finalEster,
+                        timeH,
+                        doseMG: finalDoseMG,
+                        weightKG,
+                        extras: { ...extrasTemplate },
+                        companionGroupId: groupId,
+                    });
+                    events.push({
+                        id: uuidv4(),
+                        route: Route.patchRemove,
+                        ester: Ester.E2,
+                        timeH: timeH + wearDays * 24,
+                        doseMG: 0,
+                        weightKG,
+                        extras: {},
+                        companionGroupId: groupId,
+                    });
+                } else {
+                    events.push({
+                        id: uuidv4(),
+                        route,
+                        ester: finalEster,
+                        timeH,
+                        doseMG: finalDoseMG,
+                        weightKG,
+                        extras: { ...extrasTemplate },
+                    });
+                }
             }
             current.setDate(current.getDate() + intervalDays);
         }
@@ -836,6 +876,27 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                         </div>
                                         <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
                                             {t('beta.patch')}
+                                        </div>
+                                        {/* 佩戴天数输入：仅 patch 时生效，批量生成 (apply, remove) 对时用 */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-semibold uppercase tracking-wider"
+                                                style={{ color: 'var(--text-tertiary)' }}>
+                                                {t('batch.wear_days_label') || '佩戴天数 (贴片戴多久撕下)'}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0.5"
+                                                max="14"
+                                                step="0.5"
+                                                value={wearDaysStr}
+                                                onChange={(e) => setWearDaysStr(e.target.value)}
+                                                className="w-full px-3 py-2 rounded-lg text-sm"
+                                                style={{
+                                                    background: 'var(--bg-card)',
+                                                    border: '1px solid var(--border-primary)',
+                                                    color: 'var(--text-primary)',
+                                                }}
+                                            />
                                         </div>
                                     </div>
                                 )}
