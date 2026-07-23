@@ -11,7 +11,7 @@ import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
 import { classifyDueState, findDueReminders, isDueReminderStale, PLAN_REMINDER_AUTO_DISMISS_MIN, DueReminder } from '../utils/planReminder';
-import { isPatchApply, collectCascadeIds } from '../utils/patch';
+import { isPatchApply, collectCascadeIds, shouldCascadeRemove } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
@@ -597,8 +597,24 @@ const MainLayout: React.FC = () => {
     };
     const handleSaveEvent = (e: DoseEvent) => {
         setEvents(prev => {
-            const exists = prev.find(p => p.id === e.id);
-            return exists ? prev.map(p => p.id === e.id ? e : p) : [...prev, e];
+            const oldE = prev.find(p => p.id === e.id);
+            if (!oldE) return [...prev, e];
+
+            const next = prev.map(p => p.id === e.id ? e : p);
+
+            // 如果 route 从 patch 改成非 patch，把配对的 sibling 一起清理：
+            //   - apply → 非 patch：直接删配对 remove
+            //   - remove → 非 patch：把配对 apply 的 groupId 清空（PK 引擎不再把它当「带撕下」处理）
+            const companionToClear = shouldCascadeRemove(oldE, e, prev);
+            if (!companionToClear) return next;
+
+            if (oldE.route === Route.patchRemove && e.route !== Route.patchRemove) {
+                return next.map(p => p.id === companionToClear.id
+                    ? { ...p, companionGroupId: undefined }
+                    : p);
+            }
+            // apply → 非 patch：删配对 remove
+            return next.filter(p => p.id !== companionToClear.id);
         });
     };
     /**
