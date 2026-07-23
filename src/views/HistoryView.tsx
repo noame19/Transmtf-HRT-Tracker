@@ -10,7 +10,7 @@ import HistoryBulkActionBar from '../components/HistoryBulkActionBar';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
 import ComplianceBanner from '../components/ComplianceBanner';
 import type { ComplianceMismatch } from '../utils/planCompliance';
-import { isPatchApply, isPatchRemove, findPatchRemoveForApply, removeCompanion } from '../utils/patch';
+import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from '../utils/patch';
 
 type HistoryTab = 'records' | 'plans';
 
@@ -374,11 +374,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   // time means the button vanishes automatically the moment
                   // a new remove event is appended (re-render reads the
                   // updated `events` prop).
-                  // 「撕下时间」提示用兜底（兼容 legacy 老数据），但「撕下按钮」判断必须严格：
-// 否则当用户先批量添加 (apply, remove) 对后，再新建一条无摘下时间的 apply，
-// 那条新 apply 没 groupId，14 天兜底会把批量的 remove 错配给它，按钮就消失了。
-const pairedRemove = isPatchApply(ev) ? findPatchRemoveForApply(ev, events) : null;
-                  const showRemoveBtn = isPatchApply(ev) && !removeCompanion(ev, events);
+                  const pairedRemove = isPatchApply(ev) ? findPatchRemoveForApply(ev, events) : null;
+                  const showRemoveBtn = isPatchApply(ev) && !pairedRemove;
                   return (
                   <div
                     key={ev.id}

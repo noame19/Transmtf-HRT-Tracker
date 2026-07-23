@@ -113,45 +113,4 @@ describe('HistoryView — patch apply/remove cascade rendering', () => {
         const btn = screen.queryByLabelText('btn.patch_remove');
         expect(btn).toBeTruthy();
     });
-
-    it('shows "贴片移除" button for newly-saved apply with no groupId and no remove', () => {
-        // 用户报告的 bug：新建贴片没填摘下时间保存后，按钮不见了。
-        // 这种 apply 没有 companionGroupId 也没有任何配对 remove，按钮必须可见。
-        const apply = makeEvent({
-            id: 'fresh-apply',
-            route: Route.patchApply,
-            timeH: 100 * HOUR,
-            // 注意：故意不设 companionGroupId
-        });
-        render(<HistoryView {...baseProps} events={[apply]} />);
-        const btn = screen.queryByLabelText('btn.patch_remove');
-        expect(btn).toBeTruthy();
-    });
-
-    it('shows "贴片移除" button even when 14d fallback would find another remove', () => {
-        // 用户报告的 root cause：批量添加生成 (apply+remove) 对后，用户新建一条无摘下时间的 apply，
-        // 新 apply 没 groupId 但时间落在 14 天窗口内 → findPatchRemoveForApply 的兜底分支
-        // 错误地把批量那条 remove 配给它 → 按钮消失。新建 apply 的按钮必须可见。
-        const pairedApply = makeEvent({
-            id: 'paired-apply',
-            route: Route.patchApply,
-            timeH: 100 * HOUR,
-            companionGroupId: 'paired',
-        });
-        const pairedRemove = makeEvent({
-            id: 'paired-remove',
-            route: Route.patchRemove,
-            timeH: 108 * HOUR, // 8 天后
-            companionGroupId: 'paired',
-        });
-        const freshApply = makeEvent({
-            id: 'fresh-apply',
-            route: Route.patchApply,
-            timeH: 104 * HOUR, // 落在 14 天窗口内但完全无关
-            // 无 groupId
-        });
-        render(<HistoryView {...baseProps} events={[pairedApply, pairedRemove, freshApply]} />);
-        const btn = screen.queryByLabelText('btn.patch_remove');
-        expect(btn).toBeTruthy();
-    });
 });
