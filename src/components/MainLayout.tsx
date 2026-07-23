@@ -11,7 +11,7 @@ import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
 import { classifyDueState, findDueReminders, isDueReminderStale, PLAN_REMINDER_AUTO_DISMISS_MIN, DueReminder } from '../utils/planReminder';
-import { isPatchApply, collectCascadeIds, shouldCascadeRemove } from '../utils/patch';
+import { isPatchApply, collectCascadeIds, shouldCascadeRemove, removeCompanion } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
@@ -630,10 +630,24 @@ const MainLayout: React.FC = () => {
      */
     const handleSavePatch = (apply: DoseEvent, remove: DoseEvent) => {
         setEvents(prev => {
-            const applyExists = prev.some(p => p.id === apply.id);
+            // Step 1: 把「旧 groupId 对应的旧 remove」清掉（D1 编辑改摘下时间场景）
+            // ——  旧 remove 可能还挂在旧 groupId 上，新写入的 remove 是新 groupId，
+            //     两者并存会让 PK 引擎出错。
+            const oldApply = prev.find(p => p.id === apply.id);
+            const oldRemoveId = oldApply
+                ? removeCompanion(oldApply, prev)?.id
+                : undefined;
+            const withoutOldRemove = oldRemoveId
+                ? prev.filter(p => p.id !== oldRemoveId)
+                : prev;
+
+            // Step 2: 原地替换 apply
+            const applyExists = withoutOldRemove.some(p => p.id === apply.id);
             const afterApply = applyExists
-                ? prev.map(p => p.id === apply.id ? apply : p)
-                : [...prev, apply];
+                ? withoutOldRemove.map(p => p.id === apply.id ? apply : p)
+                : [...withoutOldRemove, apply];
+
+            // Step 3: 原地替换或新增 remove（新 remove 总用新 groupId，DoseFormModal 已保证）
             const removeExists = afterApply.some(p => p.id === remove.id);
             return removeExists
                 ? afterApply.map(p => p.id === remove.id ? remove : p)
