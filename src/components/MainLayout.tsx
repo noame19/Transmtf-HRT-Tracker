@@ -11,7 +11,7 @@ import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
 import { classifyDueState, findDueReminders, isDueReminderStale, PLAN_REMINDER_AUTO_DISMISS_MIN, DueReminder } from '../utils/planReminder';
-import { isPatchApply } from '../utils/patch';
+import { isPatchApply, collectCascadeIds } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
@@ -665,7 +665,12 @@ const MainLayout: React.FC = () => {
     };
     const handleDeleteEvent = (id: string) => {
         showDialog('confirm', t('timeline.delete_confirm'), () => {
-            setEvents(prev => prev.filter(e => e.id !== id));
+            setEvents(prev => {
+                // 级联删除：如果要删的是 patchApply/patchRemove，
+                // 把它 groupId 配对的 sibling 一起带走，避免留孤儿撕下
+                const ids = collectCascadeIds(id, prev);
+                return prev.filter(e => !ids.has(e.id));
+            });
         });
     };
     const handleSaveBatch = (newEvents: DoseEvent[]) => {
