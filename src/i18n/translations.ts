@@ -358,6 +358,8 @@ export const TRANSLATIONS_BASE = {
         "batch.mixed": "混合",
         "batch.invalid_range": "开始日期必须早于或等于结束日期",
         "batch.tap_to_edit": "点击某一条可单独修改",
+        "batch.wear_days_label": "佩戴天数 (贴片戴多久撕下)",
+        "batch.wear_days_invalid": "佩戴天数需要在 0.5–14 之间",
 
         "route.injection": "肌肉注射 (Injection)",
         "route.oral": "口服 (Oral)",
@@ -1339,6 +1341,8 @@ export const TRANSLATIONS_BASE = {
         "batch.mixed": "Mixed",
         "batch.invalid_range": "Start date must be on or before end date",
         "batch.tap_to_edit": "Tap any row to edit it individually",
+        "batch.wear_days_label": "Wear Days (how long the patch stays on)",
+        "batch.wear_days_invalid": "Wear days must be between 0.5 and 14",
 
         "route.injection": "Injection",
         "route.oral": "Oral",
