@@ -1,4 +1,5 @@
 import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type ConcUnit } from './types';
+import { patchGroupOf } from './src/utils/patch';
 
 /**
  * Route-specific metadata for transdermal gel absorption.
@@ -1021,7 +1022,18 @@ class PrecomputedEventModel {
                 };
                 break;
             case Route.patchApply: {
-                const remove = allEvents.find(e => e.route === Route.patchRemove && e.timeH > startTime);
+                // Strict groupId-only pairing: a patchApply's wear window is its
+                // sibling patchRemove stamped with the same companionGroupId. Without
+                // a groupId (legacy / hand-edited data) we fall back to "worn forever"
+                // — conservative, never wrong, and never reintroduces the 1-to-N bug
+                // that time-axis scan caused.
+                const evGroupId = patchGroupOf(event);
+                const remove = evGroupId
+                    ? allEvents.find(e =>
+                        e.route === Route.patchRemove &&
+                        patchGroupOf(e) === evGroupId &&
+                        e.timeH > startTime)
+                    : undefined;
                 const wearH = (remove?.timeH ?? Number.MAX_VALUE) - startTime;
 
                 this.model = (timeH: number) => {
