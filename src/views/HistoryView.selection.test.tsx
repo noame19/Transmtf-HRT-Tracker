@@ -209,4 +209,32 @@ describe('HistoryView — selection mode', () => {
         });
         expect(onBulkDeleteEvents).toHaveBeenCalledWith(['a', 'b']);
     });
+
+    it('banner X button exits selection mode without confirm dialog', () => {
+        // The fixed top banner has a single-tap X so users don't have to
+        // reach down to the bulk action bar's rotate-cw cancel. Same
+        // handler as the bulk-bar cancel — calls resetSelection() directly
+        // (the project policy is no confirm dialog for cancel: 误触恢复
+        // 成本低,弹窗反而打断节奏).
+        const events = [mkEvent('a', 100)];
+        render(<HistoryView {...baseProps} events={events} />);
+
+        // Enter selection mode.
+        const aRow = screen.getByTestId('event-row-a');
+        fireEvent.pointerDown(aRow, { clientX: 10, clientY: 10, button: 0 });
+        act(() => { vi.advanceTimersByTime(500); });
+        expect(screen.getByTestId('history-selection-banner')).toBeTruthy();
+
+        // Click banner X.
+        fireEvent.click(screen.getByTestId('banner-btn-cancel'));
+
+        // Banner gone, bulk action bar gone — selection fully reset.
+        expect(screen.queryByTestId('history-selection-banner')).toBeNull();
+        expect(screen.queryByTestId('bulk-action-bar')).toBeNull();
+
+        // State machine is clean: re-entering selection still works.
+        fireEvent.pointerDown(aRow, { clientX: 10, clientY: 10, button: 0 });
+        act(() => { vi.advanceTimersByTime(500); });
+        expect(screen.getByTestId('history-selection-banner')).toBeTruthy();
+    });
 });

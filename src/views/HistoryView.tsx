@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Activity, Plus, Layers, CalendarClock, Sticker, Check } from 'lucide-react';
+import { Activity, Plus, Layers, CalendarClock, Sticker, Check, X } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { formatDateTime, formatTime, formatDateWithYear, dateKey, getRouteIcon } from '../utils/helpers';
@@ -532,9 +532,31 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             <span className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
               {t('history.selected_count', { count: selectedIds.size })}
             </span>
-            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {rangeButtonState === 'pickingEnd' && t('history.range_picking_end')}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {rangeButtonState === 'pickingEnd' && t('history.range_picking_end')}
+              </span>
+              {/* Single-tap exit from selection mode. Sits on the banner
+               *  (always visible at the top of the viewport) for users
+               *  who don't want to reach down to the bulk action bar's
+               *  rotate-cw cancel button. Same handler as the bulk-bar
+               *  cancel — no confirm dialog (per the existing policy:
+               *  取消多选模式直接重置,误触恢复成本低再长按一条就回来) */}
+              <button
+                type="button"
+                onClick={handleBulkCancel}
+                aria-label={t('btn.cancel')}
+                title={t('btn.cancel')}
+                data-testid="banner-btn-cancel"
+                className="w-8 h-8 rounded-full flex items-center justify-center btn-press-glass transition shrink-0"
+                style={{
+                  background: 'var(--bg-card-hover)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
         </div>
       )}
