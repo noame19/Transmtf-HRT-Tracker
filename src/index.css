@@ -253,8 +253,9 @@
     --shadow-md: 0 4px 12px rgba(0,0,0,0.28), 0 2px 4px rgba(0,0,0,0.22);
     --shadow-lg: 0 12px 32px rgba(0,0,0,0.38), 0 4px 8px rgba(0,0,0,0.22);
     --glass-bg: rgba(15,23,42,0.82);
-    --glass-border: rgba(51,65,85,0.55);
-    /* Dark liquid glass overrides */
+    /* Dark liquid glass overrides (the legacy --glass-border above was dead
+     * code — the 0.52 below always won by source order; left only the
+     * liquid-glass value to avoid the misleading duplicate). */
     --glass-bg-subtle:  rgba(15,23,42,0.55);
     --glass-bg-default: rgba(15,23,42,0.68);
     --glass-bg-heavy:   rgba(15,23,42,0.80);
@@ -347,7 +348,7 @@ body {
     overflow: visible;
 }
 /* Keep scroll clipping for inner scrollable areas but allow shadow bleed */
-.glass-modal { isolation: isolate; }
+
 
 /* ── Glass surface levels ── */
 
@@ -387,6 +388,7 @@ body {
         0 1px 3px rgba(15, 23, 42, 0.04),
         0 8px 24px rgba(15, 23, 42, 0.08),
         0 24px 64px rgba(15, 23, 42, 0.12);
+    isolation: isolate;
 }
 .dark .glass-modal {
     background: var(--bg-card);
@@ -523,10 +525,12 @@ body {
 /*
  * Override Tailwind's default w-28 (7rem) for the SettingsPage language
  * CustomSelect — 10rem fits the longest localized label without
- * truncating the dropdown trigger. Placed after @tailwind utilities so
- * the cascade naturally wins (no !important needed).
+ * truncating the dropdown trigger. PostCSS Tailwind emits utility CSS
+ * AFTER our custom @media-free rules in the bundled output, so plain
+ * source order is not enough; !important is needed to guarantee 10rem
+ * wins over the 7rem utility.
  */
-.w-28 { width: 10rem; }
+.w-28 { width: 10rem !important; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Skeleton shimmer */
@@ -545,22 +549,25 @@ body {
 
 /*
  * 用药浓度 / 用药日历 两张玻璃卡的高度微调(2026-07-19)
- * 同样的,放在 @tailwind utilities 之后,后写后赢,无需 !important。
+ * PostCSS Tailwind 在产物里把 .md\:h-80 / .xl\:h-\[340px\] 这两个 utility
+ * 排在我们自定义 CSS 之后,同特异性下源序会让 Tailwind 的 20rem / 默认
+ * xl 高度胜出,所以这里必须带 !important 才能拿到 25rem / 420px。
  */
 @media (min-width: 768px) {
-    .md\:h-80 { height: 25rem; }
+    .md\:h-80 { height: 25rem !important; }
 }
 @media (min-width: 1280px) {
-    .xl\:h-\[340px\] { height: 420px; }
+    .xl\:h-\[340px\] { height: 420px !important; }
 }
 
 /*
  * 顶部两卡的小标题统一样式:4处「当前E2/CPA估算」+「下次计划」(2026-07-19)
  * 全平台统一 12px / 字重 550;覆盖原 text-xs / font-bold 等工具类。
+ * 同特异性下 Tailwind 工具类在产物里后写,所以两个属性都带 !important。
  */
 .kpi-stat-title {
-    font-size: 0.75rem;
-    font-weight: 550;
+    font-size: 0.75rem !important;
+    font-weight: 550 !important;
 }
 
 /*
@@ -569,10 +576,12 @@ body {
  * 对每台机的高度都不一样。改用 env(safe-area-inset-top) 让浏览器
  * 自动读系统返回值,刘海机返回大值,普通机返回 0;后面 + 1rem 是
  * 视觉舒适余量。只在 mobile(<768px)生效,tablet/desktop 维持原 pt-*。
+ * !important 是因为源序在 Tailwind 工具类之后,但 .pt-* 在不同断点有
+ * 不同值,源序不可靠,得用 !important 锁住。
  */
 @media (max-width: 767px) {
     .safe-area-pt {
-        padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+        padding-top: calc(env(safe-area-inset-top, 0px) + 1rem) !important;
     }
 }
 
@@ -580,10 +589,11 @@ body {
  * 全局 .space-y-1 子项间距从 0.5rem 收紧到 0.1rem (2026-07-19)
  * 抗雄卡左栏(div[2]/div[1])里堆(estimate/数字/各 CI 行/个人模型/Base/status badge)
  * 太散,需要缩。用户确认全局生效,因此不限定父容器。
- * 选择器与 Tailwind 同特异性,后写后赢。
+ * Tailwind 的 .space-y-1 工具类跟本选择器同特异性,且在产物里后写,
+ * 必须用 !important 锁住 0.1rem,否则会被 0.25rem 顶回去。
  */
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
     --tw-space-y-reverse: 0;
-    margin-top: calc(0.1rem * calc(1 - var(--tw-space-y-reverse)));
-    margin-bottom: calc(0.1rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-top: calc(0.1rem * calc(1 - var(--tw-space-y-reverse))) !important;
+    margin-bottom: calc(0.1rem * calc(1 - var(--tw-space-y-reverse))) !important;
 }
