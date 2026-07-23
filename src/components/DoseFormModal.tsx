@@ -746,7 +746,14 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             doseMG: finalDose,
             weightKG,
             heightCm,
-            extras
+            extras,
+            // D2 场景：编辑 apply、清空「摘下时间」，保持原 groupId
+            // （如果清掉 groupId 而旧 remove 还在 → 真孤儿；保持 groupId + 旧 remove
+            //  → PK 引擎继续按旧对算，行为符合「只改贴上时间不动摘下时间」的直觉）
+            ...(eventToEdit?.companionGroupId !== undefined
+                && removeTimeStr.trim() === ''
+                ? { companionGroupId: eventToEdit.companionGroupId }
+                : {}),
         };
 
         // Silently remember the last-used dose *per drug* (keyed by route+ester)
