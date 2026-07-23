@@ -502,12 +502,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       )}
 
       {/* Multi-select top banner + floating action bar.
-       *  Both render outside the records / plans sub-trees so they overlay
-       *  whatever is currently on screen. */}
+       *  The banner is `fixed` (NOT sticky) so it always sits at the top
+       *  of the viewport for the entire duration of selection mode,
+       *  regardless of how long the records list is or where the user
+       *  has scrolled. It clears two things:
+       *    - the iPhone notch via safe-area-inset-top + 12px gap (mobile)
+       *    - the MainLayout desktop top-bar (h-16 = 64px) + 12px gap (md+)
+       *
+       *  `pointer-events-none` on the wrapper lets taps fall through to
+       *  records underneath; the inner pill re-enables pointer events
+       *  so its own content stays interactive.
+       *
+       *  Visual treatment pushes it past the previous faint-strip look:
+       *  rounded-2xl + accent border + shadow-lg + bold text-base, so
+       *  the user can't miss it once they enter selection mode. */}
       {selectionMode && (
-        <div className="px-2 md:max-lg:px-2 lg:px-4 sticky top-0 z-30">
-          <div className="glass-card rounded-xl px-3 py-2 flex items-center justify-between text-sm">
-            <span style={{ color: 'var(--text-primary)' }}>
+        <div
+          className="fixed left-0 right-0 z-30 px-3 md:px-4 pointer-events-none top-[calc(env(safe-area-inset-top,0px)_+_12px)] md:top-[76px]"
+          aria-live="polite"
+          data-testid="history-selection-banner"
+        >
+          <div
+            className="max-w-screen-lg mx-auto glass-card rounded-2xl px-5 py-3 flex items-center justify-between pointer-events-auto"
+            style={{
+              boxShadow: 'var(--shadow-lg)',
+              border: '1.5px solid var(--accent-500)',
+            }}
+          >
+            <span className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>
               {t('history.selected_count', { count: selectedIds.size })}
             </span>
             <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
