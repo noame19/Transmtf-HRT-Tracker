@@ -6,6 +6,8 @@ import {
     patchGroupOf,
     findPatchRemoveForApply,
     findPatchApplyForRemove,
+    removeCompanion,
+    applyCompanion,
 } from './patch';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,6 +130,49 @@ describe('findPatchApplyForRemove (inverse)', () => {
         // 20 days before the remove — well outside the 14d wear window.
         const tooEarly = makeEvent({ id: 't', route: Route.patchApply, timeH: 200 - 20 * 24 });
         expect(findPatchApplyForRemove(remove, [tooEarly])).toBeNull();
+    });
+});
+
+describe('removeCompanion / applyCompanion (strict groupId-only)', () => {
+    it('removeCompanion returns the remove with the same groupId', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        expect(removeCompanion(apply, [apply, remove])?.id).toBe('r');
+    });
+
+    it('removeCompanion returns null when no groupId match exists', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const other = makeEvent({ id: 'o', route: Route.patchRemove, timeH: 200, companionGroupId: 'g2' });
+        expect(removeCompanion(apply, [apply, other])).toBeNull();
+    });
+
+    it('removeCompanion returns null for non-apply inputs', () => {
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove });
+        expect(removeCompanion(remove, [remove])).toBeNull();
+    });
+
+    it('removeCompanion does NOT use time-axis fallback', () => {
+        // 没有 groupId，但时间上紧邻 → 不应该被配对（这是与 findPatchRemoveForApply 的关键区别）
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 101 });
+        expect(removeCompanion(apply, [apply, remove])).toBeNull();
+    });
+
+    it('applyCompanion is the inverse direction', () => {
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        expect(applyCompanion(remove, [apply, remove])?.id).toBe('a');
+    });
+
+    it('applyCompanion returns null for non-remove inputs', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply });
+        expect(applyCompanion(apply, [apply])).toBeNull();
+    });
+
+    it('applyCompanion returns null when groupId mismatch (even with close time)', () => {
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 199, companionGroupId: 'g2' });
+        expect(applyCompanion(remove, [apply, remove])).toBeNull();
     });
 });
 

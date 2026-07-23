@@ -125,3 +125,41 @@ export const findPatchApplyForRemove = (
     }
     return best;
 };
+
+/**
+ * Strict groupId-only inverse of `findPatchRemoveForApply`. Returns the
+ * companion `Route.patchRemove` for `apply` when both share an identical,
+ * non-empty `companionGroupId`. **No time-axis fallback** — this helper is
+ * used by write-path cascades (delete / route-change) where we need 1-to-1
+ * certainty, never a fuzzy "closest remove" guess.
+ */
+export const removeCompanion = (
+    apply: DoseEvent,
+    allEvents: DoseEvent[],
+): DoseEvent | null => {
+    if (!isPatchApply(apply)) return null;
+    const groupId = patchGroupOf(apply);
+    if (!groupId) return null;
+    return allEvents.find(
+        (e) =>
+            e.id !== apply.id &&
+            e.route === Route.patchRemove &&
+            patchGroupOf(e) === groupId,
+    ) ?? null;
+};
+
+/** Inverse direction: find the apply companion of a remove. See `removeCompanion`. */
+export const applyCompanion = (
+    remove: DoseEvent,
+    allEvents: DoseEvent[],
+): DoseEvent | null => {
+    if (!isPatchRemove(remove)) return null;
+    const groupId = patchGroupOf(remove);
+    if (!groupId) return null;
+    return allEvents.find(
+        (e) =>
+            e.id !== remove.id &&
+            e.route === Route.patchApply &&
+            patchGroupOf(e) === groupId,
+    ) ?? null;
+};
