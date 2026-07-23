@@ -40,23 +40,10 @@ export default defineConfig(({ mode }) => {
           },
           workbox: {
             // ECharts bundle is 2.27 MB; raise precache limit above default 2 MiB.
+            // (CDN-tailwind runtimeCaching was here before Tailwind was moved
+            //  to a local PostCSS pipeline; it's no longer reachable and was
+            //  removed along with the cdn.tailwindcss.com <script>.)
             maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-            runtimeCaching: [
-              {
-                urlPattern: /^https:\/\/cdn\.tailwindcss\.com\/.*/i,
-                handler: 'CacheFirst',
-                options: {
-                  cacheName: 'tailwindcss-cache',
-                  expiration: {
-                    maxEntries: 10,
-                    maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
-                  },
-                  cacheableResponse: {
-                    statuses: [0, 200]
-                  }
-                }
-              }
-            ]
           }
         })
       ],
