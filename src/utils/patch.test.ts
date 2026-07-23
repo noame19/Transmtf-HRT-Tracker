@@ -8,6 +8,8 @@ import {
     findPatchApplyForRemove,
     removeCompanion,
     applyCompanion,
+    collectCascadeIds,
+    shouldCascadeRemove,
 } from './patch';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,6 +175,63 @@ describe('removeCompanion / applyCompanion (strict groupId-only)', () => {
         const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
         const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 199, companionGroupId: 'g2' });
         expect(applyCompanion(remove, [apply, remove])).toBeNull();
+    });
+});
+
+describe('collectCascadeIds / shouldCascadeRemove', () => {
+    it('collectCascadeIds returns just the id for non-patch events', () => {
+        const inj = makeEvent({ id: 'i', route: Route.injection });
+        expect(collectCascadeIds('i', [inj])).toEqual(new Set(['i']));
+    });
+
+    it('collectCascadeIds for patchApply includes paired remove id', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const result = collectCascadeIds('a', [apply, remove]);
+        expect(result.has('a')).toBe(true);
+        expect(result.has('r')).toBe(true);
+    });
+
+    it('collectCascadeIds for patchRemove includes paired apply id', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const result = collectCascadeIds('r', [apply, remove]);
+        expect(result.has('r')).toBe(true);
+        expect(result.has('a')).toBe(true);
+    });
+
+    it('collectCascadeIds for apply without groupId returns only apply id', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
+        const result = collectCascadeIds('a', [apply]);
+        expect(result.size).toBe(1);
+        expect(result.has('a')).toBe(true);
+    });
+
+    it('shouldCascadeRemove returns companion when apply→non-patch route', () => {
+        const oldApply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const newEvent = makeEvent({ id: 'a', route: Route.injection, timeH: 100 });
+        expect(shouldCascadeRemove(oldApply, newEvent, [oldApply, remove])?.id).toBe('r');
+    });
+
+    it('shouldCascadeRemove returns null when route stays patchApply', () => {
+        const oldApply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
+        const newEvent = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
+        expect(shouldCascadeRemove(oldApply, newEvent, [oldApply])).toBeNull();
+    });
+
+    it('shouldCascadeRemove returns null when old route was not patchApply', () => {
+        const oldInj = makeEvent({ id: 'i', route: Route.injection, timeH: 100 });
+        const newInj = makeEvent({ id: 'i', route: Route.sublingual, timeH: 100 });
+        expect(shouldCascadeRemove(oldInj, newInj, [oldInj])).toBeNull();
+    });
+
+    it('shouldCascadeRemove returns apply companion when remove→non-patch route', () => {
+        const oldRemove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const newEvent = makeEvent({ id: 'r', route: Route.injection, timeH: 200 });
+        // 返回的应该是 apply（要被重置 groupId 的那个），而不是 remove 本身
+        expect(shouldCascadeRemove(oldRemove, newEvent, [oldRemove, apply])?.id).toBe('a');
     });
 });
 

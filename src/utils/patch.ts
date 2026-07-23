@@ -163,3 +163,57 @@ export const applyCompanion = (
             patchGroupOf(e) === groupId,
     ) ?? null;
 };
+
+/**
+ * Given an event id and the current event list, return the SET of ids that
+ * should be removed together. For a non-patch event, the set is just `{id}`.
+ * For a `patchApply` or `patchRemove` with a `companionGroupId`, the set
+ * also includes its paired sibling (looked up strictly by groupId — no
+ * time-axis fallback). Used by `handleDeleteEvent` and `handleBulkDeleteEvents`
+ * to enforce 1-to-1 cleanup without depending on the broader event stream.
+ */
+export const collectCascadeIds = (
+    id: string,
+    allEvents: DoseEvent[],
+): Set<string> => {
+    const ids = new Set<string>([id]);
+    const target = allEvents.find((e) => e.id === id);
+    if (!target) return ids;
+    if (target.route === Route.patchApply) {
+        const companion = removeCompanion(target, allEvents);
+        if (companion) ids.add(companion.id);
+    } else if (target.route === Route.patchRemove) {
+        const companion = applyCompanion(target, allEvents);
+        if (companion) ids.add(companion.id);
+    }
+    return ids;
+};
+
+/**
+ * Decide whether saving `newE` (which replaces `oldE` by id) should also
+ * trigger a sibling cleanup. Returns the companion `DoseEvent` whose own
+ * groupId link must be broken (i.e., the sibling gets deleted OR, for the
+ * remove→non-patch case, has its `companionGroupId` cleared).
+ *
+ * Cases:
+ *   - apply → non-patch route: companion is the paired remove (caller deletes it).
+ *   - remove → non-patch route: companion is the paired apply (caller clears its groupId).
+ *   - any other route change (e.g. injection → sublingual): no cascade.
+ *   - same-route edits (e.g. apply → apply with new timeH): no cascade (groupId preserved).
+ */
+export const shouldCascadeRemove = (
+    oldE: DoseEvent,
+    newE: DoseEvent,
+    allEvents: DoseEvent[],
+): DoseEvent | null => {
+    if (oldE.id !== newE.id) return null;
+    if (oldE.route === newE.route) return null;
+
+    if (oldE.route === Route.patchApply && newE.route !== Route.patchApply) {
+        return removeCompanion(oldE, allEvents);
+    }
+    if (oldE.route === Route.patchRemove && newE.route !== Route.patchRemove) {
+        return applyCompanion(oldE, allEvents);
+    }
+    return null;
+};
