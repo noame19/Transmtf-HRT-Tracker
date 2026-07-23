@@ -151,7 +151,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const [endDate, setEndDate] = useState('');
     const [intervalDaysStr, setIntervalDaysStr] = useState('1');
     const [timesPerDayStr, setTimesPerDayStr] = useState('1');
-    const intervalDays = Math.max(1, parseInt(intervalDaysStr) || 1);
+    const intervalDays = Math.max(0.5, parseFloat(intervalDaysStr) || 1);
     const timesPerDay = Math.max(1, Math.min(4, parseInt(timesPerDayStr) || 1));
     const [timeSlots, setTimeSlots] = useState<string[]>([DEFAULT_TIMES[0]]);
     const [weightStr, setWeightStr] = useState('');
@@ -1085,7 +1085,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
-                                        <input type="number" min="1" max="365"
+                                        <input type="number" min="0.5" max="365" step="0.5"
                                             value={intervalDaysStr}
                                             onChange={e => setIntervalDaysStr(e.target.value)}
                                             onBlur={() => setIntervalDaysStr(String(intervalDays))}
@@ -1179,6 +1179,9 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                         const d = new Date(ev.timeH * 3600000);
                                                         const pad = (n: number) => n.toString().padStart(2, '0');
                                                         const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                                        // 撕下事件单独加日期前缀：批量预览按天分组，撕下可能在几天后，
+                                                        // 单看「HH:MM」用户会以为是用药当天的时间
+                                                        const dateStr = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
                                                         const isPatchRemove = ev.route === Route.patchRemove;
                                                         const isPatchRate = ev.route === Route.patchApply
                                                             && (ev.extras?.[ExtraKey.releaseRateUGPerDay] ?? 0) > 0;
@@ -1208,7 +1211,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                 className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-300)]"
                                                             >
                                                                 <span className="text-sm font-mono font-semibold min-w-[3.2em]" style={{ color: 'var(--text-primary)' }}>
-                                                                    {timeStr}
+                                                                    {isPatchRemove ? `${dateStr} ${timeStr}` : timeStr}
                                                                 </span>
                                                                 <span className="text-xs font-bold" style={{ color: 'var(--accent-500)' }}>
                                                                     {doseLabel}
