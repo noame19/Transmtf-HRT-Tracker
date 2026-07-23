@@ -105,7 +105,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   const groupedEvents = useMemo(() => {
-    const sorted = [...events].sort((a, b) => b.timeH - a.timeH);
+    // 过滤掉 `patchRemove` 这种辅助事件再按天分组 —— 它们只是 `patchApply`
+    // 卡片底下那行小字（见下方 `overview.patch_removed_at` 渲染），不是
+    // 独立的用药记录。如果让它们参与分组，「只有撕下记录的那天」就会在
+    // 时间线上顶出一个空的日期标题（render 时 filter 掉 patchRemove 后
+    // 那一天就只剩标题没内容）。修法：分组这一步就把它们排除掉，让日期
+    // 边界只由真正展示的记录决定。
+    const sorted = events
+      .filter(ev => !isPatchRemove(ev))
+      .sort((a, b) => b.timeH - a.timeH);
     // Group by dateKey (sortable yyyy-mm-dd) so 2024-01-04 and 2026-01-04 form
     // distinct groups — otherwise `formatDate` collapses them and the timeline
     // looks identical after a year of scrolling.
