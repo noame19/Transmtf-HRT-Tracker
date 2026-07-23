@@ -15,6 +15,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Ester, Route, type DoseEvent, type LabResult, type Plan, type PlanExtras } from '../../types';
 import { sanitizeGelProducts, type GelProductSpec } from '../../pk';
+import { reconcileImportedPatchEvents } from './patchReconcile';
 import {
     BACKUP_SCHEMA_VERSION_V2,
     BACKUP_SCHEMA_VERSION_V3,
@@ -196,7 +197,10 @@ export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { 
             };
         })
         .filter((entry): entry is DoseEvent => entry !== null);
-    return { events, migratedCount };
+    // 老版本导出的事件可能没有 companionGroupId；reconcile 在所有反序列化
+    // 出口跑一次：抹孤儿 remove、补合法老 (apply, remove) 对的 groupId。
+    const reconciledEvents = reconcileImportedPatchEvents(events);
+    return { events: reconciledEvents, migratedCount };
 };
 
 export const sanitizeImportedLabResults = (raw: unknown): LabResult[] => {
