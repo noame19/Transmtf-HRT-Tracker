@@ -23,10 +23,15 @@ const HistoryBulkActionBar: React.FC<HistoryBulkActionBarProps> = ({
     onDelete,
 }) => {
     if (!visible) return null;
-    // Deletion is only allowed when no range anchor is pending AND the user
-    // has actually picked at least one item — otherwise the destructive
-    // primary button is misleading.
-    const canDelete = rangeButtonState === 'idle' && selectedCount > 0;
+    // Deletion is allowed whenever the user has actually picked at least one
+    // item. We intentionally do NOT block delete while the range picker is
+    // in `pickingEnd` state — auto-armed after the second click in selection
+    // mode (see HistoryView.onItemClick). Blocking delete here makes the
+    // primary action disappear the moment a user selects a second record,
+    // which they expected to delete. The range feature stays a separate
+    // opt-in path: tapping the range button still fills A..B; tapping
+    // delete just deletes whatever is currently selected.
+    const canDelete = selectedCount > 0;
     // 区间按钮:有 anchor + 已选 ≥ 2 时高亮可点,只选了 1 条时灰着提示用户再选一条。
     const canArmRange = rangeButtonState === 'pickingEnd' && selectedCount >= 2;
 

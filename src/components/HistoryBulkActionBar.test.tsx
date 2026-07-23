@@ -56,7 +56,13 @@ describe('HistoryBulkActionBar', () => {
         expect(deleteBtn.disabled).toBe(true);
     });
 
-    it('disables delete button when range is pickingEnd', () => {
+    it('enables delete button even when range is pickingEnd', () => {
+        // Regression: previously, clicking a second item in selection mode
+        // silently armed the range picker (state=pickingEnd) and at the
+        // same time disabled the delete button, leaving the user stuck
+        // after selecting exactly the records they wanted to delete.
+        // Range and delete are now independent paths — delete stays
+        // enabled whenever at least one item is selected.
         render(
             <HistoryBulkActionBar
                 visible
@@ -68,7 +74,7 @@ describe('HistoryBulkActionBar', () => {
                 onDelete={() => {}}
             />,
         );
-        expect((screen.getByTestId('btn-delete') as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByTestId('btn-delete') as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('range button disabled when only 1 item selected (idle state)', () => {
@@ -168,13 +174,14 @@ describe('HistoryBulkActionBar', () => {
         fireEvent.click(screen.getByTestId('btn-select-all'));
         // Range button: pickingEnd + 2+ items → enabled
         fireEvent.click(screen.getByTestId('btn-range'));
+        // Delete button: enabled even with range in pickingEnd, as long as
+        // there are items selected — see the dedicated test above.
+        fireEvent.click(screen.getByTestId('btn-delete'));
         fireEvent.click(screen.getByTestId('btn-cancel'));
-        // Delete: pickingEnd state → disabled; switch to idle for delete test
-        // (kept simple — delete already covered by "enables delete when idle" above)
         expect(onSelectAll).toHaveBeenCalledTimes(1);
         expect(onArmRange).toHaveBeenCalledTimes(1);
+        expect(onDelete).toHaveBeenCalledTimes(1);
         expect(onCancel).toHaveBeenCalledTimes(1);
-        expect(onArmRange).toHaveBeenCalledTimes(1);
     });
 
     it('does NOT animate-pulse when pickingEnd but only 1 item selected', () => {

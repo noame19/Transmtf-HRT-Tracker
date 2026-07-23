@@ -172,4 +172,41 @@ describe('HistoryView — selection mode', () => {
         const rangeBtn = screen.getByTestId('btn-range') as HTMLButtonElement;
         expect(rangeBtn.disabled).toBe(true);
     });
+
+    it('delete button stays enabled after a second selection (regression)', async () => {
+        // Reported bug: long-press → click a second record → delete button
+        // goes half-transparent and stops firing. Root cause was that the
+        // second click auto-armed the range picker (state=pickingEnd), and
+        // HistoryBulkActionBar.canDelete gated on rangeButtonState==='idle'.
+        // Selection and range are now independent: delete is enabled whenever
+        // selectedCount > 0.
+        const onBulkDeleteEvents = vi.fn();
+        const events = [mkEvent('a', 100), mkEvent('b', 200)];
+        render(
+            <HistoryView
+                {...baseProps}
+                events={events}
+                onBulkDeleteEvents={onBulkDeleteEvents}
+            />,
+        );
+
+        // Enter selection via long-press on 'a'.
+        const aRow = screen.getByTestId('event-row-a');
+        fireEvent.pointerDown(aRow, { clientX: 10, clientY: 10, button: 0 });
+        act(() => { vi.advanceTimersByTime(500); });
+
+        // Tap 'b' to add a second selection — this is what used to arm
+        // the range picker and silently lock the delete key.
+        fireEvent.click(screen.getByTestId('event-row-b'));
+
+        const deleteBtn = screen.getByTestId('btn-delete') as HTMLButtonElement;
+        expect(deleteBtn.disabled).toBe(false);
+
+        // Confirm clicking delete actually fires the bulk-delete callback
+        // (mocked dialog auto-confirms, see DialogContext mock above).
+        await act(async () => {
+            fireEvent.click(deleteBtn);
+        });
+        expect(onBulkDeleteEvents).toHaveBeenCalledWith(['a', 'b']);
+    });
 });
