@@ -508,16 +508,27 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             }
         }
 
-        // 间隔用 totalHours 加到 timeH，避免 setDate 跨月跨年的小数/天数漂移
+        // 间隔用 totalHours 加到 timeH，避免 setDate 跨月跨年的小数/天数漂移。
+        // ⚠️ 之前的实现用 `currentMs += intervalMs` + `setHours(slot.hh, slot.mm)`，
+        //    setHours 会把小时部分覆盖掉，所以 interval 里的「小时」偏移（例如 3 天 12 小时里的 12h）
+        //    永远丢了，apply 时间被卡死在 09:00。修法：以「start 日 + timeSlots[0] 时分」为锚点，
+        //    外层每次 + intervalTotalHours（包含天数和小时），内层 slot 用相对偏移叠加，
+        //    这样 timeSlots.length === 1（贴片）和 > 1（其它路径）都正确。
         const intervalMs = intervalTotalHours * 3600000;
-        let currentMs = start.getTime();
+        const startMs = start.getTime();
         const endMs = end.getTime();
-        while (currentMs <= endMs) {
+        const firstSlot = timeSlots[0] ?? DEFAULT_TIMES[0];
+        const [hh0, mm0] = firstSlot.split(':').map(Number);
+        const firstSlotOffsetMs = hh0 * 3600000 + mm0 * 60000;
+        let iterMs = startMs + firstSlotOffsetMs;
+        let n = 0;
+        while (iterMs <= endMs) {
             for (const slot of timeSlots) {
                 const [hh, mm] = slot.split(':').map(Number);
-                const eventDate = new Date(currentMs);
-                eventDate.setHours(hh, mm, 0, 0);
-                const timeH = eventDate.getTime() / 3600000;
+                // slot 相对 timeSlots[0] 的偏移：贴片只 1 个 slot,这里 delta = 0
+                // 其它路径多个 slot 时,delta 自动承载「一天内多个时刻」的语义
+                const slotDeltaMs = (hh - hh0) * 3600000 + (mm - mm0) * 60000;
+                const timeH = (iterMs + slotDeltaMs) / 3600000;
 
                 if (route === Route.patchApply) {
                     // 同时生成 (apply, remove) 对，共享 groupId
@@ -557,7 +568,8 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                     });
                 }
             }
-            currentMs += intervalMs;
+            n += 1;
+            iterMs = startMs + firstSlotOffsetMs + n * intervalMs;
         }
 
         setPreviewEvents(events);
