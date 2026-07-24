@@ -10,7 +10,7 @@ import HistoryBulkActionBar from '../components/HistoryBulkActionBar';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
 import ComplianceBanner from '../components/ComplianceBanner';
 import type { ComplianceMismatch } from '../utils/planCompliance';
-import { isPatchApply, isPatchRemove, findPatchRemoveForApply, shouldShowRemoveButton } from '../utils/patch';
+import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from '../utils/patch';
 
 type HistoryTab = 'records' | 'plans';
 
@@ -374,12 +374,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   // time means the button vanishes automatically the moment
                   // a new remove event is appended (re-render reads the
                   // updated `events` prop).
-                  // 「撕下时间」提示用 14 天兜底（兼容 legacy 老数据），但「撕下按钮」按 apply 是否有
-                  // groupId 分两支：有 groupId（现代数据）→ strict groupId-only；无 groupId（legacy）→
-                  // 14 天兜底。这样新建 apply（带 groupId）不会被无关 remove 误关按钮，老 legacy 数据
-                  // 也不会让用户重复点按钮。
                   const pairedRemove = isPatchApply(ev) ? findPatchRemoveForApply(ev, events) : null;
-                  const showRemoveBtn = shouldShowRemoveButton(ev, events);
+                  const showRemoveBtn = isPatchApply(ev) && !pairedRemove;
                   return (
                   <div
                     key={ev.id}

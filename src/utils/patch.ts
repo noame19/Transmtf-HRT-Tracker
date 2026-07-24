@@ -165,37 +165,6 @@ export const applyCompanion = (
 };
 
 /**
- * Decide whether the inline "贴片摘下" button should be shown next to a
- * patch-apply card. Two-track logic, picked by the apply's own state:
- *
- *   - apply HAS a `companionGroupId` (modern path — the form wrote it as a
- *     paired apply/remove). Use strict groupId-only matching, so unrelated
- *     removes (e.g. from a previous batch) cannot suppress the button.
- *
- *   - apply has NO `companionGroupId` (legacy / hand-edited data). Fall back
- *     to the 14-day time-axis heuristic so we don't show the button when an
- *     existing remove was already logged — the user would just double-record.
- *
- * Returns `true` when the button SHOULD be shown (i.e., no paired remove).
- */
-export const shouldShowRemoveButton = (
-    apply: DoseEvent,
-    allEvents: DoseEvent[],
-): boolean => {
-    if (!isPatchApply(apply)) return false;
-    const groupId = patchGroupOf(apply);
-    if (groupId) {
-        // Modern paired apply: only hide the button when the strict
-        // companion-group match is present.
-        return removeCompanion(apply, allEvents) === null;
-    }
-    // Legacy apply with no groupId: respect the 14-day time-axis fallback
-    // so we don't offer to record a remove that the user already logged
-    // (manually, before the unified form existed).
-    return findPatchRemoveForApply(apply, allEvents) === null;
-};
-
-/**
  * Given an event id and the current event list, return the SET of ids that
  * should be removed together. For a non-patch event, the set is just `{id}`.
  * For a `patchApply` or `patchRemove` with a `companionGroupId`, the set

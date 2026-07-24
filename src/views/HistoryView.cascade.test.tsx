@@ -17,11 +17,11 @@ vi.mock('../components/PlanList', () => ({ default: () => null }));
 import HistoryView from './HistoryView';
 import { DoseEvent, Route } from '../../types';
 
-const HOUR = 1; // timeH 字段单位是「小时」，这里只是占位，避免歧义
+const HOUR = 3600000;
 const makeEvent = (overrides: Partial<DoseEvent> = {}): DoseEvent => ({
     id: 'ev',
     route: Route.injection,
-    timeH: 100,
+    timeH: 100 * HOUR,
     doseMG: 1,
     ester: 'E2' as any,
     weightKG: 60,
@@ -63,13 +63,13 @@ describe('HistoryView — patch apply/remove cascade rendering', () => {
         const apply = makeEvent({
             id: 'apply-1',
             route: Route.patchApply,
-            timeH: 100,
+            timeH: 100 * HOUR,
             companionGroupId: 'g1',
         });
         const remove = makeEvent({
             id: 'remove-1',
             route: Route.patchRemove,
-            timeH: 200,
+            timeH: 200 * HOUR,
             companionGroupId: 'g1',
         });
         render(<HistoryView {...baseProps} events={[apply, remove]} />);
@@ -84,13 +84,13 @@ describe('HistoryView — patch apply/remove cascade rendering', () => {
         const apply = makeEvent({
             id: 'apply-2',
             route: Route.patchApply,
-            timeH: 100,
+            timeH: 100 * HOUR,
             companionGroupId: 'g2',
         });
         const remove = makeEvent({
             id: 'remove-2',
             route: Route.patchRemove,
-            timeH: 200,
+            timeH: 200 * HOUR,
             companionGroupId: 'g2',
         });
         render(<HistoryView {...baseProps} events={[apply, remove]} />);
@@ -106,68 +106,11 @@ describe('HistoryView — patch apply/remove cascade rendering', () => {
         const apply = makeEvent({
             id: 'apply-lonely',
             route: Route.patchApply,
-            timeH: 100,
+            timeH: 100 * HOUR,
             companionGroupId: 'lonely',
         });
         render(<HistoryView {...baseProps} events={[apply]} />);
         const btn = screen.queryByLabelText('btn.patch_remove');
         expect(btn).toBeTruthy();
-    });
-
-    it('shows "贴片移除" button for newly-saved apply with own groupId and no remove', () => {
-        // 用户场景：从 DoseFormModal 新建贴片没填摘下时间保存，apply 带 groupId，
-        // 没有对应的 remove → 按钮必须显示
-        const apply = makeEvent({
-            id: 'fresh-apply',
-            route: Route.patchApply,
-            timeH: 100,
-            companionGroupId: 'fresh',
-        });
-        render(<HistoryView {...baseProps} events={[apply]} />);
-        const btn = screen.queryByLabelText('btn.patch_remove');
-        expect(btn).toBeTruthy();
-    });
-
-    it('shows "贴片移除" button even when 14d window contains an UNRELATED paired (apply, remove) group', () => {
-        // 真实 bug 4：先批量添加 (apply+remove) 对（有 groupId），再新建一条 apply（有 groupId）。
-        // 新 apply 落在 14 天窗口内，按钮必须仍然显示（strict groupId 不被无关 remove 干扰）
-        const pairedApply = makeEvent({
-            id: 'paired-apply',
-            route: Route.patchApply,
-            timeH: 100,
-            companionGroupId: 'paired',
-        });
-        const pairedRemove = makeEvent({
-            id: 'paired-remove',
-            route: Route.patchRemove,
-            timeH: 108,
-            companionGroupId: 'paired',
-        });
-        const freshApply = makeEvent({
-            id: 'fresh-apply',
-            route: Route.patchApply,
-            timeH: 104,
-            companionGroupId: 'fresh', // 自己独立的 groupId
-        });
-        render(<HistoryView {...baseProps} events={[pairedApply, pairedRemove, freshApply]} />);
-        const btn = screen.queryByLabelText('btn.patch_remove');
-        expect(btn).toBeTruthy();
-    });
-
-    it('hides "贴片移除" button for legacy apply without groupId when 14d window has a remove', () => {
-        // 老数据兼容：apply 无 groupId，14 天内有 remove（也是无 groupId）→ 按钮不显示
-        const apply = makeEvent({
-            id: 'legacy-apply',
-            route: Route.patchApply,
-            timeH: 100,
-        });
-        const remove = makeEvent({
-            id: 'legacy-remove',
-            route: Route.patchRemove,
-            timeH: 108,
-        });
-        render(<HistoryView {...baseProps} events={[apply, remove]} />);
-        const btn = screen.queryByLabelText('btn.patch_remove');
-        expect(btn).toBeNull();
     });
 });

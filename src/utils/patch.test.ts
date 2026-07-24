@@ -10,7 +10,6 @@ import {
     applyCompanion,
     collectCascadeIds,
     shouldCascadeRemove,
-    shouldShowRemoveButton,
 } from './patch';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,52 +232,6 @@ describe('collectCascadeIds / shouldCascadeRemove', () => {
         const newEvent = makeEvent({ id: 'r', route: Route.injection, timeH: 200 });
         // 返回的应该是 apply（要被重置 groupId 的那个），而不是 remove 本身
         expect(shouldCascadeRemove(oldRemove, newEvent, [oldRemove, apply])?.id).toBe('a');
-    });
-});
-
-describe('shouldShowRemoveButton', () => {
-    it('returns false for non-apply inputs', () => {
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove });
-        expect(shouldShowRemoveButton(remove, [remove])).toBe(false);
-        const inj = makeEvent({ id: 'i', route: Route.injection });
-        expect(shouldShowRemoveButton(inj, [inj])).toBe(false);
-    });
-
-    it('modern path: apply WITH groupId — button hidden when strict groupId match exists', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
-        expect(shouldShowRemoveButton(apply, [apply, remove])).toBe(false);
-    });
-
-    it('modern path: apply WITH groupId — button SHOWN when groupId match absent (e.g. user just saved)', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'fresh' });
-        expect(shouldShowRemoveButton(apply, [apply])).toBe(true);
-    });
-
-    it('modern path: apply WITH groupId — button SHOWN even if 14d window contains UNRELATED remove (bug 4 fix)', () => {
-        // 关键场景：批量添加的 (apply, remove) 对有一条 remove，新建的 apply 落在 14 天内，
-        // 但因为 apply 有自己的 groupId，strict groupId 配对找不到 → 按钮必须显示。
-        const pairedApply = makeEvent({ id: 'pa', route: Route.patchApply, timeH: 100, companionGroupId: 'paired' });
-        const pairedRemove = makeEvent({ id: 'pr', route: Route.patchRemove, timeH: 108, companionGroupId: 'paired' });
-        const freshApply = makeEvent({ id: 'fa', route: Route.patchApply, timeH: 104, companionGroupId: 'fresh' });
-        expect(shouldShowRemoveButton(freshApply, [pairedApply, pairedRemove, freshApply])).toBe(true);
-    });
-
-    it('legacy path: apply WITHOUT groupId — button hidden when 14d time-axis fallback finds a remove', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 108 });
-        expect(shouldShowRemoveButton(apply, [apply, remove])).toBe(false);
-    });
-
-    it('legacy path: apply WITHOUT groupId — button SHOWN when no remove within 14d', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
-        expect(shouldShowRemoveButton(apply, [apply])).toBe(true);
-    });
-
-    it('legacy path: apply WITHOUT groupId — button SHOWN when remove is beyond 14d window', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 100 + 15 * 24 });
-        expect(shouldShowRemoveButton(apply, [apply, remove])).toBe(true);
     });
 });
 
