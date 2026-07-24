@@ -204,21 +204,10 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setEndDate(toLocalDateStr(now));
             setTimesPerDayStr('1');
             setTimeSlots([DEFAULT_TIMES[0]]);
-            // 先读 route，下面按 route 设默认值（贴片路径用 3/12，其它用 1/0）
             const last = readLastDrug();
-            const newRoute = last?.route ?? Route.sublingual;
-            if (newRoute === Route.patchApply) {
-                setIntervalDaysStr('3');
-                setIntervalHoursStr('12');
-                setWearDaysStr('3');
-                setWearHoursStr('12');
-            } else {
-                setIntervalDaysStr('1');
-                setIntervalHoursStr('0');
-                setWearDaysStr('3');
-                setWearHoursStr('0');
-            }
-            setRoute(newRoute);
+            // 默认值由下面的 [route, isOpen] useEffect 接管（它会跑 applyRouteDefaults），
+            // 这里只负责 setRoute，让新的 useEffect 拿到正确的 route 后再设默认值。
+            setRoute(last?.route ?? Route.sublingual);
             setEster(last?.ester ?? Ester.EV);
             // Pre-fill gel from the most recent gel administration (events JSON).
             const lastGel = readLastGelEvent(allEvents);
@@ -289,6 +278,23 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setLastEditedField(ester === Ester.E2 ? 'bio' : 'raw');
         }
     }, [isOpen, route, ester]);
+
+    // 按 route 重置 interval / wear 默认值：modal 打开 + route 切换都触发
+    // 贴片路径：3/12/3/12；其它路径：1/0/3/0
+    useEffect(() => {
+        if (!isOpen) return;
+        if (route === Route.patchApply) {
+            setIntervalDaysStr('3');
+            setIntervalHoursStr('12');
+            setWearDaysStr('3');
+            setWearHoursStr('12');
+        } else {
+            setIntervalDaysStr('1');
+            setIntervalHoursStr('0');
+            setWearDaysStr('3');
+            setWearHoursStr('0');
+        }
+    }, [route, isOpen]);
 
     useEffect(() => {
         setTimeSlots(prev => {
