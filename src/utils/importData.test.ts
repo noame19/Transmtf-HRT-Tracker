@@ -8,7 +8,7 @@ const gel = { id: 1000, name: 'X', kPenBase: 0.14, kLoss: 1.26, kRel: 0.022, con
 
 describe('parseImportedBackup — partial sections use null = "keep existing"', () => {
     it('gel-only backup: labResults and events sections are absent → null', () => {
-        const r = parseImportedBackup({ gelProducts: [gel] }, 70);
+        const r = parseImportedBackup({ gelProducts: [gel] }, 70, 165);
         expect(r.events).toEqual([]);          // no events section
         expect(r.labResults).toBeNull();       // absent → keep existing
         expect(r.gelProducts).toHaveLength(1); // present
@@ -16,32 +16,32 @@ describe('parseImportedBackup — partial sections use null = "keep existing"', 
     });
 
     it('events-only legacy top-level array: labs/gel absent → null (labs preserved)', () => {
-        const r = parseImportedBackup([ev], 70);
+        const r = parseImportedBackup([ev], 70, 165);
         expect(r.events).toHaveLength(1);
         expect(r.labResults).toBeNull();
         expect(r.gelProducts).toBeNull();
     });
 
     it('labResults: [] is PRESENT-but-empty → [] (clears), not null', () => {
-        const r = parseImportedBackup({ labResults: [] }, 70);
+        const r = parseImportedBackup({ labResults: [] }, 70, 165);
         expect(r.labResults).toEqual([]);      // present → clear
         expect(importHasContent(r)).toBe(true); // valid import (intent: clear labs)
     });
 
     it('full backup overwrites all three sections', () => {
-        const r = parseImportedBackup({ events: [ev], labResults: [lab], gelProducts: [gel] }, 70);
+        const r = parseImportedBackup({ events: [ev], labResults: [lab], gelProducts: [gel] }, 70, 165);
         expect(r.events).toHaveLength(1);
         expect(r.labResults).toHaveLength(1);
         expect(r.gelProducts).toHaveLength(1);
     });
 
     it('empty object / garbage is not valid content', () => {
-        expect(importHasContent(parseImportedBackup({}, 70))).toBe(false);
-        expect(importHasContent(parseImportedBackup(42, 70))).toBe(false);
+        expect(importHasContent(parseImportedBackup({}, 70, 165))).toBe(false);
+        expect(importHasContent(parseImportedBackup(42, 70, 165))).toBe(false);
     });
 
     it('counts rows migrated for missing per-dose weight, using fallback', () => {
-        const r = parseImportedBackup({ events: [{ timeH: 1, doseMG: 1, route: 'gel', ester: 'E2', extras: {} }] }, 65);
+        const r = parseImportedBackup({ events: [{ timeH: 1, doseMG: 1, route: 'gel', ester: 'E2', extras: {} }] }, 65, 165);
         expect(r.events[0].weightKG).toBe(65);
         expect(r.migratedCount).toBe(1);
     });
@@ -49,7 +49,7 @@ describe('parseImportedBackup — partial sections use null = "keep existing"', 
     it('accepts EU injection rows through the enum validator', () => {
         const r = parseImportedBackup({
             events: [{ timeH: 1, doseMG: 100, route: Route.injection, ester: Ester.EU, weightKG: 70, extras: {} }],
-        }, 70);
+        }, 70, 165);
         expect(r.events).toHaveLength(1);
         expect(r.events[0].route).toBe(Route.injection);
         expect(r.events[0].ester).toBe(Ester.EU);
@@ -62,13 +62,13 @@ describe('parseImportedBackup — partial sections use null = "keep existing"', 
                 { timeH: 1, doseMG: 100, route: 'injection', ester: 'EUU', weightKG: 70, extras: {} },
                 { timeH: 2, doseMG: 100, route: 'implant', ester: 'EU', weightKG: 70, extras: {} },
             ],
-        }, 70);
+        }, 70, 165);
         expect(r.events).toHaveLength(1);
         expect(r.events[0].ester).toBe(Ester.E2);
     });
 
     it('drops corrupt gel products via the shared sanitizer (id<1000, NaN rate)', () => {
-        const r = parseImportedBackup({ gelProducts: [gel, { id: 1, ...gel, id2: 0 }, { id: 1001, name: 'bad', kPenBase: NaN, kLoss: 1, kRel: 1 }] }, 70);
+        const r = parseImportedBackup({ gelProducts: [gel, { id: 1, ...gel, id2: 0 }, { id: 1001, name: 'bad', kPenBase: NaN, kLoss: 1, kRel: 1 }] }, 70, 165);
         expect(r.gelProducts).toHaveLength(1);
         expect(r.gelProducts![0].id).toBe(1000);
     });

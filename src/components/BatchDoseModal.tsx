@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData } from '../contexts/AppDataContext';
-import { prefillWeightKG } from '../utils/weight';
+import { prefillWeightKG, prefillHeightCM } from '../utils/weight';
 import CustomSelect from './CustomSelect';
 import QuickDosePanel from './QuickDosePanel';
 import DoseFormModal from './DoseFormModal';
@@ -149,14 +149,24 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     // Schedule params
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    // 间隔 = 几天 + 几小时，内部统一存 hours
     const [intervalDaysStr, setIntervalDaysStr] = useState('1');
-    const [timesPerDayStr, setTimesPerDayStr] = useState('1');
+    const [intervalHoursStr, setIntervalHoursStr] = useState('0');
     const intervalDays = Math.max(1, parseInt(intervalDaysStr) || 1);
-    const timesPerDay = Math.max(1, Math.min(4, parseInt(timesPerDayStr) || 1));
+    const intervalHours = Math.max(0, Math.min(23, parseInt(intervalHoursStr) || 0));
+    const intervalTotalHours = intervalDays * 24 + intervalHours;
+    // 贴片必须每日 1 次；这里写死 1，下面的 UI 会把 timesPerDay 输入框隐起来
+    const [timesPerDayStr, setTimesPerDayStr] = useState('1');
+    const timesPerDay = 1;
     const [timeSlots, setTimeSlots] = useState<string[]>([DEFAULT_TIMES[0]]);
     const [weightStr, setWeightStr] = useState('');
-    // 贴片佩戴天数：仅 patchApply 路径生效，配套生成 (apply, remove) 对时用
-    const [wearDaysStr, setWearDaysStr] = useState('3.5');
+    const [heightStr, setHeightStr] = useState('');
+    // 贴片佩戴时长：仅 patchApply 路径生效，几小时内部统一存 hours
+    const [wearDaysStr, setWearDaysStr] = useState('3');
+    const [wearHoursStr, setWearHoursStr] = useState('0');
+    const wearDays = Math.max(0, parseInt(wearDaysStr) || 0);
+    const wearHours = Math.max(0, Math.min(23, parseInt(wearHoursStr) || 0));
+    const wearTotalHours = wearDays * 24 + wearHours;
 
     // Preview state
     const [previewEvents, setPreviewEvents] = useState<DoseEvent[]>([]);
@@ -186,8 +196,11 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setStartDate(toLocalDateStr(thirtyDaysAgo));
             setEndDate(toLocalDateStr(now));
             setIntervalDaysStr('1');
+            setIntervalHoursStr('0');
             setTimesPerDayStr('1');
             setTimeSlots([DEFAULT_TIMES[0]]);
+            setWearDaysStr('3');
+            setWearHoursStr('0');
             const last = readLastDrug();
             setRoute(last?.route ?? Route.sublingual);
             setEster(last?.ester ?? Ester.EV);
@@ -215,6 +228,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             setPreviewEvents([]);
             setEditingEvent(null);
             setWeightStr(prefillWeightKG(allEvents).toString());
+            setHeightStr(prefillHeightCM(allEvents).toString());
         }
     }, [isOpen]);
 
@@ -459,22 +473,27 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             ? parsedWeight
             : prefillWeightKG(allEvents);
 
-        // 贴片：解析佩戴天数（仅 patchApply 时用）
-        let wearDays = 0;
+        const parsedHeight = parseFloat(heightStr);
+        const heightCM = (Number.isFinite(parsedHeight) && parsedHeight > 0)
+            ? parsedHeight
+            : prefillHeightCM(allEvents);
+
+        // 贴片：解析佩戴时长（仅 patchApply 时用）
         if (route === Route.patchApply) {
-            const parsed = parseFloat(wearDaysStr);
-            if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 14) {
-                showDialog('alert', t('batch.wear_days_invalid') || '佩戴天数需要在 0.5–14 之间');
+            if (wearTotalHours <= 0 || wearTotalHours > 14 * 24) {
+                showDialog('alert', t('batch.wear_days_invalid') || '佩戴时长需要在 0.5–14 天之间');
                 return;
             }
-            wearDays = parsed;
         }
 
-        const current = new Date(start);
-        while (current <= end) {
+        // 间隔用 totalHours 加到 timeH，避免 setDate 跨月跨年的小数/天数漂移
+        const intervalMs = intervalTotalHours * 3600000;
+        let currentMs = start.getTime();
+        const endMs = end.getTime();
+        while (currentMs <= endMs) {
             for (const slot of timeSlots) {
                 const [hh, mm] = slot.split(':').map(Number);
-                const eventDate = new Date(current);
+                const eventDate = new Date(currentMs);
                 eventDate.setHours(hh, mm, 0, 0);
                 const timeH = eventDate.getTime() / 3600000;
 
@@ -488,6 +507,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                         timeH,
                         doseMG: finalDoseMG,
                         weightKG,
+                        heightCm: heightCM,
                         extras: { ...extrasTemplate },
                         companionGroupId: groupId,
                     });
@@ -495,9 +515,10 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                         id: uuidv4(),
                         route: Route.patchRemove,
                         ester: Ester.E2,
-                        timeH: timeH + wearDays * 24,
+                        timeH: timeH + wearTotalHours,
                         doseMG: 0,
                         weightKG,
+                        heightCm: heightCM,
                         extras: {},
                         companionGroupId: groupId,
                     });
@@ -509,19 +530,33 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                         timeH,
                         doseMG: finalDoseMG,
                         weightKG,
+                        heightCm: heightCM,
                         extras: { ...extrasTemplate },
                     });
                 }
             }
-            current.setDate(current.getDate() + intervalDays);
+            currentMs += intervalMs;
         }
 
         setPreviewEvents(events);
         setStep('preview');
     };
 
+    // 贴片删除：apply 和 remove 通过 companionGroupId 联动，删一个就把一对都删掉。
+    // 非贴片事件按单条删。
     const removePreviewEvent = (id: string) => {
-        setPreviewEvents(prev => prev.filter(ev => ev.id !== id));
+        setPreviewEvents(prev => {
+            const target = prev.find(ev => ev.id === id);
+            if (!target) return prev;
+            if (target.route !== Route.patchApply && target.route !== Route.patchRemove) {
+                return prev.filter(ev => ev.id !== id);
+            }
+            return prev.filter(ev => {
+                if (ev.id === id) return false;
+                if (target.companionGroupId && ev.companionGroupId === target.companionGroupId) return false;
+                return true;
+            });
+        });
     };
 
     const handleEventEdit = (updatedEv: DoseEvent) => {
@@ -530,7 +565,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     };
 
     const handleEventDelete = (id: string) => {
-        setPreviewEvents(prev => prev.filter(ev => ev.id !== id));
+        removePreviewEvent(id);
         setEditingEvent(null);
     };
 
@@ -551,30 +586,69 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         }
     };
 
+    // 贴片对：apply + 它的 remove。渲染时撕下挂 apply 下面。
+    type PreviewPair = { apply: DoseEvent; remove: DoseEvent | null };
+    const pairedPreview = useMemo<PreviewPair[]>(() => {
+        const applies = previewEvents.filter(ev => ev.route === Route.patchApply);
+        return applies.map(apply => {
+            const remove = previewEvents.find(
+                ev => ev.route === Route.patchRemove
+                    && ev.companionGroupId
+                    && ev.companionGroupId === apply.companionGroupId,
+            ) ?? null;
+            return { apply, remove };
+        });
+    }, [previewEvents]);
+
+    // 分组：贴片按 apply 日期归组（撕下跨日仍挂在 apply 那一天下面）；
+    // 非贴片按自己的时间归组；最终按日期排序。
     const groupedPreview = useMemo(() => {
-        const sorted = [...previewEvents].sort((a, b) => a.timeH - b.timeH);
-        const groups: { date: string; events: DoseEvent[] }[] = [];
-        let currentGroup: { date: string; events: DoseEvent[] } | null = null;
-        sorted.forEach(ev => {
-            const d = new Date(ev.timeH * 3600000);
-            const dateStr = toLocalDateStr(d);
-            if (!currentGroup || currentGroup.date !== dateStr) {
-                currentGroup = { date: dateStr, events: [] };
-                groups.push(currentGroup);
+        const groups: { date: string; pairs: PreviewPair[]; lone: DoseEvent[] }[] = [];
+        const dateIndex = new Map<string, typeof groups[number]>();
+        const ensureGroup = (dateStr: string) => {
+            let g = dateIndex.get(dateStr);
+            if (!g) {
+                g = { date: dateStr, pairs: [], lone: [] };
+                groups.push(g);
+                dateIndex.set(dateStr, g);
             }
-            currentGroup.events.push(ev);
+            return g;
+        };
+        pairedPreview.forEach(pair => {
+            const d = new Date(pair.apply.timeH * 3600000);
+            ensureGroup(toLocalDateStr(d)).pairs.push(pair);
+        });
+        const loneEvents = previewEvents.filter(
+            ev => ev.route !== Route.patchApply && ev.route !== Route.patchRemove,
+        );
+        loneEvents.forEach(ev => {
+            const d = new Date(ev.timeH * 3600000);
+            ensureGroup(toLocalDateStr(d)).lone.push(ev);
         });
         return groups;
-    }, [previewEvents]);
+    }, [pairedPreview, previewEvents]);
+
+    // 撕下相对时长 "X 天 Y 小时"，渲染时算即可
+    const formatWearDuration = (applyH: number, removeH: number): { days: number; hours: number; key: 'days' | 'hours' | 'both' } => {
+        const totalH = Math.max(0, removeH - applyH);
+        const days = Math.floor(totalH / 24);
+        const hours = totalH - days * 24;
+        if (days === 0) return { days, hours, key: 'hours' };
+        if (hours === 0) return { days, hours: 0, key: 'days' };
+        return { days, hours, key: 'both' };
+    };
 
     // Reflect what's actually in the preview, not the config form, so per-row
     // edits that change route/ester are honored in the header chip.
+    // 贴片对只看 apply（route/ester），不再被配对的 patchRemove 误判 mixed。
     const previewSummary = useMemo(() => {
         if (previewEvents.length === 0) return null;
-        const first = previewEvents[0];
-        const allSameRoute = previewEvents.every(ev => ev.route === first.route);
+        const mains = previewEvents.filter(ev => ev.route !== Route.patchRemove);
+        if (mains.length === 0) return { mixed: true, route: null, ester: null } as const;
+        const first = mains[0];
+        const allSameRoute = mains.every(ev => ev.route === first.route);
         if (!allSameRoute) return { mixed: true, route: null, ester: null } as const;
-        const allSameEster = previewEvents.every(ev => ev.ester === first.ester);
+        const allSameEster = mains.every(ev => ev.ester === first.ester);
         return {
             mixed: false,
             route: first.route,
@@ -877,27 +951,6 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                         <div className="text-xs text-[var(--text-soft-amber)] bg-[var(--bg-soft-amber)] border border-[var(--border-soft-amber)] p-3 rounded-xl">
                                             {t('beta.patch')}
                                         </div>
-                                        {/* 佩戴天数输入：仅 patch 时生效，批量生成 (apply, remove) 对时用 */}
-                                        <div className="space-y-1">
-                                            <label className="block text-xs font-semibold uppercase tracking-wider"
-                                                style={{ color: 'var(--text-tertiary)' }}>
-                                                {t('batch.wear_days_label') || '佩戴天数 (贴片戴多久撕下)'}
-                                            </label>
-                                            <input
-                                                type="number"
-                                                min="0.5"
-                                                max="14"
-                                                step="0.5"
-                                                value={wearDaysStr}
-                                                onChange={(e) => setWearDaysStr(e.target.value)}
-                                                className="w-full px-3 py-2 rounded-lg text-sm"
-                                                style={{
-                                                    background: 'var(--bg-card)',
-                                                    border: '1px solid var(--border-primary)',
-                                                    color: 'var(--text-primary)',
-                                                }}
-                                            />
-                                        </div>
                                     </div>
                                 )}
 
@@ -1082,16 +1135,54 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                         placeholder="70" />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
-                                        <input type="number" min="1" max="365"
-                                            value={intervalDaysStr}
-                                            onChange={e => setIntervalDaysStr(e.target.value)}
-                                            onBlur={() => setIntervalDaysStr(String(intervalDays))}
-                                            className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                            style={inputStyle} />
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.height_label')}</label>
+                                    <input
+                                        type="number" inputMode="decimal" min="80" max="250" step="0.5"
+                                        value={heightStr} onChange={e => setHeightStr(e.target.value)}
+                                        className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={inputStyle}
+                                        placeholder="165" />
+                                </div>
+
+                                {/* 间隔：天 + 小时 双输入 */}
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                {t('batch.interval_days_label')}
+                                            </label>
+                                            <input type="number" min="1" max="365"
+                                                value={intervalDaysStr}
+                                                onChange={e => setIntervalDaysStr(e.target.value)}
+                                                onBlur={() => setIntervalDaysStr(String(intervalDays))}
+                                                className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                style={inputStyle} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                {t('batch.interval_hours_label')}
+                                            </label>
+                                            <input type="number" min="0" max="23"
+                                                value={intervalHoursStr}
+                                                onChange={e => setIntervalHoursStr(e.target.value)}
+                                                onBlur={() => setIntervalHoursStr(String(intervalHours))}
+                                                className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                style={inputStyle} />
+                                        </div>
                                     </div>
+                                </div>
+
+                                {/* 每日次数：贴片路径强制 1 次（只显示文字提示，不显示输入框） */}
+                                {route === Route.patchApply ? (
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold" style={labelStyle}>{t('batch.times_per_day')}</label>
+                                        <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background: 'var(--bg-soft-amber)', color: 'var(--text-soft-amber)', border: '1px solid var(--border-soft-amber)' }}>
+                                            {t('batch.patch_force_one_per_day')}
+                                        </div>
+                                    </div>
+                                ) : (
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold" style={labelStyle}>{t('batch.times_per_day')}</label>
                                         <input type="number" min="1" max="4"
@@ -1101,8 +1192,9 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                             className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                             style={inputStyle} />
                                     </div>
-                                </div>
+                                )}
 
+                                {/* 时间槽：贴片路径只显示 1 个（每天贴一次） */}
                                 <div className="space-y-3">
                                     <label className="block text-xs font-bold" style={labelStyle}>{t('batch.time_slot')}</label>
                                     <div className="grid grid-cols-2 gap-3">
@@ -1116,6 +1208,42 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* 贴片专属：佩戴时长（天 + 小时）放在表单最底部 */}
+                                {route === Route.patchApply && (
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold" style={labelStyle}>
+                                            {t('batch.wear_days_label')}
+                                            <span className="ml-1 text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                                                {t('batch.wear_days_hint')}
+                                            </span>
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                    {t('batch.interval_days_label')}
+                                                </label>
+                                                <input type="number" min="0" max="14"
+                                                    value={wearDaysStr}
+                                                    onChange={e => setWearDaysStr(e.target.value)}
+                                                    onBlur={() => setWearDaysStr(String(wearDays))}
+                                                    className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                    style={inputStyle} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                    {t('batch.interval_hours_label')}
+                                                </label>
+                                                <input type="number" min="0" max="23"
+                                                    value={wearHoursStr}
+                                                    onChange={e => setWearHoursStr(e.target.value)}
+                                                    onBlur={() => setWearHoursStr(String(wearHours))}
+                                                    className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                    style={inputStyle} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
 
@@ -1161,101 +1289,186 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {groupedPreview.map(group => (
-                                            <div key={group.date} className="rounded-2xl border overflow-hidden"
-                                                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
-                                                <div className="px-4 py-2.5 flex items-center gap-2 border-b"
-                                                    style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
-                                                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-400)' }} />
-                                                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                                        {group.date}
-                                                    </span>
-                                                    <span className="text-[10px] font-medium ml-auto" style={{ color: 'var(--text-tertiary)' }}>
-                                                        {group.events.length}x
-                                                    </span>
-                                                </div>
-                                                <div className="divide-y" style={{ borderColor: 'var(--border-secondary)' }}>
-                                                    {group.events.map(ev => {
-                                                        const d = new Date(ev.timeH * 3600000);
-                                                        const pad = (n: number) => n.toString().padStart(2, '0');
-                                                        const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                                                        const isPatchRemove = ev.route === Route.patchRemove;
-                                                        const isPatchRate = ev.route === Route.patchApply
-                                                            && (ev.extras?.[ExtraKey.releaseRateUGPerDay] ?? 0) > 0;
-                                                        const rate = ev.extras?.[ExtraKey.releaseRateUGPerDay];
-                                                        const doseLabel = isPatchRemove
-                                                            ? '—'
-                                                            : isPatchRate
+                                        {groupedPreview.map(group => {
+                                            // 贴片对算 2 个事件；非贴片按 1 个
+                                            const totalEv = group.pairs.length * 2 + group.lone.length;
+                                            return (
+                                                <div key={group.date} className="rounded-2xl border overflow-hidden"
+                                                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-primary)' }}>
+                                                    <div className="px-4 py-2.5 flex items-center gap-2 border-b"
+                                                        style={{ borderColor: 'var(--border-secondary)', background: 'var(--bg-card-hover)' }}>
+                                                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-400)' }} />
+                                                        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                            {group.date}
+                                                        </span>
+                                                        <span className="text-[10px] font-medium ml-auto" style={{ color: 'var(--text-tertiary)' }}>
+                                                            {totalEv}x
+                                                        </span>
+                                                    </div>
+                                                    <div className="divide-y" style={{ borderColor: 'var(--border-secondary)' }}>
+                                                        {/* 贴片对：apply 卡 + 撕下提示行（挂在 apply 下面） */}
+                                                        {group.pairs.map(pair => {
+                                                            const applyEv = pair.apply;
+                                                            const removeEv = pair.remove;
+                                                            const d = new Date(applyEv.timeH * 3600000);
+                                                            const pad = (n: number) => n.toString().padStart(2, '0');
+                                                            const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                                            const isPatchRate = (applyEv.extras?.[ExtraKey.releaseRateUGPerDay] ?? 0) > 0;
+                                                            const rate = applyEv.extras?.[ExtraKey.releaseRateUGPerDay];
+                                                            const doseLabel = isPatchRate
                                                                 ? `${rate} µg/d`
-                                                                : `${ev.doseMG.toFixed(2)} mg`;
-                                                        return (
-                                                            <div
-                                                                key={ev.id}
-                                                                role="button"
-                                                                tabIndex={0}
-                                                                aria-label={`${t('btn.edit') || 'Edit'} · ${timeStr} · ${doseLabel} · ${t(`route.${ev.route}`)}`}
-                                                                onClick={() => setEditingEvent(ev)}
-                                                                onKeyDown={(e) => {
-                                                                    // Only react when the row itself has keyboard focus —
-                                                                    // prevents Enter/Space on the nested delete button
-                                                                    // from bubbling up and opening the editor.
-                                                                    if (e.currentTarget !== e.target) return;
-                                                                    if (e.key === 'Enter' || e.key === ' ') {
-                                                                        e.preventDefault();
-                                                                        setEditingEvent(ev);
-                                                                    }
-                                                                }}
-                                                                className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-300)]"
-                                                            >
-                                                                <span className="text-sm font-mono font-semibold min-w-[3.2em]" style={{ color: 'var(--text-primary)' }}>
-                                                                    {timeStr}
-                                                                </span>
-                                                                <span className="text-xs font-bold" style={{ color: 'var(--accent-500)' }}>
-                                                                    {doseLabel}
-                                                                </span>
-                                                                <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                                                    {t(`route.${ev.route}`)}
-                                                                </span>
-                                                                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
-                                                                    {ev.weightKG} {t('field.weight_unit')}
-                                                                </span>
-                                                                {ev.route === Route.gel && (() => {
-                                                                    // Surface the gel specifics so a batch can be verified
-                                                                    // before commit (these now materially change the PK).
-                                                                    const gx = ev.extras ?? {};
-                                                                    const prod = allGelProducts.find(p => p.id === gx[ExtraKey.gelProductId]);
-                                                                    const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(gx[ExtraKey.gelSite] ?? 0)));
-                                                                    const parts: string[] = [];
-                                                                    if (prod) parts.push(prod.name || t(prod.nameKey));
-                                                                    parts.push(t(`gel.site.${GEL_SITE_ORDER[siteIdx]}`));
-                                                                    if (GEL_SITE_ORDER[siteIdx] !== GelSite.scrotal) {
-                                                                        const ar = gx[ExtraKey.areaCM2];
-                                                                        if (typeof ar === 'number' && ar > 0) parts.push(`~${Math.round(ar)} cm²`);
-                                                                    }
-                                                                    const co = gx[ExtraKey.gelCoApplied];
-                                                                    if (typeof co === 'number' && co > 0 && co < GEL_COAPPLICATION_ORDER.length) parts.push(t(`gel.coapplied.${GEL_COAPPLICATION_ORDER[co]}`));
-                                                                    const wsh = gx[ExtraKey.gelWashAfterH];
-                                                                    if (typeof wsh === 'number' && wsh > 0) parts.push(`${t('gel.wash_short')} ${wsh}h`);
-                                                                    return (
-                                                                        <span className="basis-full text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                                                                            {parts.join(' · ')}
+                                                                : `${applyEv.doseMG.toFixed(2)} mg`;
+                                                            return (
+                                                                <React.Fragment key={applyEv.id}>
+                                                                    {/* apply 卡（与之前一样，可点击编辑） */}
+                                                                    <div
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        aria-label={`${t('btn.edit') || 'Edit'} · ${timeStr} · ${doseLabel} · ${t(`route.${applyEv.route}`)}`}
+                                                                        onClick={() => setEditingEvent(applyEv)}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.currentTarget !== e.target) return;
+                                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                                e.preventDefault();
+                                                                                setEditingEvent(applyEv);
+                                                                            }
+                                                                        }}
+                                                                        className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-300)]"
+                                                                    >
+                                                                        <span className="text-sm font-mono font-semibold min-w-[3.2em]" style={{ color: 'var(--text-primary)' }}>
+                                                                            {timeStr}
                                                                         </span>
-                                                                    );
-                                                                })()}
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); removePreviewEvent(ev.id); }}
-                                                                    aria-label={t('btn.delete') || 'Delete'}
-                                                                    className="ml-auto min-w-11 min-h-11 flex items-center justify-center rounded-lg transition opacity-60 hover:opacity-100 active:opacity-100"
-                                                                    style={{ color: '#ef4444' }}
+                                                                        <span className="text-xs font-bold" style={{ color: 'var(--accent-500)' }}>
+                                                                            {doseLabel}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                                            {t(`route.${applyEv.route}`)}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                                                            {applyEv.weightKG} {t('field.weight_unit')}
+                                                                        </span>
+                                                                        {typeof applyEv.heightCm === 'number' && applyEv.heightCm > 0 && (
+                                                                            <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                                                                {applyEv.heightCm} {t('field.height_unit')}
+                                                                            </span>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); removePreviewEvent(applyEv.id); }}
+                                                                            aria-label={t('batch.delete_pair') || 'Delete this patch pair'}
+                                                                            className="ml-auto min-w-11 min-h-11 flex items-center justify-center rounded-lg transition opacity-60 hover:opacity-100 active:opacity-100"
+                                                                            style={{ color: '#ef4444' }}
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                    {/* 撕下提示行：挂在 apply 下面，显示「X 天 Y 小时摘下」+ 删除按钮 */}
+                                                                    {removeEv && (() => {
+                                                                        const rd = new Date(removeEv.timeH * 3600000);
+                                                                        const rTimeStr = `${pad(rd.getHours())}:${pad(rd.getMinutes())}`;
+                                                                        const wear = formatWearDuration(applyEv.timeH, removeEv.timeH);
+                                                                        const wearLabel = wear.key === 'days'
+                                                                            ? t('batch.patch_removed_in_days_only').replace('{d}', String(wear.days))
+                                                                            : wear.key === 'hours'
+                                                                                ? t('batch.patch_removed_in_hours_only').replace('{h}', String(wear.hours))
+                                                                                : t('batch.patch_removed_in_both')
+                                                                                    .replace('{d}', String(wear.days))
+                                                                                    .replace('{h}', String(wear.hours));
+                                                                        return (
+                                                                            <div
+                                                                                className="pl-10 pr-3 sm:pr-4 py-2 flex items-center gap-2 text-[11px]"
+                                                                                style={{ color: 'var(--text-tertiary)' }}
+                                                                            >
+                                                                                <span className="font-mono font-semibold">{rTimeStr}</span>
+                                                                                <span>{wearLabel}</span>
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); removePreviewEvent(removeEv.id); }}
+                                                                                    aria-label={t('batch.delete_pair') || 'Delete this patch pair'}
+                                                                                    className="ml-auto min-w-11 min-h-11 flex items-center justify-center rounded-lg transition opacity-60 hover:opacity-100 active:opacity-100"
+                                                                                    style={{ color: '#ef4444' }}
+                                                                                >
+                                                                                    <Trash2 size={14} />
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                </React.Fragment>
+                                                            );
+                                                        })}
+                                                        {/* 非贴片单事件：跟旧渲染一致 */}
+                                                        {group.lone.map(ev => {
+                                                            const d = new Date(ev.timeH * 3600000);
+                                                            const pad = (n: number) => n.toString().padStart(2, '0');
+                                                            const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                                            const doseLabel = `${ev.doseMG.toFixed(2)} mg`;
+                                                            return (
+                                                                <div
+                                                                    key={ev.id}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    aria-label={`${t('btn.edit') || 'Edit'} · ${timeStr} · ${doseLabel} · ${t(`route.${ev.route}`)}`}
+                                                                    onClick={() => setEditingEvent(ev)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.currentTarget !== e.target) return;
+                                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                                            e.preventDefault();
+                                                                            setEditingEvent(ev);
+                                                                        }
+                                                                    }}
+                                                                    className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)] active:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-300)]"
                                                                 >
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                                    <span className="text-sm font-mono font-semibold min-w-[3.2em]" style={{ color: 'var(--text-primary)' }}>
+                                                                        {timeStr}
+                                                                    </span>
+                                                                    <span className="text-xs font-bold" style={{ color: 'var(--accent-500)' }}>
+                                                                        {doseLabel}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                                        {t(`route.${ev.route}`)}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                                                        {ev.weightKG} {t('field.weight_unit')}
+                                                                    </span>
+                                                                    {typeof ev.heightCm === 'number' && ev.heightCm > 0 && (
+                                                                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                                                                            {ev.heightCm} {t('field.height_unit')}
+                                                                        </span>
+                                                                    )}
+                                                                    {ev.route === Route.gel && (() => {
+                                                                        const gx = ev.extras ?? {};
+                                                                        const prod = allGelProducts.find(p => p.id === gx[ExtraKey.gelProductId]);
+                                                                        const siteIdx = Math.min(GEL_SITE_ORDER.length - 1, Math.max(0, Math.round(gx[ExtraKey.gelSite] ?? 0)));
+                                                                        const parts: string[] = [];
+                                                                        if (prod) parts.push(prod.name || t(prod.nameKey));
+                                                                        parts.push(t(`gel.site.${GEL_SITE_ORDER[siteIdx]}`));
+                                                                        if (GEL_SITE_ORDER[siteIdx] !== GelSite.scrotal) {
+                                                                            const ar = gx[ExtraKey.areaCM2];
+                                                                            if (typeof ar === 'number' && ar > 0) parts.push(`~${Math.round(ar)} cm²`);
+                                                                        }
+                                                                        const co = gx[ExtraKey.gelCoApplied];
+                                                                        if (typeof co === 'number' && co > 0 && co < GEL_COAPPLICATION_ORDER.length) parts.push(t(`gel.coapplied.${GEL_COAPPLICATION_ORDER[co]}`));
+                                                                        const wsh = gx[ExtraKey.gelWashAfterH];
+                                                                        if (typeof wsh === 'number' && wsh > 0) parts.push(`${t('gel.wash_short')} ${wsh}h`);
+                                                                        return (
+                                                                            <span className="basis-full text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
+                                                                                {parts.join(' · ')}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); removePreviewEvent(ev.id); }}
+                                                                        aria-label={t('btn.delete') || 'Delete'}
+                                                                        className="ml-auto min-w-11 min-h-11 flex items-center justify-center rounded-lg transition opacity-60 hover:opacity-100 active:opacity-100"
+                                                                        style={{ color: '#ef4444' }}
+                                                                    >
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </>

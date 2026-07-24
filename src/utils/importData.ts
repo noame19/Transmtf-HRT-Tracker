@@ -163,7 +163,7 @@ const isPlanSchedule = (value: unknown): value is Plan['schedule'] => {
 // Section sanitizers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { events: DoseEvent[]; migratedCount: number } => {
+export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number, fallbackHeight: number): { events: DoseEvent[]; migratedCount: number } => {
     if (!Array.isArray(raw)) throw new Error('Invalid format');
     let migratedCount = 0;
     const events = raw
@@ -186,7 +186,18 @@ export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { 
                 weightKG = fallbackWeight;
                 migratedCount += 1;
             }
-            return {
+            // 身高：缺省时回落到设备上的身高（prefillHeightCM 已处理过默认值）。
+            const heightNum = toNumber((entry as { heightCm?: unknown }).heightCm);
+            const heightCm: number | undefined =
+                heightNum !== null && heightNum >= 50 && heightNum <= 250
+                    ? heightNum
+                    : fallbackHeight;
+            // 贴片配对 ID：仅在导出方写过的合法字符串时保留；其他场景一律丢掉。
+            const groupId = (entry as { companionGroupId?: unknown }).companionGroupId;
+            const companionGroupId = typeof groupId === 'string' && groupId.trim().length > 0
+                ? groupId.trim()
+                : undefined;
+            const base = {
                 id: typeof entry.id === 'string' ? entry.id : uuidv4(),
                 route: entry.route,
                 timeH: timeNum,
@@ -194,6 +205,11 @@ export const sanitizeImportedEvents = (raw: unknown, fallbackWeight: number): { 
                 ester: entry.ester,
                 weightKG,
                 extras: extras as DoseEvent['extras'],
+            };
+            return {
+                ...base,
+                ...(heightCm !== undefined ? { heightCm } : {}),
+                ...(companionGroupId ? { companionGroupId } : {}),
             };
         })
         .filter((entry): entry is DoseEvent => entry !== null);
@@ -477,19 +493,19 @@ const detectSchemaVersion = (parsed: unknown): typeof BACKUP_SCHEMA_VERSION_V2 |
     return BACKUP_SCHEMA_VERSION_V2;
 };
 
-const parseV2 = (parsed: unknown, fallbackWeight: number): ParsedImport => {
+const parseV2 = (parsed: unknown, fallbackWeight: number, fallbackHeight: number): ParsedImport => {
     let events: DoseEvent[] = [];
     let labResults: LabResult[] | null = null;
     let gelProducts: GelProductSpec[] | null = null;
     let migratedCount = 0;
 
     if (Array.isArray(parsed)) {
-        const r = sanitizeImportedEvents(parsed, fallbackWeight);
+        const r = sanitizeImportedEvents(parsed, fallbackWeight, fallbackHeight);
         events = r.events;
         migratedCount = r.migratedCount;
     } else if (isRecord(parsed)) {
         if (Array.isArray(parsed.events)) {
-            const r = sanitizeImportedEvents(parsed.events, fallbackWeight);
+            const r = sanitizeImportedEvents(parsed.events, fallbackWeight, fallbackHeight);
             events = r.events;
             migratedCount = r.migratedCount;
         }
@@ -514,14 +530,14 @@ const parseV2 = (parsed: unknown, fallbackWeight: number): ParsedImport => {
     };
 };
 
-const parseV3 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
+const parseV3 = (parsed: JsonRecord, fallbackWeight: number, fallbackHeight: number): ParsedImport => {
     let events: DoseEvent[] = [];
     let labResults: LabResult[] | null = null;
     let gelProducts: GelProductSpec[] | null = null;
     let migratedCount = 0;
 
     if (Array.isArray(parsed.events)) {
-        const r = sanitizeImportedEvents(parsed.events, fallbackWeight);
+        const r = sanitizeImportedEvents(parsed.events, fallbackWeight, fallbackHeight);
         events = r.events;
         migratedCount = r.migratedCount;
     }
@@ -558,10 +574,12 @@ const parseV3 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
     };
 };
 
-const parseV4 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
+const parseV4 = (parsed: JsonRecord, fallbackWeight: number, fallbackHeight: number): ParsedImport => {
     // 先按 v3 路径解析所有 "v3 就存在的" 段，再追加 v4 专属字段。
-    const base = parseV3(parsed, fallbackWeight);
+    // v4 自带 basicInfo：如果备份里写了 heightCm，优先用备份的值给老 events 回填。
     const basicInfo = sanitizeImportedBasicInfo(parsed.basicInfo);
+    const baseFallbackHeight = basicInfo?.heightCm ?? fallbackHeight;
+    const base = parseV3(parsed, fallbackWeight, baseFallbackHeight);
     const doseTemplates = sanitizeImportedDoseTemplates(parsed.doseTemplates);
     const doseByDrug = sanitizeImportedDoseByDrug(parsed.doseByDrug);
     const doseLastDrug = sanitizeImportedDoseLastDrug(parsed.doseLastDrug);
@@ -575,15 +593,15 @@ const parseV4 = (parsed: JsonRecord, fallbackWeight: number): ParsedImport => {
     };
 };
 
-export const parseImportedBackup = (parsed: unknown, fallbackWeight: number): ParsedImport => {
+export const parseImportedBackup = (parsed: unknown, fallbackWeight: number, fallbackHeight: number): ParsedImport => {
     const version = detectSchemaVersion(parsed);
     if (version === BACKUP_SCHEMA_VERSION_V4 && isRecord(parsed)) {
-        return parseV4(parsed, fallbackWeight);
+        return parseV4(parsed, fallbackWeight, fallbackHeight);
     }
     if (version === BACKUP_SCHEMA_VERSION_V3 && isRecord(parsed)) {
-        return parseV3(parsed, fallbackWeight);
+        return parseV3(parsed, fallbackWeight, fallbackHeight);
     }
-    return parseV2(parsed, fallbackWeight);
+    return parseV2(parsed, fallbackWeight, fallbackHeight);
 };
 
 /**

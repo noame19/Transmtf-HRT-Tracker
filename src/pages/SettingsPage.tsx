@@ -40,7 +40,7 @@ import { decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
 import { writeCustomGelProducts, readDoseTemplates, writeDoseTemplates, readDoseByDrug, writeDoseByDrug, readLastDrug, writeLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
-import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
+import { DEFAULT_WEIGHT_KG, latestEventWeight, prefillHeightCM } from '../utils/weight';
 import {
     BACKUP_SUBDIR,
     BACKUP_RETENTION_MS,
@@ -352,7 +352,8 @@ const SettingsPage: React.FC = () => {
     const processImportedData = (parsed: unknown): boolean => {
         try {
             const fallbackWeight = importFallbackWeight(parsed, DEFAULT_WEIGHT_KG);
-            const parsedImport = parseImportedBackup(parsed, fallbackWeight);
+            const fallbackHeight = prefillHeightCM(events);
+            const parsedImport = parseImportedBackup(parsed, fallbackWeight, fallbackHeight);
             const {
                 events: newEvents,
                 labResults: newLabResults,
