@@ -1129,33 +1129,37 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.weight_label')}</label>
-                                    <input
-                                        type="number" inputMode="decimal" min="20" max="300" step="0.1"
-                                        value={weightStr} onChange={e => setWeightStr(e.target.value)}
-                                        className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                        style={inputStyle}
-                                        placeholder="70" />
+                                {/* 身高 + 体重：同一行，先身高再体重 */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold" style={labelStyle}>{t('batch.height_label')}</label>
+                                        <input
+                                            type="number" inputMode="decimal" min="80" max="250" step="0.5"
+                                            value={heightStr} onChange={e => setHeightStr(e.target.value)}
+                                            className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                            style={inputStyle}
+                                            placeholder="165" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-bold" style={labelStyle}>{t('batch.weight_label')}</label>
+                                        <input
+                                            type="number" inputMode="decimal" min="20" max="300" step="0.1"
+                                            value={weightStr} onChange={e => setWeightStr(e.target.value)}
+                                            className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                            style={inputStyle}
+                                            placeholder="70" />
+                                    </div>
                                 </div>
 
+                                {/* 间隔：贴片路径用「天 + 小时」双输入 + patch 版标签；其它路径只要「天」整数 + 通用标签 */}
                                 <div className="space-y-2">
-                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.height_label')}</label>
-                                    <input
-                                        type="number" inputMode="decimal" min="80" max="250" step="0.5"
-                                        value={heightStr} onChange={e => setHeightStr(e.target.value)}
-                                        className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                        style={inputStyle}
-                                        placeholder="165" />
-                                </div>
-
-                                {/* 间隔：贴片路径用「天 + 小时」双输入，其它路径只要「天」整数（不要小时项） */}
-                                <div className="space-y-2">
-                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
+                                    <label className="block text-xs font-bold" style={labelStyle}>
+                                        {route === Route.patchApply ? t('batch.interval_label_patch') : t('batch.interval')}
+                                    </label>
                                     <div className={route === Route.patchApply ? "grid grid-cols-2 gap-3" : ""}>
                                         <div className="space-y-1">
                                             <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                                {t('batch.interval_days_label')}
+                                                {route === Route.patchApply ? t('batch.interval_days_label_patch') : t('batch.interval_days_label')}
                                             </label>
                                             <input type="number" min="1" max="365"
                                                 value={intervalDaysStr}
@@ -1200,9 +1204,11 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 )}
 
-                                {/* 时间槽：贴片路径只显示 1 个（每天贴一次） */}
+                                {/* 时间槽：贴片路径只显示 1 个（每天贴一次），贴片标签改成「第一次用药开始时间」 */}
                                 <div className="space-y-3">
-                                    <label className="block text-xs font-bold" style={labelStyle}>{t('batch.time_slot')}</label>
+                                    <label className="block text-xs font-bold" style={labelStyle}>
+                                        {route === Route.patchApply ? t('batch.time_slot_label_patch') : t('batch.time_slot')}
+                                    </label>
                                     <div className="grid grid-cols-2 gap-3">
                                         {timeSlots.map((slot, i) => (
                                             <div key={i} className="flex items-center gap-2">
@@ -1215,19 +1221,16 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 </div>
 
-                                {/* 贴片专属：佩戴时长（天 + 小时）放在表单最底部 */}
+                                {/* 贴片专属：贴片佩戴时间（天 + 小时）放在表单最底部，hint 文字已删 */}
                                 {route === Route.patchApply && (
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold" style={labelStyle}>
                                             {t('batch.wear_days_label')}
-                                            <span className="ml-1 text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                                                {t('batch.wear_days_hint')}
-                                            </span>
                                         </label>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
                                                 <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                                    {t('batch.interval_days_label')}
+                                                    {t('batch.interval_days_label_patch')}
                                                 </label>
                                                 <input type="number" min="0" max="14"
                                                     value={wearDaysStr}
