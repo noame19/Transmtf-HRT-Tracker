@@ -202,14 +202,23 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
             setStartDate(toLocalDateStr(thirtyDaysAgo));
             setEndDate(toLocalDateStr(now));
-            setIntervalDaysStr('1');
-            setIntervalHoursStr('0');
             setTimesPerDayStr('1');
             setTimeSlots([DEFAULT_TIMES[0]]);
-            setWearDaysStr('3');
-            setWearHoursStr('0');
+            // 先读 route，下面按 route 设默认值（贴片路径用 3/12，其它用 1/0）
             const last = readLastDrug();
-            setRoute(last?.route ?? Route.sublingual);
+            const newRoute = last?.route ?? Route.sublingual;
+            if (newRoute === Route.patchApply) {
+                setIntervalDaysStr('3');
+                setIntervalHoursStr('12');
+                setWearDaysStr('3');
+                setWearHoursStr('12');
+            } else {
+                setIntervalDaysStr('1');
+                setIntervalHoursStr('0');
+                setWearDaysStr('3');
+                setWearHoursStr('0');
+            }
+            setRoute(newRoute);
             setEster(last?.ester ?? Ester.EV);
             // Pre-fill gel from the most recent gel administration (events JSON).
             const lastGel = readLastGelEvent(allEvents);
@@ -1187,15 +1196,9 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 </div>
 
-                                {/* 每日次数：贴片路径强制 1 次（只显示文字提示，不显示输入框） */}
-                                {route === Route.patchApply ? (
-                                    <div className="space-y-2">
-                                        <label className="block text-xs font-bold" style={labelStyle}>{t('batch.times_per_day')}</label>
-                                        <div className="text-xs px-3 py-2.5 rounded-xl" style={{ background: 'var(--bg-soft-amber)', color: 'var(--text-soft-amber)', border: '1px solid var(--border-soft-amber)' }}>
-                                            {t('batch.patch_force_one_per_day')}
-                                        </div>
-                                    </div>
-                                ) : (
+                                {/* 每日次数：贴片路径不渲染（贴片必须每日 1 次是预设硬约束，没必要提示用户）；
+                                    其它路径显示输入框，跟下面「时间槽」useEffect 联动增减。 */}
+                                {route !== Route.patchApply && (
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold" style={labelStyle}>{t('batch.times_per_day')}</label>
                                         <input type="number" min="1" max="4"
