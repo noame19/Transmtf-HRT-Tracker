@@ -1361,9 +1361,11 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                             <Trash2 size={16} />
                                                                         </button>
                                                                     </div>
-                                                                    {/* 撕下提示行：挂在 apply 下面，显示「X 天 Y 小时摘下」+ 删除按钮 */}
+                                                                    {/* 撕下提示行：挂在 apply 下面，显示「YYYY-MM-DD HH:MM」+ 「X 天 Y 小时摘下」。
+                                                                        这里不放删除按钮：apply 行的删除按钮会联动删一对，多一个反而让用户担心会不会只删一半。 */}
                                                                     {removeEv && (() => {
                                                                         const rd = new Date(removeEv.timeH * 3600000);
+                                                                        const rDateStr = toLocalDateStr(rd);
                                                                         const rTimeStr = `${pad(rd.getHours())}:${pad(rd.getMinutes())}`;
                                                                         const wear = formatWearDuration(applyEv.timeH, removeEv.timeH);
                                                                         const wearLabel = wear.key === 'days'
@@ -1375,19 +1377,11 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                                     .replace('{h}', String(wear.hours));
                                                                         return (
                                                                             <div
-                                                                                className="pl-10 pr-3 sm:pr-4 py-2 flex items-center gap-2 text-[11px]"
+                                                                                className="px-3 sm:px-4 py-2 flex items-center gap-2 text-[11px]"
                                                                                 style={{ color: 'var(--text-tertiary)' }}
                                                                             >
-                                                                                <span className="font-mono font-semibold">{rTimeStr}</span>
+                                                                                <span className="font-mono font-semibold">{rDateStr} {rTimeStr}</span>
                                                                                 <span>{wearLabel}</span>
-                                                                                <button
-                                                                                    onClick={(e) => { e.stopPropagation(); removePreviewEvent(removeEv.id); }}
-                                                                                    aria-label={t('batch.delete_pair') || 'Delete this patch pair'}
-                                                                                    className="ml-auto min-w-11 min-h-11 flex items-center justify-center rounded-lg transition opacity-60 hover:opacity-100 active:opacity-100"
-                                                                                    style={{ color: '#ef4444' }}
-                                                                                >
-                                                                                    <Trash2 size={14} />
-                                                                                </button>
                                                                             </div>
                                                                         );
                                                                     })()}
