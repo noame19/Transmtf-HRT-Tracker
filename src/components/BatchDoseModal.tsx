@@ -1380,11 +1380,6 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                         <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
                                                                             {applyEv.weightKG} {t('field.weight_unit')}
                                                                         </span>
-                                                                        {typeof applyEv.heightCm === 'number' && applyEv.heightCm > 0 && (
-                                                                            <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
-                                                                                {applyEv.heightCm} {t('field.height_unit')}
-                                                                            </span>
-                                                                        )}
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); removePreviewEvent(applyEv.id); }}
                                                                             aria-label={t('batch.delete_pair') || 'Delete this patch pair'}
@@ -1455,11 +1450,6 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                                     <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
                                                                         {ev.weightKG} {t('field.weight_unit')}
                                                                     </span>
-                                                                    {typeof ev.heightCm === 'number' && ev.heightCm > 0 && (
-                                                                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
-                                                                            {ev.heightCm} {t('field.height_unit')}
-                                                                        </span>
-                                                                    )}
                                                                     {ev.route === Route.gel && (() => {
                                                                         const gx = ev.extras ?? {};
                                                                         const prod = allGelProducts.find(p => p.id === gx[ExtraKey.gelProductId]);

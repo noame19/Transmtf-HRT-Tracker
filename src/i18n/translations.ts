@@ -373,11 +373,11 @@ export const TRANSLATIONS_BASE = {
         "batch.height_label": "身高 (cm)",
         "batch.patch_force_one_per_day": "贴片必须每日 1 次（不可改为多次）",
 
-        "route.injection": "肌肉注射 (Injection)",
-        "route.oral": "口服 (Oral)",
-        "route.sublingual": "舌下 (Sublingual)",
-        "route.gel": "凝胶 (Beta)",
-        "route.rectal": "直肠 (Rectal)",
+        "route.injection": "肌肉注射",
+        "route.oral": "口服",
+        "route.sublingual": "舌下",
+        "route.gel": "凝胶",
+        "route.rectal": "直肠",
 
         "gel.site.arm": "手臂 (Arm)",
         "gel.site.thigh": "大腿 (Thigh)",
