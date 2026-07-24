@@ -153,7 +153,11 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     const [intervalDaysStr, setIntervalDaysStr] = useState('1');
     const [intervalHoursStr, setIntervalHoursStr] = useState('0');
     const intervalDays = Math.max(1, parseInt(intervalDaysStr) || 1);
-    const intervalHours = Math.max(0, Math.min(23, parseInt(intervalHoursStr) || 0));
+    // 「间隔小时」字段只对贴片路径生效：贴片需要小时级精度算撕下时间，
+    // 其它路径（口服/注射/凝胶/植入）按整数天循环就够了，强行让用户填小时反而多余。
+    const intervalHours = (route === Route.patchApply)
+        ? Math.max(0, Math.min(23, parseInt(intervalHoursStr) || 0))
+        : 0;
     const intervalTotalHours = intervalDays * 24 + intervalHours;
     // 贴片必须每日 1 次；这里写死 1，下面的 UI 会把 timesPerDay 输入框隐起来
     const [timesPerDayStr, setTimesPerDayStr] = useState('1');
@@ -1145,10 +1149,10 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                         placeholder="165" />
                                 </div>
 
-                                {/* 间隔：天 + 小时 双输入 */}
+                                {/* 间隔：贴片路径用「天 + 小时」双输入，其它路径只要「天」整数（不要小时项） */}
                                 <div className="space-y-2">
                                     <label className="block text-xs font-bold" style={labelStyle}>{t('batch.interval')}</label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className={route === Route.patchApply ? "grid grid-cols-2 gap-3" : ""}>
                                         <div className="space-y-1">
                                             <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                                                 {t('batch.interval_days_label')}
@@ -1160,17 +1164,19 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                                 className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                                 style={inputStyle} />
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                                                {t('batch.interval_hours_label')}
-                                            </label>
-                                            <input type="number" min="0" max="23"
-                                                value={intervalHoursStr}
-                                                onChange={e => setIntervalHoursStr(e.target.value)}
-                                                onBlur={() => setIntervalHoursStr(String(intervalHours))}
-                                                className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                                style={inputStyle} />
-                                        </div>
+                                        {route === Route.patchApply && (
+                                            <div className="space-y-1">
+                                                <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                                                    {t('batch.interval_hours_label')}
+                                                </label>
+                                                <input type="number" min="0" max="23"
+                                                    value={intervalHoursStr}
+                                                    onChange={e => setIntervalHoursStr(e.target.value)}
+                                                    onBlur={() => setIntervalHoursStr(String(intervalHours))}
+                                                    className="w-full p-3 rounded-xl text-sm font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                                    style={inputStyle} />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
