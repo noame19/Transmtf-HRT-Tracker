@@ -159,9 +159,12 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
         ? Math.max(0, Math.min(23, parseInt(intervalHoursStr) || 0))
         : 0;
     const intervalTotalHours = intervalDays * 24 + intervalHours;
-    // 贴片必须每日 1 次；这里写死 1，下面的 UI 会把 timesPerDay 输入框隐起来
+    // 「每日次数」：贴片必须写死 1 次（UI 把输入框隐起来，下面时间槽联动也只会出现 1 个）；
+    // 其它路径按输入框解析，1-4 次，跟下面的「时间槽」useEffect 联动增减。
     const [timesPerDayStr, setTimesPerDayStr] = useState('1');
-    const timesPerDay = 1;
+    const timesPerDay = (route === Route.patchApply)
+        ? 1
+        : Math.max(1, Math.min(4, parseInt(timesPerDayStr) || 1));
     const [timeSlots, setTimeSlots] = useState<string[]>([DEFAULT_TIMES[0]]);
     const [weightStr, setWeightStr] = useState('');
     const [heightStr, setHeightStr] = useState('');
