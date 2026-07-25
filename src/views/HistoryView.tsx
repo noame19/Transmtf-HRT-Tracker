@@ -10,7 +10,7 @@ import HistoryBulkActionBar from '../components/HistoryBulkActionBar';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';
 import ComplianceBanner from '../components/ComplianceBanner';
 import type { ComplianceMismatch } from '../utils/planCompliance';
-import { isPatchApply, isPatchRemove, findPatchRemoveForApply } from '../utils/patch';
+import { isPatchApply, isPatchRemove, removeCompanion } from '../utils/patch';
 
 type HistoryTab = 'records' | 'plans';
 
@@ -134,6 +134,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   // both ends of the wear window as a single bookkeeping unit. Single
   // toggle clicks still surface ONLY the row's own id (handled in
   // onItemClick), this `visibleEventIds` is for "select all" / range / delete.
+  // 严格按 groupId 配对(removeCompanion),不用 14 天兜底 — 兜底会让一个 apply
+  // 误把同一天 a 的另一组撕下当成自己的配对,导致批量删除时连带删错。
   const visibleEventIds = useMemo(() => {
     const out: string[] = [];
     for (const group of Object.values(groupedEvents)) {
@@ -141,7 +143,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         if (ev.route === RouteEnum.patchRemove) continue;
         out.push(ev.id);
         if (ev.route === RouteEnum.patchApply) {
-          const paired = findPatchRemoveForApply(ev, events);
+          const paired = removeCompanion(ev, events);
           if (paired && !out.includes(paired.id)) out.push(paired.id);
         }
       }
@@ -374,7 +376,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   // time means the button vanishes automatically the moment
                   // a new remove event is appended (re-render reads the
                   // updated `events` prop).
-                  const pairedRemove = isPatchApply(ev) ? findPatchRemoveForApply(ev, events) : null;
+                  // 「撕下时间」提示走严格 groupId 配对(removeCompanion)。
+                  // 不用 14 天时间轴兜底 — 否则像 7-19 早上手工加的 b apply 会
+                  // 误把同一天 a 第 7 组的撕下(7-19 21:00)当成自己的配对显示。
+                  const pairedRemove = isPatchApply(ev) ? removeCompanion(ev, events) : null;
                   const showRemoveBtn = isPatchApply(ev) && !pairedRemove;
                   return (
                   <div

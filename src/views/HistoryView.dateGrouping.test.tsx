@@ -26,8 +26,16 @@ import HistoryView from './HistoryView';
 import type { DoseEvent, Plan } from '../../types';
 import { Route } from '../../types';
 
-// Build a minimal DoseEvent with the fields HistoryView reads
-const mkEvent = (id: string, timeH: number, route: DoseEvent['route'] = 'injection' as any): DoseEvent => ({
+// Build a minimal DoseEvent with the fields HistoryView reads.
+// `groupId` is optional — the date-grouping tests pass one explicitly
+// because the 14-day time-axis fallback was removed in favour of strict
+// groupId matching (see HistoryView.tsx pairedRemove + showRemoveBtn).
+const mkEvent = (
+    id: string,
+    timeH: number,
+    route: DoseEvent['route'] = 'injection' as any,
+    groupId?: string,
+): DoseEvent => ({
     id,
     timeH,
     route,
@@ -35,6 +43,7 @@ const mkEvent = (id: string, timeH: number, route: DoseEvent['route'] = 'injecti
     doseMG: 1,
     weightKG: 60,
     extras: {},
+    ...(groupId !== undefined ? { companionGroupId: groupId } : {}),
 });
 
 // PlanList stub — grouping tests run on the 'records' tab so plans aren't rendered.
@@ -113,14 +122,14 @@ describe('HistoryView — date grouping with patch events', () => {
     });
 
     it('still renders the apply card with its inline removedAt hint on the apply day', () => {
-        // Companion check: the fix must not break the visible "摘下时间"
-        // hint that the /history list shows on the apply card. After the
-        // grouping change, the apply card should still resolve its paired
-        // remove via findPatchRemoveForApply (which uses companionGroupId
-        // or the 14-day time-axis fallback).
+        // Companion check: the date-grouping fix must not break the visible
+        // "摘下时间" hint that the /history list shows on the apply card.
+        // After the strict-groupId-only refactor, the apply card resolves
+        // its paired remove via removeCompanion — both events share the same
+        // companionGroupId here.
         const events = [
-            mkEvent('apply-2', dayA, Route.patchApply as unknown as DoseEvent['route']),
-            mkEvent('remove-2', dayB, Route.patchRemove as unknown as DoseEvent['route']),
+            mkEvent('apply-2', dayA, Route.patchApply as unknown as DoseEvent['route'], 'g-day-2'),
+            mkEvent('remove-2', dayB, Route.patchRemove as unknown as DoseEvent['route'], 'g-day-2'),
         ];
         render(<HistoryView {...baseProps} events={events} />);
 

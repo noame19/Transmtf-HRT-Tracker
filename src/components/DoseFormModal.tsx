@@ -747,13 +747,22 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
             weightKG,
             heightCm,
             extras,
-            // D2 场景：编辑 apply、清空「摘下时间」，保持原 groupId
-            // （如果清掉 groupId 而旧 remove 还在 → 真孤儿；保持 groupId + 旧 remove
-            //  → PK 引擎继续按旧对算，行为符合「只改贴上时间不动摘下时间」的直觉）
-            ...(eventToEdit?.companionGroupId !== undefined
-                && removeTimeStr.trim() === ''
-                ? { companionGroupId: eventToEdit.companionGroupId }
-                : {}),
+            // 1) 编辑 patchApply + 清空「摘下时间」→ 保留原 groupId(避免清掉
+            //    groupId 而旧 remove 还在 → 真孤儿;保持 groupId + 旧 remove
+            //    → PK 引擎继续按旧对算,行为符合"只改贴上时间不动摘下时间"的直觉)。
+            // 2) 新建 patchApply(没填撕下时间也走这里,因为填了撕下时间的分支
+            //    已在上面 689 行拦截)→ 一律分配新 groupId。理由:
+            //    - 让 apply 永远带 groupId,history 按钮/时间提示走严格 groupId
+            //      配对,不会被无关 remove 误关按钮或误显示撕下时间。
+            //    - 用户之后点"贴片移除"按钮时,handleRemovePatch 复用这个
+            //      groupId 创建配对 remove,删除 apply 时 remove 也会被级联带走
+            //      (collectCascadeIds 走严格 groupId),杜绝孤儿数据。
+            ...(route === Route.patchApply && !eventToEdit
+                ? { companionGroupId: uuidv4() }
+                : eventToEdit?.companionGroupId !== undefined
+                    && removeTimeStr.trim() === ''
+                    ? { companionGroupId: eventToEdit.companionGroupId }
+                    : {}),
         };
 
         // Silently remember the last-used dose *per drug* (keyed by route+ester)
