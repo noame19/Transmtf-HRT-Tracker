@@ -648,13 +648,15 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          * KPI 把 1/3 宽的网格挤到不可读。
          */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Medication calendar heatmap — rendered FIRST so the visual
-           *  narrative goes "history of when doses actually landed →
+          {/* Medication calendar heatmap — rendered FIRST in DOM so the
+           *  visual narrative goes "history of when doses actually landed →
            *  concentration now". On phone this naturally puts the heatmap
-           *  above the blood-concentration chart; on desktop (md:grid-cols-3)
-           *  the col-span assignments below keep each card in its original
-           *  visual slot (heatmap right 1/3, concentration chart left 2/3). */}
-          <div className="md:col-span-1 min-w-0">
+           *  above the blood-concentration chart (DOM order = visual order).
+           *  On desktop (md:grid-cols-3), the md:order-* classes below swap
+           *  visual placement back: ResultChart (md:order-1) sits left 2/3,
+           *  heatmap (md:order-2) sits right 1/3 — matching the original
+           *  desktop layout while keeping the new phone order. */}
+          <div className="md:col-span-1 md:order-2 min-w-0">
             <MedicationHeatmap
               events={events}
               plans={plans}
@@ -665,7 +667,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
             />
           </div>
 
-          <div className="md:col-span-2 min-w-0">
+          <div className="md:col-span-2 md:order-1 min-w-0">
             <ResultChart
               sim={simulation}
               events={events}
