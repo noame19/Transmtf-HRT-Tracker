@@ -648,6 +648,23 @@ const OverviewView: React.FC<OverviewViewProps> = ({
          * KPI 把 1/3 宽的网格挤到不可读。
          */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Medication calendar heatmap — rendered FIRST so the visual
+           *  narrative goes "history of when doses actually landed →
+           *  concentration now". On phone this naturally puts the heatmap
+           *  above the blood-concentration chart; on desktop (md:grid-cols-3)
+           *  the col-span assignments below keep each card in its original
+           *  visual slot (heatmap right 1/3, concentration chart left 2/3). */}
+          <div className="md:col-span-1 min-w-0">
+            <MedicationHeatmap
+              events={events}
+              plans={plans}
+              postponeLog={postponeLog}
+              dueLog={dueLog}
+              today={currentTime}
+              compact={isTwoCol}
+            />
+          </div>
+
           <div className="md:col-span-2 min-w-0">
             <ResultChart
               sim={simulation}
@@ -658,20 +675,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
               baselineE2PGmL={baselineE2PGmL}
               nowH={h}
               onShareImage={() => setShareImageOpen(true)}
-            />
-          </div>
-
-          {/* Medication calendar heatmap — rendered after the blood-concentration
-           *  chart so the visual narrative goes "concentration now → history
-           *  of when doses actually landed". Pure client-side, no data fetch. */}
-          <div className="md:col-span-1 min-w-0">
-            <MedicationHeatmap
-              events={events}
-              plans={plans}
-              postponeLog={postponeLog}
-              dueLog={dueLog}
-              today={currentTime}
-              compact={isTwoCol}
             />
           </div>
         </div>
