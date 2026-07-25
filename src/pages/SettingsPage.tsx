@@ -57,7 +57,6 @@ import PasswordInputModal from '../components/PasswordInputModal';
 import ModelInfoModal from '../components/ModelInfoModal';
 import DisclaimerModal from '../components/DisclaimerModal';
 import StatisticsModal from '../components/StatisticsModal';
-import AnnouncementModal from '../components/AnnouncementModal';
 import ThemePicker from '../components/ui/ThemePicker';
 import Toggle from '../components/ui/Toggle';
 import type { Lang } from '../i18n/translations';
@@ -323,7 +322,8 @@ const SettingsPage: React.FC = () => {
     const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
     const [isStatisticsOpen, setIsStatisticsOpen] = useState(false);
     const [isModelInfoOpen, setIsModelInfoOpen] = useState(false);
-    const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
+    // isAnnouncementOpen / setIsAnnouncementOpen 已删除（2026-07-24）：本 fork 不建立 Telegram 社区,
+    // 公告弹窗不再触发。如要恢复,在 useState 区加回来 + 在底部 JSX 加 <AnnouncementModal>。
     const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(false);
     const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [basicInfo, setBasicInfo] = useState<BasicInfo>(() => loadBasicInfo());
@@ -1312,7 +1312,9 @@ const SettingsPage: React.FC = () => {
                         <button
                             onClick={() => {
                                 showDialog('confirm', t('drawer.github_confirm'), () => {
-                                    window.open('https://github.com/TransmtfTeam/Transmtf-HRT-Tracker', '_blank');
+                                    // 本 fork 仓库（2026-07-24 改）：原项目 TransmtfTeam/Transmtf-HRT-Tracker,
+                                    // 本 fork 由 noame19 维护,MIT 协议允许自由 fork,链接指向本仓库即可。
+                                    window.open('https://github.com/noame19/Transmtf-HRT-Tracker', '_blank');
                                 });
                             }}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
@@ -1330,7 +1332,9 @@ const SettingsPage: React.FC = () => {
                         <button
                             onClick={() => {
                                 showDialog('confirm', t('drawer.contact_confirm'), () => {
-                                    window.open('https://x.com/axzamyzed', '_blank');
+                                    // 本 fork 维护者的 Telegram（2026-07-24 改）：原项目指向 x.com/axzamyzed（上游作者个人 X）,
+                                    // 现在改为维护者 noame19 的 Telegram 频道。
+                                    window.open('https://t.me/monana14', '_blank');
                                 });
                             }}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
@@ -1338,7 +1342,7 @@ const SettingsPage: React.FC = () => {
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <AtSign size={20} style={{ color: 'var(--text-secondary)' }} />
+                            <Send size={20} style={{ color: 'var(--text-secondary)' }} />
                             <div>
                                 <p className="text-sm font-bold">{t('drawer.contact')}</p>
                                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{t('drawer.contact_desc')}</p>
@@ -1373,21 +1377,8 @@ const SettingsPage: React.FC = () => {
                             </div>
                         </button>
 
-                        <button
-                            onClick={() => setIsAnnouncementOpen(true)}
-                            className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
-                            style={{ color: 'var(--text-primary)' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                            <Send className="text-sky-500" size={20} />
-                            <div>
-                                <p className="text-sm font-bold">{t('drawer.community') || 'Telegram Community'}</p>
-                                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                    {t('drawer.community_desc') || 'Join notification channel & discussion group'}
-                                </p>
-                            </div>
-                        </button>
+                        {/* Telegram 社区按钮已删除（2026-07-24）：本 fork 暂不建立社区。drawer.community / drawer.community_desc
+                         * 翻译键保留(无害),将来要恢复直接复用。 */}
                     </div>
                 </section>
 
@@ -1457,11 +1448,6 @@ const SettingsPage: React.FC = () => {
             <StatisticsModal
                 isOpen={isStatisticsOpen}
                 onClose={() => setIsStatisticsOpen(false)}
-            />
-
-            <AnnouncementModal
-                isOpen={isAnnouncementOpen}
-                onClose={() => setIsAnnouncementOpen(false)}
             />
         </div>
     );

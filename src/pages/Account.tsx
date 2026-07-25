@@ -195,13 +195,15 @@ const Account: React.FC = () => {
               <p className="mt-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 {t('account.avatarOAuthOnly') || 'Avatar is synced automatically via third-party login and cannot be uploaded here.'}{' '}
                 <a
-                  href="https://www.transmtf.com/profile"
+                  // 本 fork 维护者 GitHub 主页（2026-07-24 改）：原项目指向 transmtf.com/profile（上游官网）,
+                  // 现在改为 noame19 的 GitHub 主页（本 fork 仓库维护者）。
+                  href="https://github.com/noame19"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-0.5 text-pink-500 underline hover:text-pink-600"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  transmtf.com/profile
+                  github.com/noame19
                   <ExternalLink size={10} className="inline" />
                 </a>
               </p>
