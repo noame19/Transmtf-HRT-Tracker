@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/LanguageContext';
+import { useDialog } from '../contexts/DialogContext';
 import TurnstileModal from '../components/TurnstileModal';
 import { TURNSTILE_SITE_KEY } from '../api/config';
 import apiClient from '../api/client';
@@ -11,6 +12,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const { t } = useTranslation();
+  const { showDialog } = useDialog();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -147,19 +149,9 @@ const Login: React.FC = () => {
   };
 
   const handleOIDCLogin = async () => {
-    setOidcLoading(true);
-    setError('');
-    const response = await apiClient.getOIDCAuthorizeUrl();
-    setOidcLoading(false);
-
-    if (response.success && response.data) {
-      const { auth_url, state } = response.data;
-      sessionStorage.setItem('oidc_state', state);
-      sessionStorage.setItem('oidc_action', 'login');
-      window.location.href = auth_url;
-    } else {
-      setError(response.error || t('oidc.callback.error') || 'Failed to start sign-in. Please try again.');
-    }
+    // 云同步上游 OIDC 跳转暂时关闭（2026-07-24）：本 fork 不复用上游账号系统，
+    // 点这个按钮不再跳 auth_url,而是弹窗告诉用户该功能等待开发中。点击即恢复。
+    await showDialog('alert', t('cloud_sync.pending') || '云同步等待开发中');
   };
 
   return (

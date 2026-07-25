@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import apiClient from '../api/client';
@@ -8,10 +7,8 @@ import type { OIDCBindStatusResponse } from '../api/types';
 import { ArrowLeft, Link2, Loader2, Lock, Shield, Unlink } from 'lucide-react';
 
 const AccountOIDC: React.FC = () => {
-  const { accessToken, logout } = useAuth();
   const { t } = useTranslation();
   const { showDialog } = useDialog();
-  const navigate = useNavigate();
 
   const [status, setStatus] = useState<OIDCBindStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,82 +44,20 @@ const AccountOIDC: React.FC = () => {
   };
 
   const handleBind = async () => {
-    const confirmed = await showDialog(
-      'confirm',
-      t('oidc.bindWarning') || 'OIDC binding is permanent and cannot be undone. Continue?',
-      {
-        confirmText: t('oidc.bindButton') || 'Link Transmtf Account',
-        cancelText: t('btn.cancel') || 'Cancel',
-      },
-    );
-    if (confirmed !== 'confirm') return;
-
-    setBindingInProgress(true);
-    const response = await apiClient.getOIDCBindAuthorizeUrl();
-    setBindingInProgress(false);
-
-    if (response.success && response.data) {
-      const { auth_url, state } = response.data;
-      sessionStorage.setItem('oidc_state', state);
-      sessionStorage.setItem('oidc_action', 'bind');
-      window.location.href = auth_url;
-    } else {
-      showDialog('alert', response.error || 'Failed to start binding flow.');
-    }
+    // 云同步上游 OIDC 跳转暂时关闭（2026-07-24）：本 fork 不复用上游账号系统，
+    // 点"绑定 Transmtf 账号"按钮不再跳 auth_url,而是弹窗告诉用户该功能等待开发中。
+    // 设置/移除密码同理（属于同一套云端账号系统）。整个页面 UI 保留，等待服务器重新接通即可恢复。
+    await showDialog('alert', t('cloud_sync.pending') || '云同步等待开发中');
   };
 
   const handleSetPassword = async () => {
-    setSetPasswordError('');
-
-    if (!newPassword) {
-      setSetPasswordError(t('account.passwordRequired') || 'Password is required');
-      return;
-    }
-    if (newPassword.length < 8) {
-      setSetPasswordError(t('account.passwordTooShort') || 'Password must be at least 8 characters');
-      return;
-    }
-    if (!/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      setSetPasswordError(t('account.passwordComplexity') || 'Password must contain at least one letter and one number');
-      return;
-    }
-
-    setSettingPassword(true);
-    const response = await apiClient.setLoginPassword({ password: newPassword });
-    setSettingPassword(false);
-
-    if (response.success) {
-      showDialog('alert', t('oidc.setPasswordSuccess') || 'Login password set successfully.');
-      setShowSetPasswordModal(false);
-      setNewPassword('');
-      loadStatus();
-    } else {
-      setSetPasswordError(response.error || 'Failed to set password');
-    }
+    // 同上：云同步账号体系暂停,设置密码按钮弹窗告知等待开发中。
+    await showDialog('alert', t('cloud_sync.pending') || '云同步等待开发中');
   };
 
   const handleRemovePassword = async () => {
-    setRemovePasswordError('');
-
-    if (!currentPassword) {
-      setRemovePasswordError(t('account.passwordRequired') || 'Password is required');
-      return;
-    }
-
-    setRemovingPassword(true);
-    const response = await apiClient.removeLoginPassword({ password: currentPassword });
-    setRemovingPassword(false);
-
-    if (response.success) {
-      await showDialog('alert', t('oidc.removePasswordSuccess') || 'Login password removed. Please sign in with Transmtf.');
-      setShowRemovePasswordModal(false);
-      setCurrentPassword('');
-      // All sessions are logged out by the server; log out locally too
-      await logout(false);
-      navigate('/login', { replace: true });
-    } else {
-      setRemovePasswordError(response.error || 'Failed to remove password');
-    }
+    // 同上：云同步账号体系暂停,移除密码按钮弹窗告知等待开发中。
+    await showDialog('alert', t('cloud_sync.pending') || '云同步等待开发中');
   };
 
   if (loading) {
