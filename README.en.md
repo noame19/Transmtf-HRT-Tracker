@@ -1,29 +1,24 @@
 # HRT Tracker
 
-Web client of the HRT tracking tool. Simulates estradiol concentration over time from your body weight, height, and dosing route. All records stay in your browser's `localStorage`. This repository is a fork of [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker). Chinese version: [README.md](./README.md).
+HRT Tracker is a web tool for tracking hormone replacement therapy. It simulates estradiol concentration over time from body weight, height, and dosing route, and fits per-user metabolic parameters from lab values. All data is stored in the browser's `localStorage` — nothing is uploaded, no network requests leave the device.
 
-> Distributed under the MIT License, see [`LICENSE`](./LICENSE). The fork-only changes since upstream are listed in the Chinese README's "本 fork 改了哪些东西" section. The original copyright notice is preserved in the LICENSE file.
+Chinese version: [README.md](./README.md)
 
-## What it is
+> This repository is a fork of [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker), still under the MIT License (see [`LICENSE`](./LICENSE)). The original copyright notice is preserved in that file.
 
-A React + TypeScript web tool for tracking HRT. You log doses (injection, oral, sublingual, gel, patch); the app draws an estradiol concentration curve over time using a pharmacokinetic model. You can also enter lab values and the app uses a Bayesian OU-Kalman model to fit your personal parameters. All data is stored in `localStorage`; nothing leaves your browser.
+## Features
 
-The PK formulas and parameters come from the upstream [HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test) repository (`PKcore.swift` / `PKparameter.swift`). That logic is unchanged in this fork.
+- **Multi-route simulation**: injection (valerate, benzoate, cypionate, enanthate), oral, sublingual, gel, and patch.
+- **Real-time estradiol curve**: an interactive chart showing concentration (pg/mL) over time.
+- **Sublingual guidance**: concrete recommendations for hold time and the absorption parameter θ.
+- **Personal metabolic fit**: a Bayesian OU-Kalman model fits per-user metabolic parameters once lab values are entered.
+- **Multiple languages**: Simplified Chinese, Traditional Chinese, English, Cantonese, Russian, Ukrainian, and more.
+- **Fully local storage**: every record lives in browser `localStorage`. Survives reloads and offline use.
+- **First-launch disclaimer and an AI-consultation export**: a disclaimer dialog shows on first launch; a Settings entry exports a self-contained text snapshot of dosing records and lab values for a chosen date range.
 
-## What this fork adds
+## Upstream algorithm
 
-A user-facing list of fork-only changes lives in the Chinese README's "本 fork 改了哪些东西" section. In short:
-
-- A first-launch disclaimer dialog, with a re-open entry in Settings.
-- A "Export for AI" entry in Settings with per-record body metrics, route-specific fields, and range-vs-total counts in the copied text.
-- OIDC sign-in temporarily shows "pending development" instead of routing to the upstream auth server.
-- Mobile Overview layout swapped between medication calendar and the estradiol chart; desktop unchanged.
-- Batch-add UI reworked: patch path drops "times per day", removal hint shows the full date, preview apply time isn't pinned to 09:00.
-- Patch pairing now uses strict `groupId` match instead of a 14-day timeline fallback.
-- Tailwind moved off the Play CDN to local PostCSS.
-- Settings and Account page credits now point at this fork's maintainer (noame19).
-
-Full details in the Chinese README.
+The pharmacokinetic formulas and parameters are derived from the [HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test) repository (`PKcore.swift`, `PKparameter.swift`). This logic is unchanged in the fork.
 
 ## Run locally
 
@@ -32,12 +27,12 @@ npm install
 npm run dev
 ```
 
-Tauri desktop / Android builds run on GitHub Actions.
+Desktop and Android builds run on GitHub Actions. `tauri:dev` and `tauri:build` on a local machine require Rust and the Android SDK.
 
-## Deployment and license
+## Deployment
 
-You are welcome to host this app on your own site, blog, or server with no extra permission. If you do, please keep the link back to this repository and the MIT License (see [LICENSE](./LICENSE)).
+The app can be self-hosted on any personal site, blog, or server without further permission. For public deployments, please keep a link back to this repository and the MIT License (see [`LICENSE`](./LICENSE)).
 
-## Repo
+## Feedback
 
-Please file issues on GitHub: <https://github.com/noame19/Transmtf-HRT-Tracker/issues>.
+Open an issue on the GitHub repository page.
