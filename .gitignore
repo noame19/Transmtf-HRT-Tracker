@@ -36,6 +36,10 @@ src-tauri/gen
 # local worktrees
 .worktrees/
 
+# local-only dev notes
+CLAUDE.md
+docs/
+
 # local artifacts (downloaded APKs from gh run download)
 _artifacts/
 
