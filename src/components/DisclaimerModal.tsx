@@ -2,7 +2,18 @@ import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { AlertTriangle } from 'lucide-react';
 
-const DisclaimerModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+interface DisclaimerModalProps {
+    isOpen: boolean;
+    /**
+     * 必填 — 用户点"OK"关闭弹窗时的回调。父组件自己决定这次关闭是
+     * "首次启动自动弹 → 用户已读 → 写 localStorage"还是"用户从设置页
+     * 手动打开 → 只关闭、不动 localStorage"。两种都用同一个 onClose
+     * 入口,父组件根据场景走不同分支即可。
+     */
+    onClose: () => void;
+}
+
+const DisclaimerModal = ({ isOpen, onClose }: DisclaimerModalProps) => {
     const { t } = useTranslation();
 
     if (!isOpen) return null;
