@@ -1,167 +1,56 @@
-# HRT Recorder Web
+# HRT Tracker
 
-HRT Recorder Web（HRT 网页记录工具）
+HRT 激素替代疗法追踪器的网页端。按体重、身高、给药方式模拟雌二醇浓度曲线，并保留所有数据在你浏览器的 localStorage 里不外发。本仓库由 noame19 维护，是 [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) 的 fork。English version: [README.en.md](./README.en.md)。
 
-A privacy-focused, web-based tool for simulating and tracking estradiol levels during Hormone Replacement Therapy (HRT).<br>
+> 本仓库遵循 MIT License，参见 [`LICENSE`](./LICENSE)。代码与上游完全不同的地方都整理在本 README「本 fork 改了哪些东西」一节里。原作者的版权声明在 LICENSE 文件中保留。
 
-这是一个注重隐私的网页工具，用于在激素替代疗法（HRT）期间模拟和追踪雌二醇水平。
+## 项目是什么
 
-> **Fork 说明 / Fork Notice (2026-07-24)**
-> 本仓库是 [`TransmtfTeam/Transmtf-HRT-Tracker`](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) 的 fork,由 [noame19](https://github.com/noame19) 维护。原始项目遵循 **MIT License**([`LICENSE`](./LICENSE) 文件保留上游原文),本 fork 在 MIT 协议允许范围内进行修改与发布。如果你想查看上游版本,请访问上面的链接。
->
-> This repository is a fork of [`TransmtfTeam/Transmtf-HRT-Tracker`](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker), maintained by [noame19](https://github.com/noame19). The original project is licensed under **MIT** (see [`LICENSE`](./LICENSE) — the original copyright notice is preserved as required by MIT). This fork is distributed under the same MIT terms.
+一个用 React + TypeScript 写的网页 HRT 记录工具。输入吃药/打针/贴片/凝胶/舌下用药时间，工具会按药代动力学模型绘出雌二醇浓度随时间的变化曲线。你也可以录入化验结果，工具会用贝叶斯 OU-Kalman 模型反推你个人的代谢参数。数据全部存 `localStorage`，刷新或断网都不丢。
 
-## Algorithm & Core Logic 算法逻辑
+药代算法的原始公式与参数来自上游 [HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test) 仓库（`PKcore.swift` / `PKparameter.swift`）。这部分逻辑 fork 以后没有改。
 
-The pharmacokinetic algorithms, mathematical models, and parameters used in this simulation are derived directly from the **[HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test)** repository.<br>
+## 本 fork 改了哪些东西
 
-本模拟中使用的药代动力学算法、数学模型与相关参数，直接来源于 **[HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test)** 仓库。
+下面是 fork 在上游基础上做的用户可感知改动。每一条都对应到至少一个 fork-only commit，可以在 `git log main ^upstream/main` 里看到。
 
-We strictly adhere to the `PKcore.swift` and `PKparameter.swift` logic provided by **@LaoZhong-Mihari**, ensuring that the web simulation matches the accuracy of the original native implementation (including 3-compartment models, two-part depot kinetics, and specific sublingual absorption tiers).<br>
+### 用户打开就能感觉到
 
-我们严格遵循 **@LaoZhong-Mihari** 提供的 `PKcore.swift` 与 `PKparameter.swift` 中的逻辑，确保网页端模拟与原生实现在精度上保持一致（包括三室模型、双相肌注库房动力学以及特定的舌下吸收分层等）。
+- **免责声明**：第一次启动会弹一次免责声明。设置页可以再点开看。
+- **一键导出咨询 AI**：设置页"数据管理"下多了一个入口，弹窗里选日期范围，点复制就能把个人记录带去问医生或 LLM。
+- **AI 导出上下文更厚了**：导出文本里每条用药记录都附了当条的身高/体重、按给药方式区分的专属参数（舌下的 tier/θ、凝胶的 product/site/面积、贴片的撕下时间）、范围内事件数/总事件数。
+- **OIDC 登录先不接**：上游的"用 Transmtf 账号登录"按钮目前点了会弹"等待开发中"。保留按钮，账号服务恢复再启用。
+- **概况页手机端布局**：用药日历与血药浓度图位置对调，桌面图卡视觉位置不变。
+- **批量添加重设计**：贴片路径删掉了"每日次数"字段，撕下提示补全日期，预览页 apply 时间不再卡 09:00，文案整体重写。
+- **撕下按钮文案**：统一为「贴片摘下」。
+- **设置/账户页署名链接**：全部指向本仓库维护者 noame19 的 GitHub。
 
-## Code Architecture 代码结构
+### 修复与数据完整性
 
-The core logic has been split into small, focused modules so pharmacokinetics,
-calibration, personal learning, and data encryption can evolve more safely and
-be understood more quickly by new contributors.<br>
+- **贴片配对不再 14 天时间轴兜底**：改严格 groupId 匹配，新建贴片统一分配 groupId，避免老数据被错配。
+- **编辑老贴片显示"无配对撕下记录"**：避免编辑时静默删除撕下事件。
+- **历史页空日期栏修复**：之前撕下事件单独撑出空日期栏的问题已处理。
 
-当前核心逻辑已经拆分为几个职责清晰的小模块，便于后续维护、继续贡献，以及让新协作者更快理解项目结构。<br>
+### 构建与工程
 
-Current module map:<br>
-当前模块关系如下：<br>
+- **Tailwind 不再走 Play CDN**：改成本地 PostCSS 编译。构建不再依赖外网。
+- **Android 自动化构建**：`.github/workflows/` 加了安卓 debug/release 两条 workflow；本地不再编安卓，全走 CI。
 
-* `types.ts` - Shared domain enums and interfaces such as `DoseEvent`, `LabResult`, and `SimulationResult`.<br>
-  `types.ts`：共享的数据模型与类型定义，例如 `DoseEvent`、`LabResult`、`SimulationResult`。<br>
+## 本地运行
 
-* `pk.ts` - Population PK constants, route-specific parameter resolution, the main simulation engine, and interpolation helpers.<br>
-  `pk.ts`：基础药代参数、给药途径参数解析、主模拟引擎，以及插值工具。<br>
+这是 React + TypeScript 项目，用 Vite 跑：
 
-* `calibration.ts` - Lab unit conversion, legacy ratio-based calibration, and the Bayesian OU-Kalman calibration model.<br>
-  `calibration.ts`：化验值单位转换、旧版比值校准，以及 Bayesian OU-Kalman 动态校准模型。<br>
+```bash
+npm install
+npm run dev
+```
 
-* `personalModel.ts` - EKF-based personal learning, E2/CPA personalized estimation, and confidence interval generation.<br>
-  `personalModel.ts`：基于 EKF 的个体化学习、E2/CPA 个体估算，以及置信区间生成。<br>
+Tauri 桌面/安卓打包走 GitHub Actions 工作流。`tauri:dev` / `tauri:build` 在本机需要 Rust + Android SDK 才能跑。
 
-* `src/utils/dataEncryption.ts` - Generic AES-GCM helpers for import/export payload encryption.<br>
-  `src/utils/dataEncryption.ts`：用于导入导出数据的通用 AES-GCM 加密工具。<br>
+## 部署与协议
 
-* `logic.ts` - Compatibility barrel file that re-exports the public API used by the UI.<br>
-  `logic.ts`：兼容层与统一出口，对 UI 暴露稳定的公共接口。<br>
+欢迎自行部署到自己的个人网站、博客或服务器，不需要额外授权。如果你公开部署，请保留指向本仓库的地址与 MIT License（参见 [LICENSE](./LICENSE)）。
 
-Dependency direction:<br>
-依赖方向：<br>
+## 仓库点
 
-`types.ts` → `pk.ts` → (`calibration.ts`, `personalModel.ts`) → `logic.ts`<br>
-
-This keeps the mathematical foundation reusable while letting higher-level
-calibration and personalization layers build on top of the same PK model
-without duplicating formulas.<br>
-
-这样可以保证药代数学底座只维护一份，而校准层与个体化学习层都能在同一套 PK 模型之上构建，避免重复实现和参数漂移。<br>
-
-## Features 功能
-
-* **Multi-Route Simulation**: Supports Injection (Valerate, Benzoate, Cypionate, Enanthate), Oral, Sublingual, Gel, and Patches.<br>
-
-  **多给药途径模拟**：支持注射（戊酸酯 Valerate、苯甲酸酯 Benzoate、环戊丙酸酯 Cypionate、庚酸酯 Enanthate）、口服、舌下、凝胶以及贴片等多种给药方式。
-
-* **Real-time Visualization**: Interactive charts showing estimated estradiol concentration (pg/mL) over time.<br>
-
-  **实时可视化**：通过交互式图表展示随时间变化的雌二醇估算浓度（pg/mL）。
-
-* **Sublingual Guidance**: Detailed "Hold Time" and absorption parameter ($\theta$) guidance based on strict medical modeling.<br>
-
-  **舌下服用指导**：基于严格的医学建模，提供详细的“含服时间（Hold Time）”与吸收参数（$\theta$）参考。
-
-* **Privacy First**: All data is stored entirely in your browser's `localStorage`. No data is ever sent to a server.<br>
-
-  **隐私优先**：所有数据都完全存储在你浏览器的 `localStorage` 中，绝不会发送到任何服务器。
-
-* **Internationalization**: Native support for **Simplified Chinese** and **English**, **Cantonese**, **Russian, Ukrainian** and more.<br>
-
-  **多语言支持**：原生支持多语言界面。
-
-## 🧪 Run Locally 本地运行
-
-This project is built with **React** and **TypeScript**. You can run it easily using a modern frontend tooling setup like [Vite](https://vitejs.dev/).<br>
-
-本项目基于 **React** 与 **TypeScript** 构建，你可以使用诸如 [Vite](https://vitejs.dev/) 这样的现代前端工具链轻松运行它。
-
-1. **Clone or Download** the files.<br>
-   **Clone 或下载**项目文件到本地。
-
-2. **Initialize a Vite project** (if starting from scratch):<br>
-   **初始化一个 Vite 项目**（如果你是从零开始）：
-
-   ```bash
-   npm create vite@latest hrt-recorder -- --template react-ts
-   cd hrt-recorder
-   npm install
-   ```
-
-3. **Install Dependencies**:<br>
-   **安装依赖**：
-
-   ```bash
-   npm install recharts lucide-react uuid @types/uuid clsx tailwind-merge
-   ```
-
-4. **Setup Tailwind CSS**:<br>
-   **配置 Tailwind CSS**：
-
-   Follow the [Tailwind CSS Vite Guide](https://tailwindcss.com/docs/guides/vite) to generate your `tailwind.config.js`.
-   请按照 [Tailwind CSS 的 Vite 指南](https://tailwindcss.com/docs/guides/vite) 配置并生成你的 `tailwind.config.js` 文件。
-
-5. **Add Code**:<br>
-   **添加代码**：
-
-   * Place `logic.ts` and `index.tsx` into your `src/` folder.<br>
-     将 `logic.ts` 与 `index.tsx` 放入你的 `src/` 文件夹中。
-
-   * Update `index.html` entry point if necessary.<br>
-     如有需要，更新 `index.html` 中的入口配置。
-
-6. **Run**:<br>
-   **运行项目**：
-
-   ```bash
-   npm run dev
-   ```
-
-## Deployment & Hosting 部署与托管
-
-You are **very welcome** to deploy this application to your own personal website, blog, or server!<br>
-
-我们**非常欢迎**你将此应用部署到自己的个人网站、博客或服务器上！
-
-We want this tool to be accessible to everyone who needs it. You do not need explicit permission to host it.<br>
-
-我们希望所有需要这款工具的人都能方便地使用它。你无需额外获得授权即可自行托管与部署。
-
-**Attribution Requirement:**
-
-If you deploy this app publicly, please:<br>
-如果你将该应用公开部署，请：
-
-1. **Keep the original algorithm credits**: Visibly link back to the [HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test) repository.<br>
-
-   **保留原始算法的鸣谢信息**：在显眼位置添加指向 [HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test) 仓库的链接。
-
-2. **Respect the license**: Ensure you follow any licensing terms associated with the original algorithm code.<br>
-   **遵守许可协议**：确保你遵循原始算法代码所适用的全部许可条款。
-
-I wish you a smooth transition and Happy Estimating! 🏳️‍⚧️<br>
-祝你性转顺利，快乐估测(>^ω^<)
-<br>
-同时，祝所有用此 webapp 的停经期女性身体健康 ❤️
-<br>
-At the same time, I wish good health to all the women using this web app who are going through menopause. ❤️
-# TODO
--   [ ] Add Japanese language localization support
--   [ ] Add testosterone calculation support
--   [ ] 给每个人通过做六项后的数据进行校准，多次校准后改变动力学方程的参数
-
-# LICENCE
-本项目遵守 MIT Licence
+遇到问题请在 GitHub 上提交 issue：<https://github.com/noame19/Transmtf-HRT-Tracker/issues>。
