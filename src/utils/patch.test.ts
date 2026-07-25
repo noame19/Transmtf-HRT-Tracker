@@ -67,47 +67,49 @@ describe('findPatchRemoveForApply', () => {
         const other = makeEvent({ id: 'x', route: Route.patchRemove, timeH: 300, companionGroupId: 'g2' });
         expect(findPatchRemoveForApply(apply, [other, remove])).toBe(remove);
     });
-    it('falls back to time-axis when groupId is absent (legacy data)', () => {
+    it('returns null when apply has no companionGroupId (strict — no time-axis fallback)', () => {
+        // 删除 14 天时间轴兜底后,无 groupId 的 apply 永远找不到配对。
+        // 历史 / 编辑表单 / 热力图都会按"未配对"处理。
+        // 导入路径会在 importData.ts 里跑 reconcileImportedPatchEvents 自动补 groupId。
         const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
         const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 100 + 24 });
-        expect(findPatchRemoveForApply(apply, [remove])).toBe(remove);
-    });
-    it('returns null when the time-axis pair is beyond 14 days', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 100 + 15 * 24 });
         expect(findPatchRemoveForApply(apply, [remove])).toBeNull();
     });
-    it('returns null when the only candidate is BEFORE the apply', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 200 });
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 100 });
-        expect(findPatchRemoveForApply(apply, [remove])).toBeNull();
+    it('returns null when the candidate remove is ungrouped (strict — no time-axis fallback)', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        // 同一时间窗内的撕下事件,但没 groupId → 不配对(以前会被时间兜底错误匹配)
+        const ungroupedRemove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 105 });
+        expect(findPatchRemoveForApply(apply, [ungroupedRemove])).toBeNull();
     });
-    it('ignores other-route events even if their time overlaps', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
-        const inj = makeEvent({ id: 'i', route: Route.injection, timeH: 110 });
+    it('returns null when no remove has a matching companionGroupId', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const mismatched = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g2' });
+        expect(findPatchRemoveForApply(apply, [mismatched])).toBeNull();
+    });
+    it('ignores other-route events even if they share a groupId', () => {
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
+        const inj = makeEvent({ id: 'i', route: Route.injection, timeH: 110, companionGroupId: 'g1' });
         expect(findPatchRemoveForApply(apply, [inj])).toBeNull();
     });
-    it('picks the EARLIEST remove when multiple fall in the wear window', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
+    it('returns the group match when multiple ungrouped removes also exist in the time window', () => {
+        // 即使时间窗里有其他未配对的撕下事件,有 groupId 的那对依然要优先配对。
+        // 旧版时间兜底会返回"最早"那个无 groupId 的 remove;现在 strict groupId-only
+        // 直接忽略它们,只返回 groupId 匹配的那个。
+        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
         const late = makeEvent({ id: 'l', route: Route.patchRemove, timeH: 150 });
         const early = makeEvent({ id: 'e', route: Route.patchRemove, timeH: 120 });
-        expect(findPatchRemoveForApply(apply, [late, early])).toBe(early);
-    });
-    it('prefers the groupId match over a closer time-axis candidate', () => {
-        const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
-        const closerNoGroup = makeEvent({ id: 'c', route: Route.patchRemove, timeH: 105 });
-        const groupedFar = makeEvent({ id: 'g', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
-        expect(findPatchRemoveForApply(apply, [closerNoGroup, groupedFar])).toBe(groupedFar);
+        const grouped = makeEvent({ id: 'g', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        expect(findPatchRemoveForApply(apply, [late, early, grouped])).toBe(grouped);
     });
     it('does not match the apply event with itself', () => {
         const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100 });
         expect(findPatchRemoveForApply(apply, [apply])).toBeNull();
     });
-    it('returns the group match even when the apply has a different group from a closer candidate', () => {
+    it('returns the group match even when a closer ungrouped remove is also present', () => {
         const apply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 100, companionGroupId: 'g1' });
-        const wrongGroup = makeEvent({ id: 'w', route: Route.patchRemove, timeH: 110, companionGroupId: 'g2' });
-        const rightGroup = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
-        expect(findPatchRemoveForApply(apply, [wrongGroup, rightGroup])).toBe(rightGroup);
+        const closerNoGroup = makeEvent({ id: 'c', route: Route.patchRemove, timeH: 105 });
+        const groupedFar = makeEvent({ id: 'g', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        expect(findPatchRemoveForApply(apply, [closerNoGroup, groupedFar])).toBe(groupedFar);
     });
 });
 
@@ -121,15 +123,20 @@ describe('findPatchApplyForRemove (inverse)', () => {
         const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
         expect(findPatchApplyForRemove(remove, [apply])).toBe(apply);
     });
-    it('falls back to time-axis: latest apply in 14d before remove', () => {
+    it('returns null when remove has no companionGroupId (strict — no time-axis fallback)', () => {
+        // 删除 14 天时间轴兜底后,无 groupId 的 remove 永远找不到配对。
         const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200 });
         const early = makeEvent({ id: 'e', route: Route.patchApply, timeH: 100 });
         const late = makeEvent({ id: 'l', route: Route.patchApply, timeH: 180 });
-        expect(findPatchApplyForRemove(remove, [early, late])).toBe(late);
+        expect(findPatchApplyForRemove(remove, [early, late])).toBeNull();
     });
-    it('returns null when no apply exists in the wear window', () => {
-        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200 });
-        // 20 days before the remove — well outside the 14d wear window.
+    it('returns null when the candidate apply is ungrouped (strict — no time-axis fallback)', () => {
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
+        const ungroupedApply = makeEvent({ id: 'a', route: Route.patchApply, timeH: 180 });
+        expect(findPatchApplyForRemove(remove, [ungroupedApply])).toBeNull();
+    });
+    it('returns null when no apply has a matching companionGroupId', () => {
+        const remove = makeEvent({ id: 'r', route: Route.patchRemove, timeH: 200, companionGroupId: 'g1' });
         const tooEarly = makeEvent({ id: 't', route: Route.patchApply, timeH: 200 - 20 * 24 });
         expect(findPatchApplyForRemove(remove, [tooEarly])).toBeNull();
     });

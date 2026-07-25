@@ -18,13 +18,18 @@ import { DoseEvent, Route } from '../../types';
 //
 // These helpers are pure (no DOM, no React) so they're trivially unit-testable
 // and safe to call from anywhere in the React tree.
+//
+// Pairing policy: STRICT groupId-only. Both `findPatchRemoveForApply` and
+// `findPatchApplyForRemove` only resolve companions that share a non-empty
+// `companionGroupId`. A previously-existing 14-day time-axis fallback was
+// removed because it could mis-attribute a remove from a *different* cycle
+// to the current apply (see `HistoryView`'s "撕下时间" hint and the
+// `removeCompanion` strict variant below for the rationale). Legacy data
+// arriving through `importData.ts` is still repaired by
+// `reconcileImportedPatchEvents` (patchReconcile.ts), which backfills
+// `companionGroupId` on legacy pairs during the import pass so the strict
+// UI helpers find them downstream.
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Maximum wear window for the time-axis fallback pairing. Real patches top
- *  out at ~7 days; 14d gives a comfortable safety margin against late logging
- *  without letting an old "remove" from a prior cycle accidentally pair with a
- *  new "apply". */
-const MAX_PATCH_WEAR_HOURS = 14 * 24;
 
 /** True when `ev` is a patch-apply event. */
 export const isPatchApply = (ev: DoseEvent): boolean => ev.route === Route.patchApply;
@@ -43,13 +48,14 @@ export const patchGroupOf = (ev: DoseEvent): string | null => {
 };
 
 /**
- * Find the remove event paired with `apply`. Resolution order:
- *
- *   1. `companionGroupId` exact match (the modern path — same UUID on both
- *      events means the form wrote them as a pair).
- *   2. Time-axis fallback for legacy data (no `companionGroupId`): the FIRST
- *      `Route.patchRemove` whose time is strictly within the wear window
- *      (14 days) after `apply.timeH`.
+ * Find the remove event paired with `apply`. **Strict groupId-only** — only
+ * resolves when both events share an identical, non-empty
+ * `companionGroupId`. A previous 14-day time-axis fallback was removed
+ * because it could mis-attribute a remove from a different cycle to the
+ * current apply (the same bug pattern as `removeCompanion`'s stricter
+ * siblings). Legacy data without groupIds is repaired by
+ * `reconcileImportedPatchEvents` at import time, so the strict lookup
+ * here is sufficient for all in-app data.
  *
  * Returns `null` for non-apply inputs, self-matches, and apply events with no
  * paired remove. Callers should treat a non-null return as "the button should
@@ -60,70 +66,34 @@ export const findPatchRemoveForApply = (
     allEvents: DoseEvent[],
 ): DoseEvent | null => {
     if (!isPatchApply(apply)) return null;
-
-    // 1. Exact companion-group match.
     const groupId = patchGroupOf(apply);
-    if (groupId) {
-        const byGroup = allEvents.find(
-            (e) =>
-                e.id !== apply.id &&
-                e.route === Route.patchRemove &&
-                patchGroupOf(e) === groupId,
-        );
-        if (byGroup) return byGroup;
-    }
-
-    // 2. Time-axis fallback for legacy data. We always do this so an
-    //    apply-without-groupId that already has a remove in its wear window
-    //    (typical pre-unification pair) ALSO hides the button — otherwise the
-    //    user could double-record a remove and confuse the PK engine.
-    const minH = apply.timeH;
-    const maxH = apply.timeH + MAX_PATCH_WEAR_HOURS;
-    let best: DoseEvent | null = null;
-    for (const e of allEvents) {
-        if (e.id === apply.id) continue;
-        if (e.route !== Route.patchRemove) continue;
-        if (e.timeH < minH) continue;
-        if (e.timeH > maxH) continue;
-        if (!best || e.timeH < best.timeH) best = e;
-    }
-    return best;
+    if (!groupId) return null;
+    return allEvents.find(
+        (e) =>
+            e.id !== apply.id &&
+            e.route === Route.patchRemove &&
+            patchGroupOf(e) === groupId,
+    ) ?? null;
 };
 
 /**
- * Inverse of `findPatchRemoveForApply`: find the apply event paired with
- * `remove`. Used by the /history renderer to add a small "贴上 HH:MM" hint on
- * the remove card when a pair exists. Falls back to the time-axis heuristic
- * for legacy data.
+ * Inverse of `findPatchRemoveForApply`. **Strict groupId-only** — see the
+ * rationale on `findPatchRemoveForApply`. Used by the /history renderer to
+ * add a small "贴上 HH:MM" hint on the remove card when a pair exists.
  */
 export const findPatchApplyForRemove = (
     remove: DoseEvent,
     allEvents: DoseEvent[],
 ): DoseEvent | null => {
     if (!isPatchRemove(remove)) return null;
-
     const groupId = patchGroupOf(remove);
-    if (groupId) {
-        const byGroup = allEvents.find(
-            (e) =>
-                e.id !== remove.id &&
-                e.route === Route.patchApply &&
-                patchGroupOf(e) === groupId,
-        );
-        if (byGroup) return byGroup;
-    }
-
-    const minH = remove.timeH - MAX_PATCH_WEAR_HOURS;
-    const maxH = remove.timeH;
-    let best: DoseEvent | null = null;
-    for (const e of allEvents) {
-        if (e.id === remove.id) continue;
-        if (e.route !== Route.patchApply) continue;
-        if (e.timeH < minH) continue;
-        if (e.timeH > maxH) continue;
-        if (!best || e.timeH > best.timeH) best = e;
-    }
-    return best;
+    if (!groupId) return null;
+    return allEvents.find(
+        (e) =>
+            e.id !== remove.id &&
+            e.route === Route.patchApply &&
+            patchGroupOf(e) === groupId,
+    ) ?? null;
 };
 
 /**

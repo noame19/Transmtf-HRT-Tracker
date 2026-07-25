@@ -289,7 +289,10 @@ describe('buildHeatmapRange — patch apply + remove (modern companionGroupId)',
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('buildHeatmapRange — patch apply + remove (legacy, no companionGroupId)', () => {
-    it('falls back to time-axis pairing so the segment still propagates', () => {
+    it('does NOT propagate mid-wear cells when neither event has a companionGroupId', () => {
+        // 删除 14 天时间轴兜底后,无 groupId 的 apply+remove 在热力图里不会被自动配对。
+        // 这种数据会由 importData.ts 在导入时调用 reconcileImportedPatchEvents 自动
+        // 补 groupId,所以热力图本身不需要再兜底。本测试断言的是"不兜底"的行为。
         const apply = makeEvent({
             id: 'legacy-apply',
             route: Route.patchApply,
@@ -302,9 +305,16 @@ describe('buildHeatmapRange — patch apply + remove (legacy, no companionGroupI
         });
         const range = buildHeatmapRange([apply, remove], localMid(2026, 7, 4), 21);
 
-        for (const k of ['2026-07-04', '2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08']) {
+        // 2026-07-04 (apply 当天) 应该有 apply 事件 → 格子亮。
+        const applyDay = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === '2026-07-04');
+        expect(applyDay).toBeDefined();
+        expect(applyDay!.events.some((e) => e.id === 'legacy-apply'), 'apply day carries apply').toBe(true);
+
+        // 2026-07-05 ~ 2026-07-08 (中间天数 + 撕下当天) 都不应该有 apply 传播。
+        for (const k of ['2026-07-05', '2026-07-06', '2026-07-07', '2026-07-08']) {
             const cell = range.weeks.flatMap((w) => w.days).find((c) => c.dateKey === k);
-            expect(cell!.events.some((e) => e.id === 'legacy-apply'), `${k} should carry apply`).toBe(true);
+            expect(cell, `cell for ${k}`).toBeDefined();
+            expect(cell!.events.some((e) => e.id === 'legacy-apply'), `${k} should NOT carry apply (no groupId → no propagation)`).toBe(false);
         }
     });
 });
