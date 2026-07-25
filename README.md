@@ -1,6 +1,6 @@
 # HRT Tracker
 
-HRT 激素替代疗法追踪器的网页端。按体重、身高、给药方式模拟雌二醇浓度曲线，并保留所有数据在你浏览器的 localStorage 里不外发。本仓库由 noame19 维护，是 [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) 的 fork。English version: [README.en.md](./README.en.md)。
+HRT 激素替代疗法追踪器的网页端。按体重、身高、给药方式模拟雌二醇浓度曲线，并保留所有数据在你浏览器的 localStorage 里不外发。 [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) 的 fork。English version: [README.en.md](./README.en.md)。
 
 > 本仓库遵循 MIT License，参见 [`LICENSE`](./LICENSE)。代码与上游完全不同的地方都整理在本 README「本 fork 改了哪些东西」一节里。原作者的版权声明在 LICENSE 文件中保留。
 
