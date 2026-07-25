@@ -6,6 +6,11 @@ A privacy-focused, web-based tool for simulating and tracking estradiol levels d
 
 这是一个注重隐私的网页工具，用于在激素替代疗法（HRT）期间模拟和追踪雌二醇水平。
 
+> **Fork 说明 / Fork Notice (2026-07-24)**
+> 本仓库是 [`TransmtfTeam/Transmtf-HRT-Tracker`](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker) 的 fork,由 [noame19](https://github.com/noame19) 维护。原始项目遵循 **MIT License**([`LICENSE`](./LICENSE) 文件保留上游原文),本 fork 在 MIT 协议允许范围内进行修改与发布。如果你想查看上游版本,请访问上面的链接。
+>
+> This repository is a fork of [`TransmtfTeam/Transmtf-HRT-Tracker`](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker), maintained by [noame19](https://github.com/noame19). The original project is licensed under **MIT** (see [`LICENSE`](./LICENSE) — the original copyright notice is preserved as required by MIT). This fork is distributed under the same MIT terms.
+
 ## Algorithm & Core Logic 算法逻辑
 
 The pharmacokinetic algorithms, mathematical models, and parameters used in this simulation are derived directly from the **[HRT-Recorder-PKcomponent-Test](https://github.com/LaoZhong-Mihari/HRT-Recorder-PKcomponent-Test)** repository.<br>
