@@ -438,6 +438,7 @@ export const TRANSLATIONS_BASE = {
         "route.patchApply": "贴片",
         "route.patchRemove": "贴片移除",
         "hint.patch_remove_time": "不填则只生成贴上记录；后续在用药记录页可点「贴片移除」一键补登。",
+        "hint.patch_unpaired_remove": "此贴片没有配对的撕下记录(如时间不同,需手动填写摘下时间)",
         "hint.patch_rate_plan": "贴片释放速率。生成用药记录时把该值写入 µg/d。",
 
         "ester.E2": "雌二醇 (E2)",
@@ -1424,6 +1425,7 @@ export const TRANSLATIONS_BASE = {
         "route.patchApply": "Patch",
         "route.patchRemove": "Remove Patch",
         "hint.patch_remove_time": "Leave blank to log apply only. You can also tap \"Remove Patch\" on the history list to log a removal at the current time.",
+        "hint.patch_unpaired_remove": "This patch has no paired remove record. If the times differ, fill in the removal time manually.",
         "hint.patch_rate_plan": "Patch release rate. The value is recorded as µg/d in dose history.",
 
         "ester.E2": "Estradiol (E2)",
@@ -2244,6 +2246,7 @@ export const TRANSLATIONS = {
         "field.patch_remove_time": "摘下時間（選填）",
         "field.patch_remove_time_placeholder": "預設不填；填了即產生貼上+移除配對紀錄",
         "hint.patch_remove_time": "不填則只產生貼上記錄；之後可在用藥紀錄頁點「貼片移除」一鍵補登。",
+        "hint.patch_unpaired_remove": "此貼片沒有配對的撕下記錄(如時間不同,需手動填寫摘下時間)",
         "btn.patch_remove": "貼片摘下",
         "btn.clear": "清除",
         "error.invalidDate": "無效日期。",
@@ -2871,6 +2874,7 @@ export const TRANSLATIONS = {
         "route.patchApply": "パッチ",
         "route.patchRemove": "パッチ除去",
         "hint.patch_remove_time": "未入力なら貼付のみ記録。用薬記録ページで「パッチ除去」をタップして現在時刻で除去を記録することもできます。",
+        "hint.patch_unpaired_remove": "このパッチにはペアとなる除去記録がありません。時間が異なる場合は、手動で除去時刻を入力してください。",
 
         "ester.E2": "エストラジオール (E2)",
         "ester.EV": "吉草酸エストラジオール (EV)",

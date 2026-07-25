@@ -107,6 +107,10 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     // Only meaningful for `route === Route.patchApply`; the form clears it
     // for any other route via the effect below.
     const [removeTimeStr, setRemoveTimeStr] = useState("");
+    // 编辑老无 groupId 的 patchApply 时,严格 groupId 配对找不到撕下记录,
+    // "摘下时间"格子会留空。这里给用户一个明确反馈,告诉用户这条贴片的撕下记录
+    // 是独立的事件、没有被自动配对(用户可以从历史里手动复制日期填回来)。
+    const [showUnpairedHint, setShowUnpairedHint] = useState(false);
 
     const [gelSite, setGelSite] = useState(0); // Index in GEL_SITE_ORDER
     const [gelProductId, setGelProductId] = useState<number>(GEL_DEFAULT_PRODUCT_ID);
@@ -179,21 +183,29 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                 }
 
                 // Patch prefill: if the event being edited is a patch "apply"
-                // with a paired remove, surface that remove's time in the
-                // "摘下时间" field so the user can adjust it. Editing a
-                // "remove" event by itself just clears the field (the form's
-                // dateStr is the remove time in that case).
+                // with a paired remove (strict companionGroupId match — see
+                // `findPatchRemoveForApply`'s post-fallback-removal docs),
+                // surface that remove's time in the "摘下时间" field so the
+                // user can adjust it. Editing a "remove" event by itself just
+                // clears the field (the form's dateStr is the remove time in
+                // that case). When editing a legacy apply with no groupId (so
+                // the strict match can't find its remove), the field stays
+                // empty AND `showUnpairedHint` flips on so the UI can surface
+                // a small "独立撕下记录" caption instead of looking broken.
                 if (eventToEdit.route === Route.patchApply) {
                     const pairedRemove = findPatchRemoveForApply(eventToEdit, allEvents);
                     if (pairedRemove && Number.isFinite(pairedRemove.timeH)) {
                         const rd = new Date(pairedRemove.timeH * 3600000);
                         const rIso = new Date(rd.getTime() - (rd.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
                         setRemoveTimeStr(rIso);
+                        setShowUnpairedHint(false);
                     } else {
                         setRemoveTimeStr('');
+                        setShowUnpairedHint(true);
                     }
                 } else {
                     setRemoveTimeStr('');
+                    setShowUnpairedHint(false);
                 }
 
                 if (eventToEdit.route === Route.sublingual) {
@@ -1209,6 +1221,14 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                     <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
                                         {t('hint.patch_remove_time')}
                                     </p>
+                                    {/* Legacy (no companionGroupId) 贴片编辑时,严格匹配找不到撕下记录,
+                                       摘下时间格子是空的。给个明确反馈告诉用户:撕下记录是一条独立事件,
+                                       需要的话可以从历史里复制日期手填进来。 */}
+                                    {showUnpairedHint && (
+                                        <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                                            {t('hint.patch_unpaired_remove') || '此贴片没有配对的撕下记录(如时间不同,需手动填写摘下时间)'}
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
