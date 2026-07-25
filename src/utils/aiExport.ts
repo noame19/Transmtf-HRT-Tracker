@@ -117,12 +117,103 @@ const ROUTE_DISPLAY: Record<string, string> = {
     patchRemove: 'Patch (remove)',
 };
 
-function formatEventLine(e: DoseEvent): string {
+/** SL_TIER i18n 缩写,见 SublingualTierParams 的 theta。导出时把"快速/随手/标准/严格"
+ *  这些标签写给 AI,比一个数字 tier=1 更直观。 */
+const SL_TIER_LABEL: Record<number, string> = {
+    0: 'quick',
+    1: 'casual',
+    2: 'standard',
+    3: 'strict',
+};
+
+/** GEL_SITE 索引 i18n 缩写。必须与 DoseFormModal 的 GEL_SITE_ORDER 一一对应:
+ *  0=arm, 1=thigh, 2=scrotal, 3=abdomen。 */
+const GEL_SITE_LABEL: Record<number, string> = {
+    0: 'arm',
+    1: 'thigh',
+    2: 'scrotal',
+    3: 'abdomen',
+};
+
+/** 抽出 route-specific extras 的可读摘要。
+ *  - 注射/口服:extras 为空,返回空串
+ *  - 舌下:tier=1 或 θ=0.45
+ *  - 凝胶:product=N, site=arm, ~750cm²
+ *  - 贴片(只有 apply):removes 2026-07-25 22:00 (从 companionGroupId 配对的 remove 事件查)
+ */
+function formatEventExtrasTail(
+    e: DoseEvent,
+    pairedPatchRemove: DoseEvent | null,
+): string {
+    const parts: string[] = [];
+
+    // 舌下:tier 优先,自定义 θ 其次
+    if (e.route === 'sublingual') {
+        const tier = e.extras['sublingualTier'];
+        const theta = e.extras['sublingualTheta'];
+        if (typeof tier === 'number' && tier in SL_TIER_LABEL) {
+            parts.push(`tier=${tier} (${SL_TIER_LABEL[tier]})`);
+        } else if (typeof theta === 'number' && isFinite(theta)) {
+            parts.push(`θ=${theta.toFixed(2)}`);
+        }
+    }
+
+    // 凝胶:产品 + 部位 + 面积
+    if (e.route === 'gel') {
+        const productId = e.extras['gelProductId'];
+        const siteIdx = e.extras['gelSite'];
+        const area = e.extras['areaCM2'];
+        if (typeof productId === 'number') parts.push(`product=${productId}`);
+        if (typeof siteIdx === 'number' && siteIdx in GEL_SITE_LABEL) {
+            parts.push(`site=${GEL_SITE_LABEL[siteIdx]}`);
+        }
+        if (typeof area === 'number' && area > 0) {
+            parts.push(`~${Math.round(area)}cm²`);
+        }
+    }
+
+    // 贴片 apply:从配对的 remove 事件查撕下时间
+    if (e.route === 'patchApply' && pairedPatchRemove) {
+        const rMs = pairedPatchRemove.timeH * 3600_000;
+        if (isFinite(rMs) && rMs > 0) {
+            parts.push(`removes ${msToDateTime(rMs)}`);
+        }
+    }
+
+    return parts.length === 0 ? '' : ` — ${parts.join(', ')}`;
+}
+
+/** 在 export 主流程里一次性给每个 patch apply 配对出 remove,避免每行重做查找。
+ *  返回 Map<applyId, removeEvent>,apply 没配对则 entry 不存在。 */
+function buildPatchRemoveMap(events: DoseEvent[]): Map<string, DoseEvent> {
+    const map = new Map<string, DoseEvent>();
+    // 先收集所有 patchRemove,按 companionGroupId 反查
+    const removesByGroup = new Map<string, DoseEvent>();
+    for (const e of events) {
+        if (e.route === 'patchRemove' && e.companionGroupId) {
+            // 同一 groupId 理论上只有一个 remove,后者覆盖前者即可
+            removesByGroup.set(e.companionGroupId, e);
+        }
+    }
+    for (const e of events) {
+        if (e.route === 'patchApply' && e.companionGroupId) {
+            const rm = removesByGroup.get(e.companionGroupId);
+            if (rm) map.set(e.id, rm);
+        }
+    }
+    return map;
+}
+
+function formatEventLine(e: DoseEvent, pairedPatchRemove: DoseEvent | null = null): string {
     const ms = e.timeH * 3600_000;
     if (!isFinite(ms) || ms < 0) return ''; // skip malformed
     const dt = msToDateTime(ms);
     const route = ROUTE_DISPLAY[e.route] ?? String(e.route);
-    return `- ${dt} | ${route} | ${e.doseMG} mg ${e.ester}`;
+    // P0-2 (2026-07-25): 每条记录后都带当条记录自己的 weightKG + heightCm,
+    // 不再导一个孤立的"最新身高体重"。doseMG>0 的事件保存兜底保证字段始终正数。
+    const bodyStats = `(${e.weightKG} kg, ${e.heightCm ?? '—'} cm)`;
+    const tail = formatEventExtrasTail(e, pairedPatchRemove);
+    return `- ${dt} | ${route} | ${e.doseMG} mg ${e.ester} ${bodyStats}${tail}`;
 }
 
 function formatLabLine(l: LabResult): string {
@@ -231,11 +322,16 @@ export function buildAITextExport(input: AIExportInput): AIExportOutput {
             return isFinite(ms) && ms >= 0 && ms >= startMs && ms <= endInclusiveMs;
         })
         .sort((a, b) => a.timeH - b.timeH);
+    // P2-2 (2026-07-25): 在 log 顶部加一行 "in range / total" 上下文,
+    // 让 AI 知道是用户筛错了范围,还是范围内真的没数据。
+    const totalEventCount = (events ?? []).length;
+    out.push(`- Events in range: ${eventsInRange.length} (of ${totalEventCount} total)`);
     if (eventsInRange.length === 0) {
         out.push('No doses recorded in this date range.');
     } else {
+        const patchRemoveMap = buildPatchRemoveMap(events ?? []);
         for (const e of eventsInRange) {
-            const line = formatEventLine(e);
+            const line = formatEventLine(e, patchRemoveMap.get(e.id) ?? null);
             if (line) out.push(line);
         }
     }
@@ -249,6 +345,8 @@ export function buildAITextExport(input: AIExportInput): AIExportOutput {
             return isFinite(ms) && ms >= 0 && ms >= startMs && ms <= endInclusiveMs;
         })
         .sort((a, b) => a.timeH - b.timeH);
+    const totalLabCount = (labResults ?? []).length;
+    out.push(`- Labs in range: ${labsInRange.length} (of ${totalLabCount} total)`);
     if (labsInRange.length === 0) {
         out.push('No lab results in this date range.');
     } else {

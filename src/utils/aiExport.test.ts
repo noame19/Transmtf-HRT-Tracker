@@ -31,16 +31,16 @@ const emptyBasicInfo: BasicInfo = {
 const sampleEvents: DoseEvent[] = [
     {
         id: 'e1', timeH: eventH('2026-07-22T20:30:00'),
-        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55,
-    } as DoseEvent,
+        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55, heightCm: 165,
+    },
     {
         id: 'e2', timeH: eventH('2026-07-06T20:30:00'),
-        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55,
-    } as DoseEvent,
+        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55, heightCm: 165,
+    },
     {
         id: 'e3', timeH: eventH('2026-06-01T20:30:00'),
-        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55,
-    } as DoseEvent,
+        route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55, heightCm: 165,
+    },
 ];
 
 const sampleLabs: LabResult[] = [
@@ -163,6 +163,126 @@ describe('buildAITextExport — Medication Log', () => {
     it('shows No doses recorded when all events out of range', () => {
         const out = buildAITextExport({ ...fullInput, rangeStart: '2026-05-01', rangeEnd: '2026-05-15' });
         expect(out.text).toContain('No doses recorded in this date range.');
+    });
+
+    it('appends per-event weight and height (P0-2 2026-07-25)', () => {
+        const out = buildAITextExport({ ...fullInput });
+        // 每条用药记录都应带上当条记录的体重/身高,而不是导出一个"最新值"
+        expect(out.text).toContain('5 mg EV (55 kg, 165 cm)');
+        // 不该再导出一行孤立的 "Latest Weight / Height" 段
+        expect(out.text).not.toMatch(/^- Latest Weight:/m);
+        expect(out.text).not.toMatch(/^- Latest Height:/m);
+    });
+
+    it('per-event weight reflects event\'s own value when it differs from latest', () => {
+        // 两条不同体重: 7/22 用 55kg, 7/06 用 60kg。导出两条都要带各自的,不要被覆盖。
+        const mixed: DoseEvent[] = [
+            { id: 'e1', timeH: eventH('2026-07-22T20:30:00'), route: 'injection', ester: 'EV', doseMG: 5, weightKG: 55, heightCm: 165 },
+            { id: 'e2', timeH: eventH('2026-07-06T20:30:00'), route: 'injection', ester: 'EV', doseMG: 5, weightKG: 60, heightCm: 165 },
+        ];
+        const out = buildAITextExport({ ...fullInput, events: mixed });
+        expect(out.text).toContain('(55 kg, 165 cm)');
+        expect(out.text).toContain('(60 kg, 165 cm)');
+    });
+});
+
+describe('buildAITextExport — route-specific extras (P2-1 2026-07-25)', () => {
+    it('sublingual event shows tier / theta after body stats', () => {
+        const events: DoseEvent[] = [
+            {
+                id: 'sl1', timeH: eventH('2026-07-22T08:00:00'),
+                route: 'sublingual', ester: 'E2', doseMG: 2, weightKG: 55, heightCm: 165,
+                extras: { sublingualTier: 1 }, // tier 1 = quick
+            },
+        ];
+        const out = buildAITextExport({ ...fullInput, events });
+        expect(out.text).toMatch(/sublingual.*tier=1/i);
+    });
+
+    it('sublingual event with custom theta shows the custom theta value', () => {
+        const events: DoseEvent[] = [
+            {
+                id: 'sl2', timeH: eventH('2026-07-22T08:00:00'),
+                route: 'sublingual', ester: 'E2', doseMG: 2, weightKG: 55, heightCm: 165,
+                extras: { sublingualTheta: 0.45 },
+            },
+        ];
+        const out = buildAITextExport({ ...fullInput, events });
+        expect(out.text).toMatch(/sublingual.*θ=0\.45/i);
+    });
+
+    it('gel event shows product + site + area in extras tail', () => {
+        const events: DoseEvent[] = [
+            {
+                id: 'g1', timeH: eventH('2026-07-22T08:00:00'),
+                route: 'gel', ester: 'E2', doseMG: 5, weightKG: 55, heightCm: 165,
+                extras: { gelProductId: 1, gelSite: 0, areaCM2: 750 },
+            },
+        ];
+        const out = buildAITextExport({ ...fullInput, events });
+        // site=0 -> 'arm', product id 1 -> 任意标识, area 750cm²
+        expect(out.text).toMatch(/Gel.*product=1.*site=arm.*~?750cm²/);
+    });
+
+    it('patchApply event shows paired remove time when companionGroupId links to a remove event', () => {
+        const apply: DoseEvent = {
+            id: 'pA', timeH: eventH('2026-07-22T22:00:00'),
+            route: 'patchApply', ester: 'E2', doseMG: 0, weightKG: 55, heightCm: 165,
+            extras: { releaseRateUGPerDay: 50 },
+            companionGroupId: 'grp1',
+        };
+        const remove: DoseEvent = {
+            id: 'pR', timeH: eventH('2026-07-25T22:00:00'),
+            route: 'patchRemove', ester: 'E2', doseMG: 0, weightKG: 55, heightCm: 165,
+            extras: {},
+            companionGroupId: 'grp1',
+        };
+        const out = buildAITextExport({
+            ...fullInput,
+            events: [apply, remove],
+            rangeStart: '2026-07-20',
+            rangeEnd: '2026-07-30',
+        });
+        // patch 行后面应带 "removes 2026-07-25 22:00"
+        expect(out.text).toMatch(/patch.*removes 2026-07-25 22:00/i);
+    });
+
+    it('plain injection / oral events have no extras tail', () => {
+        const out = buildAITextExport({ ...fullInput });
+        // 注射那行不应该有 tier= / θ= / product= 这种尾巴
+        // (但仍会有 "(55 kg, 165 cm)")
+        const injLine = out.text.split('\n').find(l => l.includes('IM Injection') && l.includes('EV'));
+        expect(injLine).toBeDefined();
+        expect(injLine).not.toMatch(/tier=|θ=|product=|removes/);
+    });
+});
+
+describe('buildAITextExport — range vs total counts (P2-2 2026-07-25)', () => {
+    it('shows "in range / total" hint when filter drops events', () => {
+        // sampleEvents 有 3 条 (e1,e2,e3), range 只覆盖 e1+e2 → 2/3
+        const out = buildAITextExport({
+            ...fullInput,
+            rangeStart: '2026-07-01',
+            rangeEnd: '2026-07-31',
+        });
+        expect(out.text).toMatch(/Events in range: 2 \(of 3 total\)/);
+    });
+
+    it('shows "in range / total" for labs too', () => {
+        const out = buildAITextExport({
+            ...fullInput,
+            rangeStart: '2026-07-01',
+            rangeEnd: '2026-07-31',
+        });
+        // sampleLabs 2 条, 但 l2 (2026-04-01) 出范围 → 1/2
+        expect(out.text).toMatch(/Labs in range: 1 \(of 2 total\)/);
+    });
+
+    it('still works when in-range count equals total (no filter)', () => {
+        const out = buildAITextExport({ ...fullInput });
+        // 默认 rangeStart='2026-06-23', rangeEnd='2026-07-23' → e1,e2 在范围 (2/3); l1 在范围 (1/2)
+        expect(out.text).toMatch(/Events in range: 2 \(of 3 total\)/);
+        expect(out.text).toMatch(/Labs in range: 1 \(of 2 total\)/);
     });
 });
 
