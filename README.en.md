@@ -1,6 +1,6 @@
 # HRT Tracker
 
-Web client of the HRT tracking tool. Simulates estradiol concentration over time from your body weight, height, and dosing route. All records stay in your browser's `localStorage`. This repository is maintained by noame19 and is a fork of [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker). Chinese version: [README.md](./README.md).
+Web client of the HRT tracking tool. Simulates estradiol concentration over time from your body weight, height, and dosing route. All records stay in your browser's `localStorage`. This repository is a fork of [TransmtfTeam/Transmtf-HRT-Tracker](https://github.com/TransmtfTeam/Transmtf-HRT-Tracker). Chinese version: [README.md](./README.md).
 
 > Distributed under the MIT License, see [`LICENSE`](./LICENSE). The fork-only changes since upstream are listed in the Chinese README's "本 fork 改了哪些东西" section. The original copyright notice is preserved in the LICENSE file.
 
