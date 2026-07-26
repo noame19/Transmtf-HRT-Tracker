@@ -519,7 +519,21 @@ const SettingsPage: React.FC = () => {
 
             // 自动备份当前状态：用户已经确认要覆盖，万一选错文件/后悔，
             // 至少能从一个可识别的恢复点回滚。
-            await silentBackup('import');
+            //
+            // **不 await**：silentBackup 内部第一行 `buildExportPayload()` 是同步
+            // 的,字符串里就是当前(旧)数据;后续 `invoke('save_data_to_download')`
+            // 把字符串写到 Android MediaStore 是 IO,大数据量下需要 2-4s。改成
+            // fire-and-forget 让用户立刻看到「导入成功」/「导入失败」,写盘
+            // 在后台慢慢完成。**写盘内容不会变**——payload 字符串已经在
+            // buildExportPayload() 那一刻锁住了旧数据,后续 processImportedData
+            // 改 events 不影响已生成的 payload。
+            //
+            // 理论风险：用户在看到「导入成功」弹窗的 ~2s 内立刻做其它操作
+            // (典型流程至少要点 OK 关闭弹窗 + 切到数据管理 + 二次确认清空),
+            // 不会撞上写盘窗口。`.catch` 兜底 console.warn 防止 unhandled。
+            silentBackup('import').catch((err) => {
+                console.warn('[import] silent backup failed', err);
+            });
 
             if (
                 isRecord(parsed) &&
