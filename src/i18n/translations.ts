@@ -221,8 +221,12 @@ export const TRANSLATIONS_BASE = {
 
         "import.title": "导入数据",
         "export.title": "导出数据",
-        "import.text": "粘贴 JSON 文本",
-        "import.paste_hint": "在此处粘贴 JSON 内容...",
+        "import.clipboard.reading": "正在读取…",
+        "import.clipboard.import": "从剪贴板读取并导入",
+        "import.clipboard.hint": "先在别处复制 JSON 文本，再点上面的按钮即可",
+        "import.clipboard.unsupported": "当前环境不支持读取剪贴板，请改用下方「选择文件」",
+        "import.clipboard.empty": "剪贴板为空，请先复制 JSON 文本，再点此按钮",
+        "import.clipboard.read_error": "读取剪贴板失败，请检查浏览器权限，或改用「选择文件」",
         "import.file": "选择 JSON 文件",
         "import.file_btn": "选择文件",
 
@@ -1218,8 +1222,12 @@ export const TRANSLATIONS_BASE = {
 
         "import.title": "Import Data",
         "export.title": "Export Data",
-        "import.text": "Paste JSON Text",
-        "import.paste_hint": "Paste JSON content here...",
+        "import.clipboard.reading": "Reading…",
+        "import.clipboard.import": "Read from clipboard and import",
+        "import.clipboard.hint": "Copy JSON text elsewhere first, then tap the button above.",
+        "import.clipboard.unsupported": "This environment cannot read the clipboard. Use \"Choose File\" below instead.",
+        "import.clipboard.empty": "Clipboard is empty. Copy JSON text first, then tap this button.",
+        "import.clipboard.read_error": "Failed to read clipboard. Check browser permissions or use \"Choose File\" instead.",
         "import.file": "Select JSON File",
         "import.file_btn": "Choose File",
 
@@ -2116,8 +2124,12 @@ export const TRANSLATIONS = {
         "import.title": "匯入資料",
         "export.title": "匯出資料",
 
-        "import.text": "貼上 JSON 文字",
-        "import.paste_hint": "請在此貼上 JSON 內容…",
+        "import.clipboard.reading": "正在讀取…",
+        "import.clipboard.import": "從剪貼簿讀取並匯入",
+        "import.clipboard.hint": "請先在別處複製 JSON 文字，再點上方按鈕",
+        "import.clipboard.unsupported": "目前環境不支援讀取剪貼簿，請改用下方「選擇檔案」",
+        "import.clipboard.empty": "剪貼簿為空，請先複製 JSON 文字，再點此按鈕",
+        "import.clipboard.read_error": "讀取剪貼簿失敗，請檢查瀏覽器權限，或改用「選擇檔案」",
         "import.file": "選擇 JSON 檔案",
         "import.file_btn": "選擇檔案",
 
@@ -2750,8 +2762,12 @@ export const TRANSLATIONS = {
 
         "import.title": "データのインポート",
         "export.title": "データのエクスポート",
-        "import.text": "JSON テキストを貼り付け",
-        "import.paste_hint": "ここに JSON の内容を貼り付けてください...",
+        "import.clipboard.reading": "読み取り中…",
+        "import.clipboard.import": "クリップボードから読み取ってインポート",
+        "import.clipboard.hint": "先に JSON テキストをコピーしてから、上のボタンを押してください",
+        "import.clipboard.unsupported": "現在の環境はクリップボードを読み取れません。下にある「ファイルを選択」をご利用ください",
+        "import.clipboard.empty": "クリップボードが空です。先に JSON テキストをコピーしてから、このボタンを押してください",
+        "import.clipboard.read_error": "クリップボードの読み取りに失敗しました。ブラウザの権限を確認するか、「ファイルを選択」をご利用ください",
         "import.file": "JSON ファイルを選択",
         "import.file_btn": "ファイルを選択",
 

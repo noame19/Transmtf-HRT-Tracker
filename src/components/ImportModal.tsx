@@ -36,8 +36,9 @@ const ImportModal = ({
     isTauri: boolean;
 }) => {
     const { t, lang } = useTranslation();
-    const [text, setText] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [clipboardError, setClipboardError] = useState<string | null>(null);
+    const [clipboardBusy, setClipboardBusy] = useState(false);
 
     // ── Backup restore section state ──────────────────────────────────
     // `null` = haven't tried to load yet (modal just opened).
@@ -53,7 +54,7 @@ const ImportModal = ({
 
     useEffect(() => {
         if (isOpen) {
-            setText("");
+            setClipboardError(null);
             setRestoreError(null);
         }
     }, [isOpen]);
@@ -174,9 +175,48 @@ const ImportModal = ({
         e.target.value = "";
     };
 
-    const handleTextImport = async () => {
-        if (await onImportJson(text)) {
-            onClose();
+    /**
+     * Read JSON from the system clipboard and pipe it into the import flow.
+     * Replaces the old "paste text" textarea + button pair — the user just
+     * taps once, the rest is the same as before (parse → confirm overwrite
+     * → silentBackup → apply). Failure surfaces inline rather than as a
+     * dialog so the user can still try the file picker without losing
+     * state.
+     *
+     * `readText()` requires a user gesture (this is a click handler, so
+     * fine) and a secure context (HTTPS or localhost). Web preview on
+     * `http://localhost:3000` qualifies; production on `https://` also
+     * qualifies. The Tauri Android WebView also exposes the standard
+     * clipboard API, so no platform-specific branch is needed.
+     */
+    const handleClipboardImport = async () => {
+        if (clipboardBusy) return;
+        setClipboardError(null);
+        if (!navigator.clipboard?.readText) {
+            setClipboardError(
+                t('import.clipboard.unsupported') || '当前环境不支持读取剪贴板，请改用下方「选择文件」',
+            );
+            return;
+        }
+        setClipboardBusy(true);
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text.trim()) {
+                setClipboardError(
+                    t('import.clipboard.empty') || '剪贴板为空，请先复制 JSON 文本，再点此按钮',
+                );
+                return;
+            }
+            if (await onImportJson(text)) {
+                onClose();
+            }
+        } catch (err) {
+            console.warn('clipboard read failed', err);
+            setClipboardError(
+                t('import.clipboard.read_error') || '读取剪贴板失败，请检查浏览器权限，或改用「选择文件」',
+            );
+        } finally {
+            setClipboardBusy(false);
         }
     };
 
@@ -296,21 +336,23 @@ const ImportModal = ({
                         )}
 
                         <div>
-                            <label className="block text-sm font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>{t('import.text')}</label>
-                            <textarea
-                                className="w-full h-32 p-3 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none font-mono text-xs"
-                                style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
-                                placeholder={t('import.paste_hint')}
-                                value={text}
-                                onChange={e => setText(e.target.value)}
-                            />
                             <button
-                                onClick={handleTextImport}
-                                disabled={!text.trim()}
-                                className="mt-2 w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass"
+                                onClick={handleClipboardImport}
+                                disabled={clipboardBusy}
+                                className="w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass flex items-center justify-center gap-2"
                             >
-                                {t('drawer.import')}
+                                {clipboardBusy
+                                    ? (t('import.clipboard.reading') || '正在读取…')
+                                    : (t('import.clipboard.import') || '从剪贴板读取并导入')}
                             </button>
+                            {clipboardError && (
+                                <p className="mt-2 text-xs" role="alert" style={{ color: '#ef4444' }}>
+                                    {clipboardError}
+                                </p>
+                            )}
+                            <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                                {t('import.clipboard.hint') || '先在别处复制 JSON 文本，再点上面的按钮即可'}
+                            </p>
                         </div>
 
                         <div className="relative flex py-2 items-center">
