@@ -326,7 +326,10 @@ const SettingsPage: React.FC = () => {
     // 公告弹窗不再触发。如要恢复,在 useState 区加回来 + 在底部 JSX 加 <AnnouncementModal>。
     const [isBasicInfoOpen, setIsBasicInfoOpen] = useState(false);
     const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
-    const [basicInfo, setBasicInfo] = useState<BasicInfo>(() => loadBasicInfo());
+    // 允许 null：「清空所有数据」之后,基础信息重置 → 用 null 标记未设置。
+    // 下方 JSX 必须用 `basicInfo?.hrtStart ?? ...` 这类兜底来读取,否则
+    // 渲染时 null.hrtStart 会抛 TypeError 把整个页面打成白屏。
+    const [basicInfo, setBasicInfo] = useState<BasicInfo | null>(() => loadBasicInfo());
     const [pendingImportText, setPendingImportText] = useState<string | null>(null);
 
     const languageOptions = useMemo(() => ([
@@ -1408,12 +1411,15 @@ const SettingsPage: React.FC = () => {
 
             <BasicInfoModal
                 isOpen={isBasicInfoOpen}
-                initial={basicInfo}
+                // 兜底：handleClearAllEvents 会把 basicInfo 设为 null,
+                // BasicInfoModal 的 prop 类型要求 BasicInfo,这里用
+                // loadBasicInfo() 兜一份空对象,避免 null 散播到子组件。
+                initial={basicInfo ?? loadBasicInfo()}
                 // 第一次打开时,如果用户没填过 HRT 开始日期,弹窗的
                 // 日期输入框预填「最早用药日期」作为推荐值;确认即保存,
                 // 改写或清空都尊重用户操作。仅在 hrtStart 为 null 时生效,
                 // 已填过值的人不会再被预填覆盖。
-                defaultHrtStart={basicInfo.hrtStart ?? earliestEventHrtDate(events)}
+                defaultHrtStart={basicInfo?.hrtStart ?? earliestEventHrtDate(events)}
                 // 校验需要「最新用药日期」做「HRT ≤ 最新用药」参照,
                 // 直接传 events 让 BasicInfoModal 自己算。
                 events={events}
