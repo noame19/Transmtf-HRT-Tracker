@@ -33,6 +33,22 @@ function sendToBackend(level: string, args: unknown[]): void {
     const msg = args
         .map((a) => {
             if (typeof a === 'string') return a;
+            // Error objects (e.g. DOMException thrown by navigator.clipboard
+            // .readText) have non-enumerable .name / .message / .stack
+            // properties, so JSON.stringify(a) silently drops them and the
+            // captured log reads `clipboard read failed {}`. Materialise the
+            // interesting fields ourselves so the exported log shows the
+            // actual error name + message — without this we can't tell
+            // NotAllowedError from NotFoundError from SecurityError, which
+            // each point at a different fix (permission prompt, empty
+            // clipboard, secure-context, …).
+            if (a instanceof Error) {
+                const name = a.name ? `[${a.name}] ` : '';
+                const stack = (a.stack && a.stack !== a.toString())
+                    ? `\n${a.stack}`
+                    : '';
+                return `${name}${a.message}${stack}`.trim();
+            }
             try { return JSON.stringify(a); } catch { return String(a); }
         })
         .join(' ');
