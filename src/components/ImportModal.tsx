@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { X, Upload, History } from 'lucide-react';
+import { X, Upload, History, ClipboardPaste } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useConfirmButton } from '../hooks/useConfirmButton';
 import ConfirmButton from './ConfirmButton';
@@ -19,6 +19,20 @@ interface BackupEntry {
     modifiedAtMs: number;
     sizeBytes: number;
 }
+
+/**
+ * Horizontal "OR" separator that groups the three import actions into
+ * three visually distinct pickers (auto-backup restore | clipboard |
+ * file). Two of these sit between the cards; reusing one definition keeps
+ * the styling identical if we ever tweak the line weight or colour.
+ */
+const SectionDivider = () => (
+    <div className="relative flex py-2 items-center">
+        <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
+        <span className="flex-shrink-0 mx-4 text-xs uppercase font-bold" style={{ color: 'var(--text-tertiary)' }}>OR</span>
+        <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
+    </div>
+);
 
 /**
  * Where the JSON text being imported came from. Used by the parent to
@@ -346,15 +360,23 @@ const ImportModal = ({
                             </div>
                         )}
 
+                        {/* Visual rhythm matches the existing pattern between
+                            the clipboard row and the file row — each picker
+                            gets its own section so users can scan the
+                            options top-to-bottom without confusion. */}
+                        {isTauri && <SectionDivider />}
+
                         <div>
                             <button
                                 onClick={handleClipboardImport}
                                 disabled={clipboardBusy}
-                                className="w-full py-3 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition glass-btn-primary btn-press-glass flex items-center justify-center gap-2"
+                                className="w-full py-3 border-2 border-dashed font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                                style={{ borderColor: 'var(--border-primary)', color: 'var(--text-secondary)' }}
                             >
+                                <ClipboardPaste size={20} />
                                 {clipboardBusy
                                     ? (t('import.clipboard.reading') || '正在读取…')
-                                    : (t('import.clipboard.import') || '从剪贴板读取并导入')}
+                                    : (t('import.clipboard.import') || '从剪贴板导入')}
                             </button>
                             {clipboardError && (
                                 <p className="mt-2 text-xs" role="alert" style={{ color: '#ef4444' }}>
@@ -366,11 +388,7 @@ const ImportModal = ({
                             </p>
                         </div>
 
-                        <div className="relative flex py-2 items-center">
-                            <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
-                            <span className="flex-shrink-0 mx-4 text-xs uppercase font-bold" style={{ color: 'var(--text-tertiary)' }}>OR</span>
-                            <div className="flex-grow border-t" style={{ borderColor: 'var(--border-primary)' }}></div>
-                        </div>
+                        <SectionDivider />
 
                         <button
                             onClick={() => fileInputRef.current?.click()}
