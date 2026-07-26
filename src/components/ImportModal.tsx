@@ -142,13 +142,15 @@ const ImportModal = ({
                 setRestoreBusy(true);
                 setRestoreError(null);
                 try {
-                    const result = await invoke<{ contentB64: string }>(
+                    const result = await invoke<{ content: string }>(
                         'read_download_file',
                         { subdir: BACKUP_SUBDIR, filename: selectedBackup },
                     );
-                    // atob → UTF-8 safe string (the same shape FileReader
-                    // produces when the user picks the file directly).
-                    const text = atob(result.contentB64);
+                    // Rust side already UTF-8-decoded the file bytes —
+                    // auto-backup only ever writes a JSON.stringify
+                    // payload, so the string is valid JSON ready for
+                    // the import flow. No atob hop needed.
+                    const text = result.content;
                     if (await onImportJson(text, 'restore')) {
                         onClose();
                     } else {

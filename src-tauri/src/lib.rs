@@ -481,11 +481,17 @@ struct DownloadFileInfo {
 
 #[derive(serde::Serialize)]
 struct DownloadFileContent {
-    /// Base64 of the raw file bytes (same encoding `save_data_to_download`
-    /// accepts on the way in, so the round-trip is lossless). `atob()` on
-    /// the JS side turns this back into the exact JSON string the writer
-    /// stored — JS can then pipe it straight into `processImportedData`.
-    content_b64: String,
+    /// UTF-8 decoded file contents. The auto-backup writer only ever
+    /// stores a `JSON.stringify` payload (see `silentBackup` in the
+    /// frontend), which is valid UTF-8 by construction, so decoding
+    /// the bytes as UTF-8 is lossless. JS pipes the string straight
+    /// into `JSON.parse` / `processImportedData` — no atob hop needed.
+    ///
+    /// Earlier this returned base64 and the JS side did atob(); that
+    /// path was sensitive to a Tauri IPC quirk on older Android
+    /// WebView builds where long base64 payloads came out malformed
+    /// (the string failed `atob` with "string not correctly encoded").
+    content: String,
 }
 
 /// Walk the public Downloads tree and return every file under
@@ -555,11 +561,12 @@ fn list_download_files(_app: tauri::AppHandle, subdir: String) -> Result<Vec<Dow
     }
 }
 
-/// Read the bytes of a specific file under `{subdir}/`. Returned as
-/// base64 so the JNI String hop stays binary-safe (same encoding
-/// `save_data_to_download` accepts on write — JS atob → JSON.parse is
-/// the round-trip path). On non-Android this returns an error so a
-/// misguided web call can't silently treat an empty string as success.
+/// Read the bytes of a specific file under `{subdir}/` and return the
+/// UTF-8 decoded string. The file is always a `JSON.stringify` export
+/// payload, so UTF-8 decode is lossless and the JS side can pipe the
+/// string straight into `processImportedData`. On non-Android this
+/// returns an error so a misguided web call can't silently treat an
+/// empty string as success.
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
 fn read_download_file(
@@ -589,8 +596,8 @@ fn read_download_file(
                 .l()
                 .map_err(|e| format!("readFile.l: {}", e))?;
             let result_obj = jni::objects::JObject::from(result);
-            let content_b64 = read_jstring_field(env, &result_obj, "contentB64")?;
-            Ok(DownloadFileContent { content_b64 })
+            let content = read_jstring_field(env, &result_obj, "content")?;
+            Ok(DownloadFileContent { content })
         });
     }
     #[cfg(not(target_os = "android"))]

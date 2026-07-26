@@ -44,7 +44,18 @@ object DownloadManager {
     )
 
     data class FileContent(
-        val contentB64: String,
+        /**
+         * Raw file contents decoded as UTF-8. The auto-backup writer
+         * (`DownloadWriter.save_to_downloads`) only ever stores
+         * `JSON.stringify`-shaped JSON, which is valid UTF-8 by
+         * construction, so the decode is lossless. Returning a String
+         * directly lets the JS side skip the atob hop — the previous
+         * base64 round-trip was sensitive to Tauri IPC quirks on older
+         * Android WebView builds where long base64 payloads came out
+         * malformed, breaking `atob` with "string not correctly
+         * encoded".
+         */
+        val content: String,
     )
 
     @JvmStatic
@@ -68,11 +79,11 @@ object DownloadManager {
             readViaLegacyFile(context, safeSubdir, filename)
                 ?: throw RuntimeException("File not found: $safeSubdir/$filename")
         }
-        // NO_WRAP keeps it on a single line; JS `atob()` doesn't need line
-        // breaks. We deliberately don't use `STANDARD` (which inserts
-        // 76-column newlines) so the payload stays compact for IPC.
-        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-        return FileContent(b64)
+        // The file is a `JSON.stringify`-shaped export payload — valid
+        // UTF-8 by construction. Decode straight to a String and hand
+        // it to JS as-is; no base64 round-trip needed.
+        val text = String(bytes, Charsets.UTF_8)
+        return FileContent(text)
     }
 
     @JvmStatic
