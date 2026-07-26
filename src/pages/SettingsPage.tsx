@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
@@ -288,7 +287,6 @@ const SettingsPage: React.FC = () => {
 
     const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
     const { isDark, setIsDark, themeColor, setThemeColor } = useTheme();
-    const navigate = useNavigate();
 
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isAIExportOpen, setIsAIExportOpen] = useState(false);
@@ -1213,7 +1211,12 @@ const SettingsPage: React.FC = () => {
                     </h2>
                     <div className="overflow-hidden rounded-2xl glass-card">
                         <button
-                            onClick={() => navigate('/profile')}
+                            // 本 fork (2026-07-26 改)：点「账号/未登录」不再 navigate 到 /profile，
+                            // 直接弹「云同步等待开发中」提示。沿用 b7a04fa 的同款文案，
+                            // 保留按钮 UI 不变,以后恢复 Transmtf 账号体系时把这行改回 navigate('/profile') 即可。
+                            onClick={() => {
+                                showDialog('alert', t('cloud_sync.pending') || '云同步等待开发中');
+                            }}
                             className="flex w-full items-center gap-3 px-4 py-4 text-left transition btn-press-glass"
                             style={{ color: 'var(--text-primary)' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-soft-rose)'}
