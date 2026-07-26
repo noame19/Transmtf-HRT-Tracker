@@ -24,7 +24,6 @@ import {
     Moon,
     Sun,
     Bug,
-    Copy,
     User,
     ChevronRight,
     ChevronDown,
