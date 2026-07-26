@@ -24,7 +24,7 @@ import {
     Moon,
     Sun,
     Bug,
-    FileDown,
+    Copy,
     User,
     ChevronRight,
     ChevronDown,
@@ -118,52 +118,27 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const handleExportLogs = async () => {
+    const handleCopyLogs = async () => {
         if (!isTauri) {
-            showDialog('alert', t('settings.debug.web_unsupported') || 'Log export is only available in the Android APK.');
+            // Web preview has no Rust log buffer to dump — surface that
+            // explicitly rather than silently copying an empty string.
+            showDialog('alert', t('settings.debug.web_unsupported') || '此功能仅在 Android APK 中可用');
             return;
         }
         const invoke = window.__TAURI_INTERNALS__?.invoke;
         if (!invoke) return;
         try {
-            const result = await invoke<{ uri: string; displayPath: string; mime: string }>(
-                'export_logs_to_download',
-            );
+            const count = await invoke<number>('copy_logs_to_clipboard');
             showDialog(
                 'alert',
-                `${t('settings.debug.exported_prefix') || 'Exported to'} ${result.displayPath}`,
-                {
-                    messageNode: (
-                        <>
-                            {`${t('settings.debug.exported_prefix') || 'Exported to'} `}
-                            <a
-                                role="button"
-                                className="underline cursor-pointer break-all"
-                                style={{ color: 'var(--accent-primary, #ec4899)' }}
-                                onClick={() => {
-                                    if (!isTauri) return;
-                                    invoke('open_with_system', {
-                                        uri: result.uri,
-                                        mime: result.mime,
-                                    }).catch((e) => {
-                                        console.error('open_with_system failed', e);
-                                        // 把后端真实错误显出来——之前 Rust 端吞掉所有
-                                        // JVM 异常 + 用 Ok(true) 假装成功，用户看到的
-                                        // 「点击没反应」其实是 startActivity 失败但
-                                        // 被静默了。错误信息至少能告诉我们下一步往哪查。
-                                        const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
-                                        showDialog('alert', `无法唤起系统打开: ${msg}`);
-                                    });
-                                }}
-                            >
-                                {result.displayPath}
-                            </a>
-                        </>
-                    ),
-                },
+                (t('settings.debug.copied_count') || '已复制 {n} 行日志到剪贴板').replace(
+                    '{n}',
+                    String(count),
+                ),
             );
         } catch (err) {
-            showDialog('alert', `${err}`);
+            const msg = err instanceof Error ? err.message : String(err);
+            showDialog('alert', `${t('settings.debug.copy_failed_prefix') || '复制失败：'}${msg}`);
         }
     };
 
@@ -1292,7 +1267,7 @@ const SettingsPage: React.FC = () => {
                             <Toggle checked={debugMode} onChange={handleToggleDebug} />
                         </div>
                         <button
-                            onClick={handleExportLogs}
+                            onClick={handleCopyLogs}
                             disabled={!debugMode || logCount === 0}
                             className={`flex w-full items-center gap-3 px-4 py-4 text-left transition ${
                                 debugMode && logCount > 0 ? 'btn-press-glass' : 'cursor-not-allowed opacity-60'
@@ -1301,9 +1276,9 @@ const SettingsPage: React.FC = () => {
                             onMouseEnter={e => { if (debugMode && logCount > 0) e.currentTarget.style.background = 'var(--bg-card-hover)'; }}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                            <FileDown className="text-emerald-500" size={20} />
+                            <Copy className="text-emerald-500" size={20} />
                             <div className="flex-1">
-                                <p className="text-sm font-bold">{t('settings.debug.export') || 'Export logs to Download'}</p>
+                                <p className="text-sm font-bold">{t('settings.debug.export') || 'Copy debug logs'}</p>
                                 <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                                     {(t('settings.debug.count_label') || '已捕获')} {logCount} {(t('settings.debug.count_unit') || '行')}
                                 </p>

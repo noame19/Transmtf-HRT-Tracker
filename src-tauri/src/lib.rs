@@ -296,14 +296,7 @@ fn export_logs_to_download(_app: tauri::AppHandle) -> Result<SaveDataResult, Str
     if entries.is_empty() {
         return Err("No logs captured. Enable debug mode and reproduce the issue first.".to_string());
     }
-    let mut text = String::with_capacity(entries.len() * 120);
-    text.push_str("Transmtf HRT Tracker - Debug Log\n");
-    text.push_str(&format!("Exported at: {}\n", chrono::Local::now().to_rfc3339()));
-    text.push_str(&format!("Total entries: {}\n", entries.len()));
-    text.push_str("---------------------------------------------------------------\n");
-    for e in &entries {
-        text.push_str(&format!("[{}] [{}] [{}] {}\n", e.ts, e.source, e.level, e.msg));
-    }
+    let text = render_log_text(&entries);
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let filename = format!("hrt-tracker-logs-{}.txt", ts);
     #[cfg(target_os = "android")]
@@ -335,6 +328,59 @@ fn clipboard_write_text(_app: tauri::AppHandle, text: String) -> Result<String, 
     #[cfg(not(target_os = "android"))]
     {
         Err("clipboard_write_text only available on Android".to_string())
+    }
+}
+
+/// Format the in-memory log ring buffer as the same plain-text dump that
+/// `export_logs_to_download` writes to a file — header banner + one line
+/// per entry. Both the file-export and clipboard-copy paths pipe through
+/// this so the user-visible log content stays byte-for-byte identical no
+/// matter which sink they pick.
+fn render_log_text(entries: &[LogEntry]) -> String {
+    let mut text = String::with_capacity(entries.len() * 120);
+    text.push_str("Transmtf HRT Tracker - Debug Log\n");
+    text.push_str(&format!("Exported at: {}\n", chrono::Local::now().to_rfc3339()));
+    text.push_str(&format!("Total entries: {}\n", entries.len()));
+    text.push_str("---------------------------------------------------------------\n");
+    for e in entries {
+        text.push_str(&format!("[{}] [{}] [{}] {}\n", e.ts, e.source, e.level, e.msg));
+    }
+    text
+}
+
+/// One-shot "copy debug logs to clipboard" command. Replaces the old
+/// "export to Download" workflow so the user just taps once and pastes
+/// straight into the bug report — no file manager round-trip.
+///
+/// Why a single Rust command instead of `get_logs` + `clipboard_write_text`
+/// from JS:
+///   - navigator.clipboard.writeText on older Android WebViews can throw
+///     NotAllowedError when the document loses focus (clicks inside a list
+///     row don't refocus the page reliably), same class of issue we just
+///     diagnosed on the import side.
+///   - Going through the Kotlin `ClipboardManager` skips WebView entirely.
+///   - One IPC call also keeps the JS side simpler — no two-step
+///     "fetch → write" race where a fresh error message arrives between
+///     the two awaits and never makes it into the payload.
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn copy_logs_to_clipboard(_app: tauri::AppHandle) -> Result<usize, String> {
+    let entries = LOG_STATE.snapshot();
+    if entries.is_empty() {
+        return Err("No logs captured. Enable debug mode and reproduce the issue first.".to_string());
+    }
+    let text = render_log_text(&entries);
+    let count = entries.len();
+    #[cfg(target_os = "android")]
+    {
+        with_android_env(|env, activity| {
+            clipboard_write_inner(env, activity, &text)
+        })?;
+        Ok(count)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("copy_logs_to_clipboard only available on Android".to_string())
     }
 }
 
@@ -1010,6 +1056,7 @@ pub fn run() {
             append_log,
             set_debug_mode,
             export_logs_to_download,
+            copy_logs_to_clipboard,
             save_data_to_download,
             open_with_system,
             clipboard_write_text,
