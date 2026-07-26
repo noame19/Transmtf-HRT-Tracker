@@ -50,7 +50,7 @@ import {
 import { APP_VERSION } from '../constants';
 import CustomSelect from '../components/CustomSelect';
 import CustomGelManager from '../components/CustomGelManager';
-import ImportModal from '../components/ImportModal';
+import ImportModal, { type ImportSource } from '../components/ImportModal';
 import AIExportModal from '../components/AIExportModal';
 import BasicInfoModal, { loadBasicInfo, saveBasicInfo, earliestEventHrtDate, type BasicInfo } from '../components/BasicInfoModal';
 import PasswordInputModal from '../components/PasswordInputModal';
@@ -508,7 +508,7 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const importEventsFromJson = async (text: string): Promise<boolean> => {
+    const importEventsFromJson = async (text: string, source: ImportSource): Promise<boolean> => {
         try {
             const parsed: unknown = JSON.parse(text);
             const confirmKey = (isAuthenticated && !isAuthLoading) ? 'import.overwrite_confirm' : 'import.overwrite_confirm_local';
@@ -519,6 +519,10 @@ const SettingsPage: React.FC = () => {
 
             // 自动备份当前状态：用户已经确认要覆盖，万一选错文件/后悔，
             // 至少能从一个可识别的恢复点回滚。
+            //
+            // **从自动备份恢复的路径跳过**(`source === 'restore'`):用户已经在
+            // 做"撤销"而不是"覆盖",认知上不需要再生成一份 pre-import 快照,
+            // 只会让恢复列表越来越臃肿。
             //
             // **不 await**：silentBackup 内部第一行 `buildExportPayload()` 是同步
             // 的,字符串里就是当前(旧)数据;后续 `invoke('save_data_to_download')`
@@ -531,9 +535,11 @@ const SettingsPage: React.FC = () => {
             // 理论风险：用户在看到「导入成功」弹窗的 ~2s 内立刻做其它操作
             // (典型流程至少要点 OK 关闭弹窗 + 切到数据管理 + 二次确认清空),
             // 不会撞上写盘窗口。`.catch` 兜底 console.warn 防止 unhandled。
-            silentBackup('import').catch((err) => {
-                console.warn('[import] silent backup failed', err);
-            });
+            if (source !== 'restore') {
+                silentBackup('import').catch((err) => {
+                    console.warn('[import] silent backup failed', err);
+                });
+            }
 
             if (
                 isRecord(parsed) &&

@@ -20,6 +20,15 @@ interface BackupEntry {
     sizeBytes: number;
 }
 
+/**
+ * Where the JSON text being imported came from. Used by the parent to
+ * decide whether to write a `pre-import` auto-backup before overwriting
+ * current data — `restore` skips the backup because the operation is
+ * itself a rollback (writing yet another pre-backup would just pollute
+ * the restore list).
+ */
+export type ImportSource = 'restore' | 'clipboard' | 'file';
+
 const ImportModal = ({
     isOpen,
     onClose,
@@ -28,7 +37,7 @@ const ImportModal = ({
 }: {
     isOpen: boolean;
     onClose: () => void;
-    onImportJson: (text: string) => Promise<boolean>;
+    onImportJson: (text: string, source: ImportSource) => Promise<boolean>;
     /** True when running inside the Tauri Android runtime. The
      *  auto-backup restore section is hidden entirely on web — the
      *  browser sandbox can't list the user's Downloads folder, so
@@ -140,7 +149,7 @@ const ImportModal = ({
                     // atob → UTF-8 safe string (the same shape FileReader
                     // produces when the user picks the file directly).
                     const text = atob(result.contentB64);
-                    if (await onImportJson(text)) {
+                    if (await onImportJson(text, 'restore')) {
                         onClose();
                     } else {
                         // Import flow already showed its own error toast;
@@ -167,7 +176,7 @@ const ImportModal = ({
         const reader = new FileReader();
         reader.onload = async () => {
             const content = reader.result as string;
-            if (await onImportJson(content)) {
+            if (await onImportJson(content, 'file')) {
                 onClose();
             }
         };
@@ -207,7 +216,7 @@ const ImportModal = ({
                 );
                 return;
             }
-            if (await onImportJson(text)) {
+            if (await onImportJson(text, 'clipboard')) {
                 onClose();
             }
         } catch (err) {
