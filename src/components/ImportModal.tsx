@@ -383,9 +383,6 @@ const ImportModal = ({
                                     {clipboardError}
                                 </p>
                             )}
-                            <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                                {t('import.clipboard.hint') || '先在别处复制 JSON 文本，再点上面的按钮即可'}
-                            </p>
                         </div>
 
                         <SectionDivider />
