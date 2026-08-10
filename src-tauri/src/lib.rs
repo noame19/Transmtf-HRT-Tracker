@@ -263,6 +263,33 @@ fn clipboard_write_inner(
     Ok(jstr.into())
 }
 
+/// Mirror of `clipboard_write_inner` for the read path. The JS side tries
+/// `navigator.clipboard.readText` first (works on desktop / iOS / newer
+/// Android WebViews) and only falls back to this command when the WebView
+/// clipboard API throws — same class of focus / NotAllowedError issues we
+/// worked around for write. Reading still goes through the system
+/// `ClipboardManager` so the WebView focus state is irrelevant.
+fn clipboard_read_inner(
+    env: &mut jni::JNIEnv,
+    activity: &jni::objects::JObject,
+) -> Result<String, String> {
+    let writer_class = load_writer_class(env, activity)?;
+    let result = env
+        .call_static_method(
+            writer_class,
+            "readFromClipboard",
+            "(Landroid/content/Context;)Ljava/lang/String;",
+            &[jni::objects::JValue::Object(activity)],
+        )
+        .map_err(|e| format!("call_static_method: {}", e))?
+        .l()
+        .map_err(|e| format!("call_static_method.l(): {}", e))?;
+    let jstr = env
+        .get_string((&result).into())
+        .map_err(|e| format!("get_string: {}", e))?;
+    Ok(jstr.into())
+}
+
 #[tauri::command]
 fn set_debug_mode(app: tauri::AppHandle, enabled: bool) {
     // Toggle the in-memory gate; webview console + Rust panic both reach
@@ -328,6 +355,21 @@ fn clipboard_write_text(_app: tauri::AppHandle, text: String) -> Result<String, 
     #[cfg(not(target_os = "android"))]
     {
         Err("clipboard_write_text only available on Android".to_string())
+    }
+}
+
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn clipboard_read_text(_app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        return with_android_env(|env, activity| {
+            clipboard_read_inner(env, activity)
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("clipboard_read_text only available on Android".to_string())
     }
 }
 
@@ -1060,6 +1102,7 @@ pub fn run() {
             save_data_to_download,
             open_with_system,
             clipboard_write_text,
+            clipboard_read_text,
             list_download_files,
             read_download_file,
             delete_download_file,

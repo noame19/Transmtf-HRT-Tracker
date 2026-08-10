@@ -76,6 +76,30 @@ object DownloadWriter {
         return "OK"
     }
 
+    /**
+     * 把系统剪贴板的纯文本读到前端。`navigator.clipboard.readText` 在
+     * Tauri Android 的 WebView 默认会因为 focus / 权限问题抛
+     * NotAllowedError（`copyToClipboard` 注释里描述的同一类问题）。这里
+     * 直接走 Android 的 ClipboardManager，跳过 WebView。
+     *
+     * 仅在 Android 上用；iOS / 桌面继续走 navigator.clipboard.readText。
+     *
+     * 返回剪贴板里的文本（没有纯文本则返回空串）。
+     */
+    @JvmStatic
+    fun readFromClipboard(context: Context): String {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = cm.primaryClip ?: return ""
+        if (clip.itemCount == 0) return ""
+        val item = clip.getItemAt(0)
+        // coerceToText handles plain text / HTML / URI / Intent uniformly,
+        // matching what the user "sees" when they paste into a normal text
+        // field. The CoerceDescriptor flag is null because we have no UI
+        // context here — null falls back to text-only resolution which is
+        // exactly what the JS-side readText would return.
+        return item.coerceToText(context).toString()
+    }
+
     private fun sanitizeSubdir(s: String): String {
         val trimmed = s.trim().trim('/').trim()
         require(trimmed.isNotEmpty()) { "subdir cannot be empty" }

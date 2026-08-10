@@ -208,16 +208,27 @@ const ImportModal = ({
      * dialog so the user can still try the file picker without losing
      * state.
      *
-     * `readText()` requires a user gesture (this is a click handler, so
-     * fine) and a secure context (HTTPS or localhost). Web preview on
-     * `http://localhost:3000` qualifies; production on `https://` also
-     * qualifies. The Tauri Android WebView also exposes the standard
-     * clipboard API, so no platform-specific branch is needed.
+     * `navigator.clipboard.readText()` requires a user gesture (this is a
+     * click handler, so fine) and a secure context (HTTPS or localhost).
+     * Web preview on `http://localhost:3000` qualifies; production on
+     * `https://` also qualifies.
+     *
+     * On the Tauri Android WebView, `readText()` is exposed but throws
+     * NotAllowedError when the document loses focus inside a list row (the
+     * clipboard_write_text mirror image of the write-side bug). We detect
+     * the Tauri runtime and fall back to the `clipboard_read_text` command,
+     * which goes through the Kotlin `ClipboardManager` and doesn't care
+     * about WebView focus state. iOS / desktop keep using the WebView API.
      */
     const handleClipboardImport = async () => {
         if (clipboardBusy) return;
         setClipboardError(null);
-        if (!navigator.clipboard?.readText) {
+        const hasWebViewApi = !!navigator.clipboard?.readText;
+        const tauriInvoke = (typeof window !== 'undefined'
+            ? window.__TAURI_INTERNALS__?.invoke
+            : undefined);
+        const useTauriFallback = !hasWebViewApi && typeof tauriInvoke === 'function';
+        if (!hasWebViewApi && !useTauriFallback) {
             setClipboardError(
                 t('import.clipboard.unsupported') || '当前环境不支持读取剪贴板，请改用下方「选择文件」',
             );
@@ -225,7 +236,33 @@ const ImportModal = ({
         }
         setClipboardBusy(true);
         try {
-            const text = await navigator.clipboard.readText();
+            let text: string | null = null;
+            if (hasWebViewApi) {
+                try {
+                    text = await navigator.clipboard.readText();
+                } catch (webErr) {
+                    // Tauri Android WebView sometimes throws NotAllowedError
+                    // here even though the API is "available". If we have
+                    // the Rust fallback wired up, route through it instead
+                    // of surfacing a misleading error.
+                    console.warn('navigator.clipboard.readText failed, trying Tauri fallback', webErr);
+                    if (typeof tauriInvoke === 'function') {
+                        try {
+                            text = await tauriInvoke('clipboard_read_text') as string;
+                        } catch (tauriErr) {
+                            console.warn('clipboard_read_text fallback failed', tauriErr);
+                        }
+                    }
+                }
+            } else if (useTauriFallback) {
+                text = await (tauriInvoke as NonNullable<typeof tauriInvoke>)('clipboard_read_text') as string;
+            }
+            if (text === null || text === undefined) {
+                setClipboardError(
+                    t('import.clipboard.read_error') || '读取剪贴板失败',
+                );
+                return;
+            }
             if (!text.trim()) {
                 setClipboardError(
                     t('import.clipboard.empty') || '剪贴板为空，请先复制 JSON 文本，再点此按钮',
