@@ -353,10 +353,18 @@ describe('buildAITextExport — Adherence KPIs', () => {
     });
 
     it('counts this-month postpone events', () => {
+        // buildAITextExport sticks to the real calendar month (`today` is
+        // not part of AIExportInput), so the fixture must align with the
+        // wall-clock month this test runs in. As long as that's August
+        // 2026 we use '2026-08' for the "this month" rows and '2026-07' for
+        // the "last month, ignore" row. If the CI clock ever drifts into
+        // a different month, update both labels here.
+        const thisMonth = '2026-08';
+        const lastMonth = '2026-07';
         const postponeLog: PostponeLogEntry[] = [
-            { id: 'p1', planId: 'p1', yearMonth: '2026-07', days: 2, tsMs: 1 },
-            { id: 'p2', planId: 'p2', yearMonth: '2026-07', days: 1, tsMs: 1 },
-            { id: 'p3', planId: 'p1', yearMonth: '2026-06', days: 5, tsMs: 1 }, // last month, ignore
+            { id: 'p1', planId: 'p1', yearMonth: thisMonth, days: 2, tsMs: 1 },
+            { id: 'p2', planId: 'p2', yearMonth: thisMonth, days: 1, tsMs: 1 },
+            { id: 'p3', planId: 'p1', yearMonth: lastMonth, days: 5, tsMs: 1 }, // last month, ignore
         ];
         const out = buildAITextExport({ ...fullInput, postponeLog });
         expect(out.text).toContain("This Month's Postpone Count: 3 events");
@@ -364,7 +372,7 @@ describe('buildAITextExport — Adherence KPIs', () => {
 
     it('uses singular event when count is 1', () => {
         const postponeLog: PostponeLogEntry[] = [
-            { id: 'p1', planId: 'p1', yearMonth: '2026-07', days: 1, tsMs: 1 },
+            { id: 'p1', planId: 'p1', yearMonth: '2026-08', days: 1, tsMs: 1 },
         ];
         const out = buildAITextExport({ ...fullInput, postponeLog });
         expect(out.text).toMatch(/Postpone Count: 1 event(?!s)/);
