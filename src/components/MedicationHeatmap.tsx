@@ -554,7 +554,12 @@ const MedicationHeatmap: React.FC<MedicationHeatmapProps> = ({
                         label={t('heatmap.kpi.e2_count') || 'E2用药次数'}
                     />
                     <KpiCard
-                        value={stats.achievementRate > 0 ? `${Math.round(stats.achievementRate * 100)}%` : '—'}
+                        // 区分"无数据"与"达成率真的是 0%"：原 `> 0` 会把
+                        // 真正的 0% 误判成无数据并显示为 '—'。改为显式
+                        // 判断 applicable（分母）为 0 才显示占位。
+                        value={stats.achievementDenominator > 0
+                            ? `${Math.round(stats.achievementRate * 100)}%`
+                            : '—'}
                         label={t('heatmap.kpi.achievement') || '90天达成率'}
                     />
                     <KpiCard
@@ -773,6 +778,12 @@ interface KpiStats {
      *  postponed dose rolls the plan forward and disappears from the
      *  denominator, so postpone is "neutral" (see computeStats below). */
     achievementRate: number;
+    /** Windowed dueLog denominator (taken + skipped within the 90-day
+     *  window). Used by the KPI card to distinguish "无数据" (denominator
+     *  is 0 → render '—') from "达成率真的为 0%" (denominator > 0 but
+     *  numerator is 0 → render '0%'). 早期实现用 `> 0` 判定,会把合法
+     *  0% 误判成无数据。 */
+    achievementDenominator: number;
     /** Number of postpone actions in the current calendar month. */
     monthPostponeCount: number;
 }
@@ -858,6 +869,7 @@ function computeStats(
     //                 user chose to roll forward; the day is "not applicable"
     //                 rather than "missed")
     let achievementRate = 0;
+    let achievementDenominator = 0;
     if (dueLog && dueLog.length > 0) {
         // Cutoff = local midnight 89 days before today. Window covers
         // today and the 89 days immediately before it (90 days total).
@@ -880,6 +892,7 @@ function computeStats(
             // 'postponed' intentionally excluded from denominator.
         }
         achievementRate = applicable > 0 ? taken / applicable : 0;
+        achievementDenominator = applicable;
     }
 
     // KPI #4: postpone actions in the current calendar month.
@@ -889,7 +902,7 @@ function computeStats(
         monthPostponeCount = postponeLog.filter((e) => e.yearMonth === ym).length;
     }
 
-    return { hrtStartLabel, e2DoseCount, achievementRate, monthPostponeCount };
+    return { hrtStartLabel, e2DoseCount, achievementRate, achievementDenominator, monthPostponeCount };
 }
 
 function toDateKey(d: Date): string {

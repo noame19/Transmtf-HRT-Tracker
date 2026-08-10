@@ -10,7 +10,7 @@ interface OutletContext {
 
 const OverviewPage: React.FC = () => {
     const { onEditEvent } = useOutletContext<OutletContext>();
-    const { events, labResults, simulation, currentTime, simCI, baselineE2PGmL, plans } = useAppData();
+    const { events, labResults, simulation, currentTime, simCI, baselineE2PGmL, plans, dueLog, postponeLog } = useAppData();
 
     return (
         <OverviewView
@@ -21,6 +21,8 @@ const OverviewPage: React.FC = () => {
             simCI={simCI}
             baselineE2PGmL={baselineE2PGmL}
             plans={plans}
+            dueLog={dueLog}
+            postponeLog={postponeLog}
             onEditEvent={onEditEvent}
         />
     );
