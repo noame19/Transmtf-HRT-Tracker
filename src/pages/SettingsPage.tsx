@@ -796,9 +796,13 @@ const SettingsPage: React.FC = () => {
                     contentB64: b64,
                 },
             );
-            // 弹窗提示：「已保存到 <可点击的路径>」—— 点击路径调用系统 Intent
-            // 让用户选 app 打开（系统文件管理器 / 微信传输助手 / WPS 等）。
-            // 仅 Android 端：Tauri 这条路径必返回结构体，web 走更早的 <a download> blob 分支。
+            // 弹窗提示：「已保存到 <可点击的路径>」—— 点击路径调用系统
+            // share sheet (Intent.ACTION_SEND) 让用户选 app 分享出去
+            // (微信传输助手 / 云盘 / 邮件等)。ACTION_VIEW 在大多数
+            // 安卓设备上没有 JSON 默认打开器,会抛 ActivityNotFoundException;
+            // ACTION_SEND 是更通用的兜底。
+            // 仅 Android 端：Tauri 这条路径必返回结构体，web 走更早的
+            // <a download> blob 分支。
             showDialog(
                 'alert',
                 t('drawer.export_saved').replace('{path}', result.displayPath)
@@ -813,17 +817,53 @@ const SettingsPage: React.FC = () => {
                                 style={{ color: 'var(--accent-primary, #ec4899)' }}
                                 onClick={() => {
                                     if (!isTauri) return;
-                                    invoke('open_with_system', {
+                                    invoke('share_with_system', {
                                         uri: result.uri,
                                         mime: result.mime,
+                                        chooserTitle: '分享 JSON 备份',
                                     }).catch((e) => {
-                                        console.error('open_with_system failed', e);
-                                        // 把后端真实错误显出来——之前 Rust 端吞掉所有
-                                        // JVM 异常 + 用 Ok(true) 假装成功，用户看到的
-                                        // 「点击没反应」其实是 startActivity 失败但
-                                        // 被静默了。错误信息至少能告诉我们下一步往哪查。
+                                        // 调用 share sheet 失败不应阻塞流程 —
+                                        // 文件已经保存成功,这里只是无法唤起系统
+                                        // 分享面板。降级为「已保存」提示 + 复制路径,
+                                        // 让用户用任何文件管理器去找回文件。
+                                        console.error('share_with_system failed', e);
                                         const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
-                                        showDialog('alert', `无法唤起系统打开: ${msg}`);
+                                        const copy = async () => {
+                                            try {
+                                                if (navigator.clipboard?.writeText) {
+                                                    await navigator.clipboard.writeText(result.displayPath);
+                                                } else if ((window as any).__TAURI_INTERNALS__?.invoke) {
+                                                    await (window as any).__TAURI_INTERNALS__.invoke('clipboard_write_text', { text: result.displayPath });
+                                                }
+                                            } catch { /* 复制也失败就放弃 */ }
+                                        };
+                                        // Use confirm dialog so the "复制路径" button can
+                                        // run a side effect when tapped. showDialog's
+                                        // 3rd-arg-as-function form lets us hook the
+                                        // confirm-button press without changing the
+                                        // DialogContext API.
+                                        void showDialog(
+                                            'confirm',
+                                            `无法唤起系统分享面板: ${msg}`,
+                                            {
+                                                    messageNode: (
+                                                        <div className="space-y-2">
+                                                            <p>JSON 已保存到下方路径。点「复制路径」后可用文件管理器找回。</p>
+                                                            <p className="font-mono text-xs break-all p-2 rounded"
+                                                                style={{ background: 'var(--bg-card-hover)' }}>
+                                                                {result.displayPath}
+                                                            </p>
+                                                        </div>
+                                                    ),
+                                                    confirmText: '复制路径',
+                                                    cancelText: '我知道了',
+                                                },
+                                        ).then((choice) => {
+                                            // 点击「复制路径」按钮 → 调 copy()
+                                            if (choice === 'confirm') {
+                                                void copy();
+                                            }
+                                        });
                                     });
                                 }}
                             >

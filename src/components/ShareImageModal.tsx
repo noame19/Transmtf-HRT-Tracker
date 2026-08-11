@@ -473,14 +473,16 @@ const ShareImageModal: React.FC<Props> = ({
                                 className="underline cursor-pointer break-all ml-1"
                                 onClick={() => {
                                     if (!isTauri) return;
-                                    invoke('open_with_system', {
+                                    invoke('share_with_system', {
                                         uri: savedUri,
                                         mime: savedMime,
+                                        chooserTitle: 'Share image',
                                     }).catch((e) => {
-                                        console.error('open_with_system failed', e);
-                                        // 同 SettingsPage 导出 JSON：把后端真实错误显出来。
+                                        // 分享面板唤起失败不应阻塞 — 图片已保存,
+                                        // 降级为 alert 展示路径,用户可手动找回。
+                                        console.error('share_with_system failed', e);
                                         const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'unknown';
-                                        alert(`无法唤起系统打开: ${msg}`);
+                                        alert(`无法唤起系统分享面板: ${msg}`);
                                     });
                                 }}
                             >

@@ -462,16 +462,24 @@ fn save_data_to_download(
     }
 }
 
-/// Hand a previously-saved file off to the system "Open with" picker. The
-/// frontend hands us back the `uri` + `mime` that `save_data_to_download`
-/// returned, so the round-trip is fully lossless under Android 11+ scoped
-/// storage (where the on-disk path is not exposed to the app).
+/// Hand a previously-saved file off to the system "Share" sheet via
+/// `Intent.ACTION_SEND`. The frontend hands us back the `uri` + `mime` that
+/// `save_data_to_download` returned, so the round-trip is fully lossless
+/// under Android 11+ scoped storage (where the on-disk path is not
+/// exposed to the app).
+///
+/// We use ACTION_SEND rather than ACTION_VIEW because:
+///   - Stock Android has no default consumer for `application/json`, so
+///     ACTION_VIEW's chooser is often empty and startActivity throws.
+///   - Real users export JSON to *send* it somewhere (cloud drive,
+///     messenger, mail), which is exactly what ACTION_SEND targets.
 #[tauri::command]
 #[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
-fn open_with_system(
+fn share_with_system(
     _app: tauri::AppHandle,
     uri: String,
     mime: String,
+    chooser_title: Option<String>,
 ) -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
@@ -483,16 +491,24 @@ fn open_with_system(
             let jmime = env
                 .new_string(&mime)
                 .map_err(|e| format!("new_string(mime): {}", e))?;
+            // Default chooser title is just the system "Share" sheet label.
+            // Frontend can pass a localized title to localize the sheet
+            // header — most launchers show it above the app grid.
+            let title_text = chooser_title.unwrap_or_else(|| "Share with".to_string());
+            let jtitle = env
+                .new_string(&title_text)
+                .map_err(|e| format!("new_string(title): {}", e))?;
             let cls = load_opener_class(env, activity)?;
             // Discard the String return value — we only care whether the call
             // *succeeded*. JNI's `call_static_method` does NOT automatically
             // raise a Rust Err when the JVM throws; the exception stays
             // pending on the env. Without the explicit check below, a Kotlin
-            // RuntimeException("No app available to open ...") would silently
-            // bubble into the next JNI call (or vanish entirely) and Rust
-            // would return Ok(true), making the frontend think the click did
-            // nothing. exception_occurred + toString + exception_clear is the
-            // canonical way to surface JVM exceptions back to Rust.
+            // RuntimeException("No app available to share ...") would
+            // silently bubble into the next JNI call (or vanish entirely)
+            // and Rust would return Ok(true), making the frontend think
+            // the click did nothing. exception_occurred + toString +
+            // exception_clear is the canonical way to surface JVM
+            // exceptions back to Rust.
             //
             // jni 0.21's `exception_occurred()` returns `JThrowable` directly
             // (not Option) — an empty handle means no exception. `to_string`
@@ -500,9 +516,9 @@ fn open_with_system(
             // does not expose a convenience `to_string_lossy`.
             let _ = env.call_static_method(
                 cls,
-                "openWith",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
-                &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
+                "shareWith",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime), JValue::Object(&jtitle)],
             );
             let throwable = env
                 .exception_occurred()
@@ -520,14 +536,14 @@ fn open_with_system(
                     .get_string(&jstr)
                     .map_err(|e| format!("get_string(Throwable.toString): {}", e))?
                     .into();
-                return Err(format!("FileOpener.openWith threw: {}", desc_str));
+                return Err(format!("FileOpener.shareWith threw: {}", desc_str));
             }
             Ok(true)
         });
     }
     #[cfg(not(target_os = "android"))]
     {
-        Err("open_with_system only available on Android".to_string())
+        Err("share_with_system only available on Android".to_string())
     }
 }
 
@@ -1100,9 +1116,9 @@ pub fn run() {
             export_logs_to_download,
             copy_logs_to_clipboard,
             save_data_to_download,
-            open_with_system,
             clipboard_write_text,
             clipboard_read_text,
+            share_with_system,
             list_download_files,
             read_download_file,
             delete_download_file,
