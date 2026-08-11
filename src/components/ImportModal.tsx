@@ -130,11 +130,23 @@ const ImportModal = ({
         }
     }, [isTauri, t]);
 
-    // Auto-refresh when the modal opens on Tauri. We only fire on
-    // `isOpen` flip → true so a stale listing isn't replaced on every
-    // keystroke in the paste textarea.
+    // Auto-refresh when the modal opens on Tauri. Two triggers:
+    //   1. First open ever → `backups === null` (haven't tried yet).
+    //   2. Re-open after at least 30 s → a fresh listing may exist (the
+    //      user might have cleared all records or had a new auto-backup
+    //      created since the last open). Ref-gated so we don't re-fetch
+    //      on every render / focus tick.
+    // We DON'T fire on `isOpen` flip alone because that would spam the
+    // native bridge if the user is just typing into the paste textarea
+    // while the modal is open (rapid re-renders). 30 s covers the
+    // practical "user just left the app to clear records / import" case.
+    const lastBackupsFetchAtMs = useRef<number>(0);
     useEffect(() => {
-        if (isOpen && isTauri && backups === null) {
+        if (!isOpen || !isTauri) return;
+        const now = Date.now();
+        const stale = now - lastBackupsFetchAtMs.current > 30_000;
+        if (backups === null || stale) {
+            lastBackupsFetchAtMs.current = now;
             refreshBackups();
         }
     }, [isOpen, isTauri, backups, refreshBackups]);
