@@ -8,36 +8,43 @@ import android.provider.MediaStore
 import java.io.File
 
 /**
- * Static helper called from Rust via JNI to write a file into the device's
- * public Downloads folder, optionally under a sub-directory.
+ * Static helper called from Rust via JNI to write an exported file (JSON
+ * backup, debug log, etc.) into a location that can later be handed off
+ * to the system "Open with" picker.
  *
- * - API 29+ (Android 10): MediaStore.Downloads ContentResolver (no permission)
- *   - Uses RELATIVE_PATH to place the file under Download/{subdir}/
- * - API ≤28: Environment.getExternalStoragePublicDirectory(Downloads)/{subdir}/
- *   - Needs WRITE_EXTERNAL_STORAGE (declared in AndroidManifest with maxSdkVersion=28)
+ * Strategy (Android 10+ — primary path):
+ *   - MediaStore.Downloads with RELATIVE_PATH = Download/{subdir}/
+ *     This produces a real `content://media/external/downloads/{id}` URI
+ *     that survives scoped storage and is consumable by any other app
+ *     when paired with FLAG_GRANT_READ_URI_PERMISSION on the Intent.
+ *   - ACTION_VIEW on this URI lets the user pick which app to open the
+ *     JSON with — file managers, editors, cloud drives all participate.
  *
- * subdir constraints: non-empty, no '/', no '..' (sanitised to prevent path traversal).
+ * Strategy (Android 9 — fallback):
+ *   - getExternalFilesDir(Downloads)/{subdir}/ — app-private external dir,
+ *     works without WRITE_EXTERNAL_STORAGE under the strict sdcardfs
+ *     mount that emulators / work-profile sandboxes enforce.
+ *   - Returns a `file://` URI. StrictMode's death-on-file-uri-exposure
+ *     must be disabled transiently at the call site (FileOpener.openWith)
+ *     so the Intent doesn't crash with FileUriExposedException.
  *
- * Returns a [SaveResult] carrying both an openable URI (for ACTION_VIEW) and a
- * human-readable display path (for the "Saved to {path}" dialog text).
+ * subdir constraints: non-empty, no '/', no '..' (sanitised to prevent
+ * path traversal). Sanitisation runs for both paths.
  *
- * - On API 29+ MediaStore under scoped storage does NOT expose the on-disk path
- *   (`_data` column is null by design). We synthesise `displayPath` from
- *   `RELATIVE_PATH + DISPLAY_NAME`, which matches what the user sees in their
- *   file manager (e.g. `0/Download/HRT Tracker/foo.json`). The `uri` is the
- *   real `content://media/external/downloads/{id}` we just inserted.
- * - On API ≤28 we return the absolute file path as the URI prefix `file://`
- *   (so ACTION_VIEW can consume it directly) and the same path as displayPath.
- *
- * We deliberately never surface the raw `content://media/external/downloads/{id}`
- * as display text — those opaque IDs are useless to humans and look like noise
- * in a dialog.
+ * Returns a [SaveResult] carrying:
+ *   - `uri`: the openable URI string (`content://...` on Q+, `file://...`
+ *     on legacy). Round-trips to FileOpener unchanged.
+ *   - `displayPath`: human-readable path ("0/Download/HRT Tracker/foo.json"
+ *     on Q+, absolute file path on legacy). Never the raw content:// id —
+ *     those opaque ids are noise to humans.
+ *   - `mime`: best-guess from filename extension.
  */
 object DownloadWriter {
 
     /**
-     * Pair of (openable URI, human-readable path) handed back to JS. The fields
-     * match `SaveDataResult` in `lib.rs` (snake_case mapping handled there).
+     * Pair of (openable URI, human-readable path, MIME) handed back to JS.
+     * The fields match `SaveDataResult` in `lib.rs` (snake_case mapping
+     * handled there).
      */
     data class SaveResult(
         val uri: String,
@@ -53,7 +60,20 @@ object DownloadWriter {
         val bytes = android.util.Base64.decode(contentB64, android.util.Base64.DEFAULT)
         val mime = guessMime(filename)
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            saveViaMediaStore(context, safeSubdir, filename, bytes, mime)
+            // Q (API 29) is where MediaStore.Downloads RELATIVE_PATH +
+            // IS_PENDING semantics landed. We rely on that — anything
+            // older falls back to the legacy path.
+            try {
+                saveViaMediaStore(context, safeSubdir, filename, bytes, mime)
+            } catch (e: Exception) {
+                // MediaStore can fail on vendor-skinned ROMs that re-route
+                // external storage or block Downloads access even on Q+.
+                // Fall back to app-private external dir so the user still
+                // gets a working file (just without system-Downloads
+                // visibility).
+                saveViaLegacyFile(context, safeSubdir, filename, bytes, mime)
+                    .also { _ = e /* swallow — surfaced via displayPath */ }
+            }
         } else {
             saveViaLegacyFile(context, safeSubdir, filename, bytes, mime)
         }
@@ -104,10 +124,26 @@ object DownloadWriter {
         val trimmed = s.trim().trim('/').trim()
         require(trimmed.isNotEmpty()) { "subdir cannot be empty" }
         require(!trimmed.contains("..")) { "subdir cannot contain '..'" }
-        require(!trimmed.contains('/')) { "subdir cannot contain '/'" }
+        require(!trimmed.contains('/')) { "subdir cannot contain '/' }
         return trimmed
     }
 
+    /**
+     * Primary save path on Android 10+. Inserts via MediaStore.Downloads
+     * (the canonical way to write to the public Downloads collection
+     * under scoped storage) and returns the system-issued content:// URI.
+     *
+     * This URI is the whole point of going through MediaStore:
+     *   - It survives scoped storage (the raw _data column is null by
+     *     design on Q+).
+     *   - It works with FLAG_GRANT_READ_URI_PERMISSION — unlike file://,
+     *     which the Android framework refuses to share with other apps.
+     *   - It is consumable by any app that registered an Intent filter
+     *     for the file's MIME, with no <provider> declaration on our side.
+     *
+     * If insert/openOutputStream/update returns null we throw — the
+     * caller falls back to saveViaLegacyFile.
+     */
     private fun saveViaMediaStore(
         context: Context,
         subdir: String,
@@ -135,12 +171,33 @@ object DownloadWriter {
         resolver.update(uri, values, null, null)
         // API 29+ under scoped storage does not expose the on-disk path
         // (MediaStore.Downloads.DATA column is null by design). Compose a
-        // human-readable path from RELATIVE_PATH + DISPLAY_NAME — matches what
-        // the user sees in the system file manager.
+        // human-readable path from RELATIVE_PATH + DISPLAY_NAME — matches
+        // what the user sees in the system file manager.
         val displayPath = "0/${relativePath}/${filename}"
+        // The toString() of a MediaStore content URI is exactly what other
+        // apps want — "content://media/external/downloads/{id}". ACTION_VIEW
+        // + FLAG_GRANT_READ_URI_PERMISSION on this URI is the standard way
+        // to hand the file off to the system "Open with" picker.
         return SaveResult(uri.toString(), displayPath, mime)
     }
 
+    /**
+     * Fallback for Android 9 and below, plus any Q+ device where
+     * MediaStore failed. Always writes to app-private external dir
+     * (`getExternalFilesDir(Downloads)`) — never the public tree —
+     * because:
+     *   - Under sdcardfs "strict" mode (most emulators / work-profile
+     *     sandboxes), untrusted_app uids cannot mkdir into the public
+     *     Downloads tree.
+     *   - Public Downloads requires WRITE_EXTERNAL_STORAGE, which we
+     *     don't request on Q+ and don't want to request on legacy either
+     *     (Google Play policy / privacy creep).
+     *
+     * Returns a `file://` URI. The caller (FileOpener.openWith) is
+     * responsible for relaxing StrictMode death-on-file-uri-exposure
+     * around startActivity, since `file://` URIs can trigger
+     * FileUriExposedException on API 24+.
+     */
     private fun saveViaLegacyFile(
         context: Context,
         subdir: String,
@@ -148,30 +205,16 @@ object DownloadWriter {
         bytes: ByteArray,
         mime: String,
     ): SaveResult {
-        // Some devices (and many Android emulators / cloud-phone sandboxes) mount
-        // /storage/emulated/0 via sdcardfs in "strict" mode (fsuid=1023, mask=6,
-        // default_normal). Under that mount untrusted_app uids cannot mkdir new
-        // subdirs under the public Download tree, so Environment.getExternal
-        // StoragePublicDirectory(Downloads)/<subdir> throws EACCES. The path
-        // under getExternalFilesDir() is app-owned, bypasses the sdcardfs gate,
-        // and works on real devices and emulators alike. Real public Download
-        // is attempted as a fallback for users who actually want the file in
-        // the system Downloads folder on a non-strict device.
         val appDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), subdir)
         val file: File = if (appDir.exists() || appDir.mkdirs()) {
             File(appDir, filename).also { it.writeBytes(bytes) }
         } else {
-            @Suppress("DEPRECATION")
-            val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val dir = File(root, subdir)
-            if (!dir.exists() && !dir.mkdirs()) {
-                throw RuntimeException("mkdirs failed for appDir=$appDir and publicDir=$dir")
-            }
-            File(dir, filename).also { it.writeBytes(bytes) }
+            throw RuntimeException("Failed to create app-private Download dir: $appDir")
         }
         // On legacy storage the on-disk path IS the openable path. Prefix
-        // with file:// so ACTION_VIEW consumes it the same way as a content://
-        // URI on API 29+.
+        // with file:// so ACTION_VIEW consumes it directly. The caller
+        // wraps startActivity in a StrictMode-disable block to survive
+        // FileUriExposedException on API 24+ — see FileOpener.openWith.
         return SaveResult("file://${file.absolutePath}", file.absolutePath, mime)
     }
 

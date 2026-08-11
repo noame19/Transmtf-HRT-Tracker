@@ -4,72 +4,95 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.StrictMode
 
 /**
- * Hands a previously-saved file off to the system "Share" sheet so the user
- * can pick any installed app — Files, Drive, Slack, WeChat, Telegram, …
+ * Hands a previously-saved file off to the system "Open with" picker so
+ * the user can pick which installed app consumes it — file managers,
+ * editors, cloud drives, anything that registered an Intent filter for
+ * the file's MIME.
  *
- * Rationale (vs. ACTION_VIEW "Open with"):
- *   - ACTION_VIEW requires a registered consumer of the file's MIME. JSON
- *     files have no default opener on stock Android, so chooser is empty
- *     and startActivity throws ActivityNotFoundException.
- *   - ACTION_SEND is universal — every app that accepts text/files shows
- *     up, including cloud-storage + messengers, which is exactly what
- *     "export a JSON backup" wants.
- *   - Real users export JSON to send it somewhere (chat, drive, email);
- *     they almost never "open it in place".
+ * URI scheme handling:
+ *   - `content://` (Android 10+ MediaStore path): straight ACTION_VIEW +
+ *     FLAG_GRANT_READ_URI_PERMISSION. The MediaStore URI is built for
+ *     exactly this — FLAG_GRANT_READ_URI_PERMISSION hands the receiving
+ *     app a temporary read lease without us needing a <provider>.
+ *   - `file://` (Android 9 fallback, app-private external dir):
+ *     ACTION_VIEW + FLAG_GRANT_READ_URI_PERMISSION (the flag is a no-op
+ *     on file:// but harmless), wrapped in a transient
+ *     StrictMode.disableDeathOnFileUriExposure() so the call survives
+ *     Android 7+'s FileUriExposedException kill. The receiving app can
+ *     still read the file because it's the same UID's app-private dir.
  *
- * Scoped-storage note: the URI must be a `content://` URI with
- * FLAG_GRANT_READ_URI_PERMISSION set on BOTH the inner send intent and
- * the chooser intent, otherwise target apps get SecurityException when
- * they try to read the file. `file://` URIs (used by saveViaLegacyFile
- * before this rewrite) are not portable across apps under scoped storage —
- * kept as a fallback path that just reports the path textually.
- *
- * Returns "OK" on success, throws RuntimeException with a human-readable
- * message on failure. We catch the raw Android exceptions and re-throw
- * with our own copy so:
- *   1. The cause is logged with the full inner stack (not lost to
- *      Android's silent logcat-only reporting).
- *   2. The Rust side gets a useful string back through JNI, not the
- *      generic "Java exception was raised during method invocation"
- *      jni-rs fallback message.
+ * Error handling philosophy (carried over from the old impl): we catch
+ * every Android exception ourselves and re-throw as RuntimeException
+ * with a *useful* message. The Rust side's JNI exception_occurred +
+ * Throwable.toString path passes the message through verbatim — if we
+ * don't wrap, the user gets the generic "Java exception was raised
+ * during method invocation" and we lose the cause.
  */
 object FileOpener {
     @JvmStatic
-    fun shareWith(context: Context, uriString: String, mime: String, chooserTitle: String): String {
+    fun openWith(context: Context, uriString: String, mime: String): String {
         val uri = Uri.parse(uriString)
-        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_STREAM, uri)
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val chooser = Intent.createChooser(sendIntent, chooserTitle).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+
+        // For file:// URIs on API 24+ the system refuses to hand them to
+        // other apps (FileUriExposedException). The only reliable escape
+        // hatch is to relax StrictMode *only* around this startActivity
+        // call — we don't want a global policy change because that would
+        // hide real bugs elsewhere.
+        //
+        // content:// URIs (Android 10+) don't need this — the framework
+        // was designed for them. Skip the relax for content:// to avoid
+        // masking other StrictMode hits.
+        val needStrictModeRelax = uriString.startsWith("file://") &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+        val previousVmPolicy = if (needStrictModeRelax) {
+            StrictMode.getVmPolicy().also {
+                StrictMode.setVmPolicy(
+                    StrictMode.VmPolicy.Builder(it)
+                        .disableDeathOnFileUriExposure()
+                        .build()
+                )
+            }
+        } else null
+
         try {
-            context.startActivity(chooser)
-        } catch (e: ActivityNotFoundException) {
-            // Should be rare on real devices (the chooser itself can usually
-            // render even with zero targets), but some hardened ROMs +
-            // work-profile sandboxes do trip it. Fall back to copyToClipboard
-            // of the path so the user still has a way out.
-            throw RuntimeException(
-                "No app available to share files of type \"$mime\" (uri=$uriString)",
-                e
-            )
-        } catch (e: SecurityException) {
-            throw RuntimeException(
-                "System refused to share \"$uriString\" (mime=$mime): ${e.message ?: "permission denied"}",
-                e
-            )
-        } catch (e: Exception) {
-            throw RuntimeException(
-                "Failed to share \"$uriString\" (mime=$mime): ${e.message ?: e.javaClass.simpleName}",
-                e
-            )
+            try {
+                context.startActivity(viewIntent)
+            } catch (e: ActivityNotFoundException) {
+                // The URI itself is fine, but no installed app can handle
+                // it. The classic case: stock Android emulator with zero
+                // JSON consumers — there's literally no app that can
+                // open application/json. Surface this clearly so the
+                // frontend knows it's not a permission / URI bug.
+                throw RuntimeException(
+                    "已保存至下载目录，但未找到可打开 ${mime} 类型的应用。",
+                    e
+                )
+            } catch (e: SecurityException) {
+                // E.g. another app is in foreground / chooser blocked.
+                throw RuntimeException(
+                    "系统拒绝打开此文件 (${mime})：${e.message ?: "权限不足"}",
+                    e
+                )
+            } catch (e: Exception) {
+                throw RuntimeException(
+                    "打开文件失败 (${mime})：${e.message ?: e.javaClass.simpleName}",
+                    e
+                )
+            }
+            return "OK"
+        } finally {
+            if (previousVmPolicy != null) {
+                StrictMode.setVmPolicy(previousVmPolicy)
+            }
         }
-        return "OK"
     }
 }
