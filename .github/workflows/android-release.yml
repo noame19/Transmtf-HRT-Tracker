@@ -2,9 +2,14 @@ name: Android Release APK
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*.*.*"
+  # push.tags 触发器已注释(2026-08-11):仓库历史 tag 已全部清理,
+  # 现在仓库没有正式 release,不应该让任何 tag push 自动触发 CI。
+  # 以后正式发版前:1) 取消下面注释;2) 让发版 commit 打 tag + push tag;
+  # 3) 在 GitHub Releases 页面点"Create release"挂 APK。
+  # 暂时只保留 workflow_dispatch 手动触发,避免误推 tag 引爆 CI。
+  # push:
+  #   tags:
+  #     - "v*.*.*"
 
 jobs:
   build-android-release:
