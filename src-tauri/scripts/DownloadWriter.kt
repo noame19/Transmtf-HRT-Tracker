@@ -124,7 +124,7 @@ object DownloadWriter {
         val trimmed = s.trim().trim('/').trim()
         require(trimmed.isNotEmpty()) { "subdir cannot be empty" }
         require(!trimmed.contains("..")) { "subdir cannot contain '..'" }
-        require(!trimmed.contains('/')) { "subdir cannot contain '/' }
+        require(!trimmed.contains("/")) { "subdir cannot contain '/'" }
         return trimmed
     }
 
