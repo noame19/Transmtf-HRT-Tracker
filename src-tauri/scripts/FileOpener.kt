@@ -25,12 +25,19 @@ import android.os.StrictMode
  *     Android 7+'s FileUriExposedException kill. The receiving app can
  *     still read the file because it's the same UID's app-private dir.
  *
- * Error handling philosophy (carried over from the old impl): we catch
- * every Android exception ourselves and re-throw as RuntimeException
- * with a *useful* message. The Rust side's JNI exception_occurred +
- * Throwable.toString path passes the message through verbatim — if we
- * don't wrap, the user gets the generic "Java exception was raised
- * during method invocation" and we lose the cause.
+ * Result format: a tagged string the Rust side parses:
+ *   - "OK"         on success
+ *   - "ERR:<msg>"   on any failure (msg is human-readable Chinese)
+ *
+ * Why tagged-string instead of throwing a RuntimeException:
+ *   jni-rs 0.21 returns a generic `Error::JavaException` ("Java exception
+ *   was raised during method invocation") when it detects a pending
+ *   exception on the JNIEnv, instead of surfacing the actual
+ *   `Throwable.toString()` content. That makes the error invisible to
+ *   the JS layer. Tagged-string return values cross the JNI boundary
+ *   as plain UTF-8 without any exception-handling layer getting in
+ *   the way, so the user gets the real diagnostic message instead of
+ *   a useless wrapper.
  */
 object FileOpener {
     @JvmStatic
@@ -72,21 +79,12 @@ object FileOpener {
                 // JSON consumers — there's literally no app that can
                 // open application/json. Surface this clearly so the
                 // frontend knows it's not a permission / URI bug.
-                throw RuntimeException(
-                    "已保存至下载目录，但未找到可打开 ${mime} 类型的应用。",
-                    e
-                )
+                return "ERR:已保存至下载目录，但未找到可打开 ${mime} 类型的应用。"
             } catch (e: SecurityException) {
                 // E.g. another app is in foreground / chooser blocked.
-                throw RuntimeException(
-                    "系统拒绝打开此文件 (${mime})：${e.message ?: "权限不足"}",
-                    e
-                )
+                return "ERR:系统拒绝打开此文件 (${mime})：${e.message ?: "权限不足"}"
             } catch (e: Exception) {
-                throw RuntimeException(
-                    "打开文件失败 (${mime})：${e.message ?: e.javaClass.simpleName}",
-                    e
-                )
+                return "ERR:打开文件失败 (${mime})：${e.message ?: e.javaClass.simpleName}"
             }
             return "OK"
         } finally {

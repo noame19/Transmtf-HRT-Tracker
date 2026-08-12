@@ -496,43 +496,40 @@ fn open_with_system(
                 .new_string(&mime)
                 .map_err(|e| format!("new_string(mime): {}", e))?;
             let cls = load_opener_class(env, activity)?;
-            // Discard the String return value — we only care whether the call
-            // *succeeded*. JNI's `call_static_method` does NOT automatically
-            // raise a Rust Err when the JVM throws; the exception stays
-            // pending on the env. Without the explicit check below, a Kotlin
-            // RuntimeException("No app available to open ...") would silently
-            // bubble into the next JNI call (or vanish entirely) and Rust
-            // would return Ok(true), making the frontend think the click did
-            // nothing. exception_occurred + toString + exception_clear is the
-            // canonical way to surface JVM exceptions back to Rust.
-            //
-            // jni 0.21's `exception_occurred()` returns `JThrowable` directly
-            // (not Option) — an empty handle means no exception. `to_string`
-            // method must be invoked through call_method since the wrapper
-            // does not expose a convenience `to_string_lossy`.
-            let _ = env.call_static_method(
-                cls,
-                "openWith",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
-                &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
-            );
-            let throwable = env
-                .exception_occurred()
-                .map_err(|e| format!("exception_occurred: {}", e))?;
-            if !throwable.is_null() {
-                env.exception_clear()
-                    .map_err(|e| format!("exception_clear: {}", e))?;
-                let desc = env
-                    .call_method(throwable, "toString", "()Ljava/lang/String;", &[])
-                    .map_err(|e| format!("Throwable.toString call_method: {}", e))?
-                    .l()
-                    .map_err(|e| format!("Throwable.toString.l: {}", e))?;
-                let jstr = JString::from(desc);
-                let desc_str: String = env
-                    .get_string(&jstr)
-                    .map_err(|e| format!("get_string(Throwable.toString): {}", e))?
-                    .into();
-                return Err(format!("FileOpener.openWith threw: {}", desc_str));
+            // The Kotlin side reports success / failure as a tagged String
+            // ("OK" | "ERR:<message>") rather than throwing — see
+            // FileOpener.kt for the rationale. Throwing would also work
+            // but jni-rs 0.21 obscures the actual `Throwable.toString()`
+            // content behind a generic "Java exception was raised during
+            // method invocation" wrapper, which loses the diagnostic info
+            // before it can reach the JS alert dialog.
+            let result = env
+                .call_static_method(
+                    cls,
+                    "openWith",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+                    &[JValue::Object(activity), JValue::Object(&juri), JValue::Object(&jmime)],
+                )
+                .map_err(|e| format!("call_static_method(openWith): {}", e))?
+                .l()
+                .map_err(|e| format!("call_static_method.l(openWith): {}", e))?;
+            // Clear any pending exception jni-rs may have observed during
+            // the call (defensive — tagged-string return path shouldn't
+            // throw, but env state could be dirty from prior calls).
+            let _ = env.exception_clear();
+            let jstr = JString::from(result);
+            let result_str: String = env
+                .get_string(&jstr)
+                .map_err(|e| format!("get_string(openWith result): {}", e))?
+                .into();
+            if let Some(err_msg) = result_str.strip_prefix("ERR:") {
+                return Err(err_msg.to_string());
+            }
+            if result_str != "OK" {
+                // Unexpected return value — surface it verbatim rather
+                // than swallowing. Helps catch contract drift between
+                // Kotlin and Rust.
+                return Err(format!("FileOpener.openWith returned unexpected: {}", result_str));
             }
             Ok(true)
         });
