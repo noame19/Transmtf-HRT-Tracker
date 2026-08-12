@@ -65,14 +65,13 @@ object DownloadWriter {
             // older falls back to the legacy path.
             try {
                 saveViaMediaStore(context, safeSubdir, filename, bytes, mime)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // MediaStore can fail on vendor-skinned ROMs that re-route
                 // external storage or block Downloads access even on Q+.
                 // Fall back to app-private external dir so the user still
                 // gets a working file (just without system-Downloads
                 // visibility).
                 saveViaLegacyFile(context, safeSubdir, filename, bytes, mime)
-                    .also { _ = e /* swallow — surfaced via displayPath */ }
             }
         } else {
             saveViaLegacyFile(context, safeSubdir, filename, bytes, mime)
