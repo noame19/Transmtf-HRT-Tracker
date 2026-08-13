@@ -16,7 +16,7 @@ import android.net.Uri
  *   - everything else (JSON exports, text): the "open everything"
  *     chooser below — Android's chooser filters by a single MIME and
  *     has no "list all apps" switch, so we union several candidate
- *     MIMEs: the main intent targets `*/*` (file-manager bodies like
+ *     MIMEs: the main intent targets the catch-all MIME (file-manager bodies like
  *     ES/MT register the catch-all type) and EXTRA_INITIAL_INTENTS
  *     explicitly appends whatever resolves for text/plain,
  *     application/json and application/octet-stream (text editors,
@@ -69,9 +69,9 @@ object FileOpener {
      *
      * Android 的 chooser 按 MIME 过滤,单一 MIME 永远只能覆盖一类
      * app(application/json → JSON 工具;text/plain → 文本编辑器;
-     * */* → 文件管理器本体),没有"全部列出"的官方开关。这里把
+     * 万能类型 → 文件管理器本体),没有"全部列出"的官方开关。这里把
      * 多类目标的并集拼进同一个 chooser:
-     *   - 主 intent VIEW + */*:文件管理器本体(ES/MT 等注册兜底
+     *   - 主 intent VIEW + 万能类型:文件管理器本体(ES/MT 等注册兜底
      *     万能类型的 app)
      *   - EXTRA_INITIAL_INTENTS:显式附加注册了 text/plain、
      *     application/json、application/octet-stream 的 app
@@ -81,7 +81,7 @@ object FileOpener {
      *
      * 注意:Android 11+ 包可见性限制下,queryIntentActivities 只
      * 返回本应用自己的组件,除非 manifest 声明了对应的 <queries>
-     * (CI 注入 VIEW */*)。chooser 主列表不受此限制。
+     * (CI 注入 VIEW 万能类型)。chooser 主列表不受此限制。
      */
     private fun openWithEverything(context: Context, uri: Uri, mime: String): String {
         val pm = context.packageManager
