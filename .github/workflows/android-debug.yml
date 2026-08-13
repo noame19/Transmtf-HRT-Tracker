@@ -77,17 +77,20 @@ jobs:
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
-      - name: Inject DownloadWriter.kt into generated Android project
+      - name: Inject all Kotlin bridge sources into generated Android project
         run: |
           set -e
           KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
           mkdir -p "$KOTLIN_DIR"
-          cp src-tauri/scripts/DownloadWriter.kt "$KOTLIN_DIR/"
-          # DownloadManager.kt backs list/read/delete for the auto-backup
-          # restore dropdown + 6-month cleanup. Keep it next to the writer
-          # so the Kotlin package matches what Rust looks up via JNI.
-          cp src-tauri/scripts/DownloadManager.kt "$KOTLIN_DIR/"
-          echo "--- DownloadWriter.kt + DownloadManager.kt injected ---"
+          # 整包拷贝:scripts/ 下所有 .kt 都是 Rust JNI 桥接类
+          # (DownloadWriter / DownloadManager / FileOpener /
+          #  NotificationScheduler / ReminderReceiver / BootReceiver)。
+          # 之前逐个点名 cp 漏了 FileOpener.kt —— APK 里没有这个类,
+          # 点导出路径时 Rust loadClass 抛 ClassNotFoundException,前端
+          # 只看到 Chromium 的通用英文报错。整包拷贝让新增桥接类
+          # 自动进入构建,不再需要手工维护清单。
+          cp src-tauri/scripts/*.kt "$KOTLIN_DIR/"
+          echo "--- Kotlin bridge sources injected ---"
           ls -la "$KOTLIN_DIR/"
 
       - name: Patch AndroidManifest.xml with WRITE_EXTERNAL_STORAGE (maxSdkVersion=28)

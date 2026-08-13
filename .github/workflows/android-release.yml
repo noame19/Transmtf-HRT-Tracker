@@ -84,28 +84,20 @@ jobs:
       - name: Generate Android project (idempotent)
         run: cd src-tauri && npx @tauri-apps/cli@2 android init --ci
 
-      - name: Inject DownloadWriter.kt into generated Android project
+      - name: Inject all Kotlin bridge sources into generated Android project
         run: |
           set -e
           KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
           mkdir -p "$KOTLIN_DIR"
-          cp src-tauri/scripts/DownloadWriter.kt "$KOTLIN_DIR/"
-          # DownloadManager.kt backs list/read/delete — the auto-backup
-          # restore dropdown + 6-month cleanup sweep. Lives next to the
-          # writer so the Kotlin package matches what Rust looks up via JNI.
-          cp src-tauri/scripts/DownloadManager.kt "$KOTLIN_DIR/"
-          echo "--- DownloadWriter.kt + DownloadManager.kt injected ---"
-          ls -la "$KOTLIN_DIR/"
-
-      - name: Inject notification Kotlin sources into generated Android project
-        run: |
-          set -e
-          KOTLIN_DIR="src-tauri/gen/android/app/src/main/java/com/smirnovayama/hrttracker"
-          mkdir -p "$KOTLIN_DIR"
-          for f in NotificationScheduler.kt ReminderReceiver.kt BootReceiver.kt; do
-            cp "src-tauri/scripts/$f" "$KOTLIN_DIR/"
-          done
-          echo "--- notification sources injected ---"
+          # 整包拷贝:scripts/ 下所有 .kt 都是 Rust JNI 桥接类
+          # (DownloadWriter / DownloadManager / FileOpener /
+          #  NotificationScheduler / ReminderReceiver / BootReceiver)。
+          # 之前逐个点名 cp 漏了 FileOpener.kt —— APK 里没有这个类,
+          # 点导出路径时 Rust loadClass 抛 ClassNotFoundException,前端
+          # 只看到 Chromium 的通用英文报错。整包拷贝让新增桥接类
+          # 自动进入构建,不再需要手工维护清单。
+          cp src-tauri/scripts/*.kt "$KOTLIN_DIR/"
+          echo "--- Kotlin bridge sources injected ---"
           ls -la "$KOTLIN_DIR/"
 
       - name: Patch MainActivity.kt with deep-link handler (inject into Tauri's onCreate)
@@ -356,7 +348,7 @@ jobs:
             grep -nA2 "lint {" "$APP_GRADLE" || true
           fi
 
-      - name: Inject ProGuard keep rule for DownloadWriter (R8 strip fix)
+      - name: Inject ProGuard keep rule for JNI bridge classes (R8 strip fix)
         run: |
           set -e
           PROGUARD_FILE="src-tauri/gen/android/app/proguard-rules.pro"
@@ -365,34 +357,16 @@ jobs:
           touch "$PROGUARD_FILE"
           cat >> "$PROGUARD_FILE" <<'EOF'
 
-          # Keep DownloadWriter accessible from Rust via JNI reflection.
-          # R8's reachability graph can't see Rust→JNI reflection, so it
-          # would otherwise strip every @JvmStatic method on this Kotlin
-          # object. We hit this on the first signed release APK with
-          # "NoSuchMethodError: Lcom/.../DownloadWriter;.saveToDownloads"
-          # when the user tapped the export button — the class shell was
-          # present in dex but every method was gone.
-          -keep class com.smirnovayama.hrttracker.DownloadWriter { *; }
-          -keep class com.smirnovayama.hrttracker.DownloadWriter$* { *; }
-
-          # Same rationale for DownloadManager — list/read/delete of files
-          # in the public Downloads folder, used by the auto-backup
-          # restore dropdown and the 6-month cleanup sweep. The Rust
-          # invoke_handler pulls it in by class name + method signature,
-          # so R8 must keep every @JvmStatic method intact.
-          -keep class com.smirnovayama.hrttracker.DownloadManager { *; }
-          -keep class com.smirnovayama.hrttracker.DownloadManager$* { *; }
-
-          # Same rationale for the notification bridge. AlarmManager fires
-          # the receivers via Intent action lookups, so the class + method
-          # names MUST survive R8. The scheduler is reachable from Rust
-          # via JNI, same as DownloadWriter.
-          -keep class com.smirnovayama.hrttracker.NotificationScheduler { *; }
-          -keep class com.smirnovayama.hrttracker.NotificationScheduler$* { *; }
-          -keep class com.smirnovayama.hrttracker.ReminderReceiver { *; }
-          -keep class com.smirnovayama.hrttracker.ReminderReceiver$* { *; }
-          -keep class com.smirnovayama.hrttracker.BootReceiver { *; }
-          -keep class com.smirnovayama.hrttracker.BootReceiver$* { *; }
+          # 包级 keep:该包下所有类要么是 Rust JNI 桥接类
+          # (DownloadWriter / DownloadManager / FileOpener /
+          #  NotificationScheduler / ReminderReceiver / BootReceiver),
+          # 要么是 wry/tauri 运行时入口 (MainActivity / Rust / Ipc)。
+          # R8 的可达性分析看不到 Rust→JNI 反射调用,逐个类写 keep
+          # 曾经漏掉 FileOpener —— 点导出路径时 loadClass 抛
+          # ClassNotFoundException,前端只看到 Chromium 的通用英文报错
+          # "Java exception was raised during method invocation"。
+          # 包级规则让"新增桥接类但忘了 keep"不可能再发生。
+          -keep class com.smirnovayama.hrttracker.** { *; }
           EOF
           echo "--- proguard-rules.pro after patch ---"
           cat "$PROGUARD_FILE"
