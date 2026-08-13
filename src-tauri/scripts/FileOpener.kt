@@ -10,7 +10,7 @@ import android.net.Uri
  * the user can pick which installed app consumes it.
  *
  * Two open strategies, picked by MIME:
- *   - `image/*` (share-image flow): plain ACTION_VIEW with the exact
+ *   - image MIME (share-image flow): plain ACTION_VIEW with the exact
  *     MIME — an image should only ever be offered to image-capable
  *     apps, listing text editors there only produces mojibake.
  *   - everything else (JSON exports, text): the "open everything"
