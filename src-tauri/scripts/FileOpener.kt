@@ -62,11 +62,7 @@ object FileOpener {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
         val previousVmPolicy = if (needStrictModeRelax) {
             StrictMode.getVmPolicy().also {
-                StrictMode.setVmPolicy(
-                    StrictMode.VmPolicy.Builder(it)
-                        .disableDeathOnFileUriExposure()
-                        .build()
-                )
+                StrictMode.setVmPolicy(disableDeathOnFileUriExposureCompat(it))
             }
         } else null
 
@@ -91,6 +87,32 @@ object FileOpener {
             if (previousVmPolicy != null) {
                 StrictMode.setVmPolicy(previousVmPolicy)
             }
+        }
+    }
+
+    /**
+     * StrictMode.VmPolicy.Builder.disableDeathOnFileUriExposure() 在
+     * API 36 已从公开 SDK 移除(AOSP main 也不再公开该方法),而本
+     * 项目的 compileSdk = 36(tauri android init 模板默认),直接调用
+     * 会导致 Kotlin 编译报 "Unresolved reference"。
+     *
+     * 但该方法只在 file:// 豁免路径(Android 7-9 的 legacy 设备,
+     * DownloadWriter 的 saveViaLegacyFile fallback)才需要 ——
+     * API 29+ 设备走 MediaStore content://,`needStrictModeRelax`
+     * 恒为 false,永远不会进来。所以用反射兼容两端:
+     *   - API 24-35:反射找到方法,正常豁免 FileUriExposedException
+     *   - API 36+:方法已不存在,保持原策略直接返回(该路径在
+     *     API 36 设备上不可达,见上)
+     */
+    private fun disableDeathOnFileUriExposureCompat(vmPolicy: StrictMode.VmPolicy): StrictMode.VmPolicy {
+        return try {
+            val builder = StrictMode.VmPolicy.Builder(vmPolicy)
+            StrictMode.VmPolicy.Builder::class.java
+                .getMethod("disableDeathOnFileUriExposure")
+                .invoke(builder)
+            builder.build()
+        } catch (_: Exception) {
+            vmPolicy
         }
     }
 }
