@@ -142,6 +142,24 @@ jobs:
               print("injected FileProvider into <application>")
           else:
               print("FileProvider already declared — no-op")
+          # <queries> — Android 11+ 包可见性:FileOpener.openWithEverything
+          # 用 queryIntentActivities 把 text/plain、application/json、
+          # application/octet-stream 的目标附加进 chooser,没有这个
+          # 声明时 query 只返回本应用自己的组件,附加名单为空。
+          if "<queries>" not in s and "</manifest>" in s:
+              queries = (
+                  '\n    <queries>\n'
+                  '        <intent>\n'
+                  '            <action android:name="android.intent.action.VIEW" />\n'
+                  '            <data android:mimeType="*/*" />\n'
+                  '        </intent>\n'
+                  '    </queries>\n'
+              )
+              s = s.replace("</manifest>", queries + "</manifest>", 1)
+              p.write_text(s)
+              print("injected <queries> into manifest")
+          else:
+              print("<queries> already declared — no-op")
           PY
           echo "--- patched manifest ---"
           cat "$MANIFEST"
