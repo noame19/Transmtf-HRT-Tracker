@@ -226,7 +226,13 @@ object DownloadWriter {
     }
 
     private fun guessMime(filename: String): String = when {
-        filename.endsWith(".json", ignoreCase = true) -> "application/json"
+        // JSON 标成 text/plain 而不是 application/json:安卓的
+        // ACTION_VIEW chooser 只列出注册了该 MIME 的 app,绝大多数
+        // 文本编辑器(ES 文本编辑器、MT、WPS 等)只注册 text/*,
+        // 不注册 application/json —— 用 application/json 会让它们在
+        // 「打开方式」列表里消失。JSON 本质是纯文本,text/plain
+        // 打开体验完全一致。
+        filename.endsWith(".json", ignoreCase = true) -> "text/plain"
         filename.endsWith(".png", ignoreCase = true) -> "image/png"
         filename.endsWith(".jpg", ignoreCase = true) || filename.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
         filename.endsWith(".txt", ignoreCase = true) -> "text/plain"
