@@ -301,9 +301,45 @@ jobs:
               print("injected ReminderReceiver + BootReceiver into <application>")
           else:
               print("receivers already declared — no-op")
+          # FileProvider — Android 9 (API<29) 导出降级路径的文件分享通道:
+          # DownloadWriter.saveViaLegacyFile 把 app-private 文件包成
+          # content:// 授权 URI,这里声明 provider + file_paths 映射。
+          if "FileProvider" not in s and "</application>" in s:
+              provider = (
+                  "\n        <provider"
+                  "\n            android:name=\"androidx.core.content.FileProvider\""
+                  "\n            android:authorities=\"${applicationId}.fileprovider\""
+                  "\n            android:exported=\"false\""
+                  "\n            android:grantUriPermissions=\"true\">"
+                  "\n            <meta-data"
+                  "\n                android:name=\"android.support.FILE_PROVIDER_PATHS\""
+                  "\n                android:resource=\"@xml/file_paths\" />"
+                  "\n        </provider>"
+              )
+              s = s.replace("</application>", provider + "\n    </application>", 1)
+              p.write_text(s)
+              print("injected FileProvider into <application>")
+          else:
+              print("FileProvider already declared — no-op")
           PY
           echo "--- patched manifest ---"
           cat "$MANIFEST"
+
+      - name: Create res/xml/file_paths.xml for FileProvider (Android 9 legacy share)
+        run: |
+          set -e
+          XML_DIR="src-tauri/gen/android/app/src/main/res/xml"
+          mkdir -p "$XML_DIR"
+          cat > "$XML_DIR/file_paths.xml" <<'XML_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths>
+              <!-- Android 9 (API<29) legacy 导出路径:
+                   getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) 子树 -->
+              <external-files-path name="downloads" path="Download/" />
+          </paths>
+          XML_EOF
+          echo "--- file_paths.xml ---"
+          cat "$XML_DIR/file_paths.xml"
 
       - name: Copy frontend dist into Android assets/public
         run: |

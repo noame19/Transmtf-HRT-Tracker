@@ -4,8 +4,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.StrictMode
 
 /**
  * Hands a previously-saved file off to the system "Open with" picker so
@@ -14,16 +12,21 @@ import android.os.StrictMode
  * the file's MIME.
  *
  * URI scheme handling:
- *   - `content://` (Android 10+ MediaStore path): straight ACTION_VIEW +
- *     FLAG_GRANT_READ_URI_PERMISSION. The MediaStore URI is built for
- *     exactly this — FLAG_GRANT_READ_URI_PERMISSION hands the receiving
- *     app a temporary read lease without us needing a <provider>.
- *   - `file://` (Android 9 fallback, app-private external dir):
- *     ACTION_VIEW + FLAG_GRANT_READ_URI_PERMISSION (the flag is a no-op
- *     on file:// but harmless), wrapped in a transient
- *     StrictMode.disableDeathOnFileUriExposure() so the call survives
- *     Android 7+'s FileUriExposedException kill. The receiving app can
- *     still read the file because it's the same UID's app-private dir.
+ *   - `content://` from MediaStore (Android 10+, the primary path):
+ *     straight ACTION_VIEW + FLAG_GRANT_READ_URI_PERMISSION — the
+ *     MediaStore URI is built for exactly this.
+ *   - `content://` from FileProvider (Android 9 and below, the legacy
+ *     fallback path): DownloadWriter.saveViaLegacyFile wraps the
+ *     app-private file into a FileProvider URI, and the same
+ *     FLAG_GRANT_READ_URI_PERMISSION grants the receiving app a
+ *     temporary read lease.
+ *
+ * There is intentionally NO `file://` handling here anymore: sharing a
+ * raw file:// URI to another app dies with FileUriExposedException on
+ * API 24+ and no StrictMode relax can make another UID read an
+ * app-private dir — it was a dead end. If a stray file:// URI ever
+ * arrives it falls into the generic catch below and surfaces a Chinese
+ * "ERR:" message instead of crashing.
  *
  * Result format: a tagged string the Rust side parses:
  *   - "OK"         on success
@@ -31,13 +34,12 @@ import android.os.StrictMode
  *
  * Why tagged-string instead of throwing a RuntimeException:
  *   jni-rs 0.21 returns a generic `Error::JavaException` ("Java exception
- *   was raised during method invocation") when it detects a pending
- *   exception on the JNIEnv, instead of surfacing the actual
- *   `Throwable.toString()` content. That makes the error invisible to
- *   the JS layer. Tagged-string return values cross the JNI boundary
- *   as plain UTF-8 without any exception-handling layer getting in
- *   the way, so the user gets the real diagnostic message instead of
- *   a useless wrapper.
+ *   was thrown") when it detects a pending exception on the JNIEnv,
+ *   instead of surfacing the actual `Throwable.toString()` content. That
+ *   makes the error invisible to the JS layer. Tagged-string return
+ *   values cross the JNI boundary as plain UTF-8 without any
+ *   exception-handling layer getting in the way, so the user gets the
+ *   real diagnostic message instead of a useless wrapper.
  */
 object FileOpener {
     @JvmStatic
@@ -49,70 +51,21 @@ object FileOpener {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
-        // For file:// URIs on API 24+ the system refuses to hand them to
-        // other apps (FileUriExposedException). The only reliable escape
-        // hatch is to relax StrictMode *only* around this startActivity
-        // call — we don't want a global policy change because that would
-        // hide real bugs elsewhere.
-        //
-        // content:// URIs (Android 10+) don't need this — the framework
-        // was designed for them. Skip the relax for content:// to avoid
-        // masking other StrictMode hits.
-        val needStrictModeRelax = uriString.startsWith("file://") &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-        val previousVmPolicy = if (needStrictModeRelax) {
-            StrictMode.getVmPolicy().also {
-                StrictMode.setVmPolicy(disableDeathOnFileUriExposureCompat(it))
-            }
-        } else null
-
         try {
-            try {
-                context.startActivity(viewIntent)
-            } catch (e: ActivityNotFoundException) {
-                // The URI itself is fine, but no installed app can handle
-                // it. The classic case: stock Android emulator with zero
-                // JSON consumers — there's literally no app that can
-                // open application/json. Surface this clearly so the
-                // frontend knows it's not a permission / URI bug.
-                return "ERR:已保存至下载目录，但未找到可打开 ${mime} 类型的应用。"
-            } catch (e: SecurityException) {
-                // E.g. another app is in foreground / chooser blocked.
-                return "ERR:系统拒绝打开此文件 (${mime})：${e.message ?: "权限不足"}"
-            } catch (e: Exception) {
-                return "ERR:打开文件失败 (${mime})：${e.message ?: e.javaClass.simpleName}"
-            }
-            return "OK"
-        } finally {
-            if (previousVmPolicy != null) {
-                StrictMode.setVmPolicy(previousVmPolicy)
-            }
+            context.startActivity(viewIntent)
+        } catch (e: ActivityNotFoundException) {
+            // The URI itself is fine, but no installed app can handle
+            // it. The classic case: stock Android emulator with zero
+            // JSON consumers — there's literally no app that can
+            // open application/json. Surface this clearly so the
+            // frontend knows it's not a permission / URI bug.
+            return "ERR:已保存至下载目录，但未找到可打开 ${mime} 类型的应用。"
+        } catch (e: SecurityException) {
+            // E.g. another app is in foreground / chooser blocked.
+            return "ERR:系统拒绝打开此文件 (${mime})：${e.message ?: "权限不足"}"
+        } catch (e: Exception) {
+            return "ERR:打开文件失败 (${mime})：${e.message ?: e.javaClass.simpleName}"
         }
-    }
-
-    /**
-     * StrictMode.VmPolicy.Builder.disableDeathOnFileUriExposure() 在
-     * API 36 已从公开 SDK 移除(AOSP main 也不再公开该方法),而本
-     * 项目的 compileSdk = 36(tauri android init 模板默认),直接调用
-     * 会导致 Kotlin 编译报 "Unresolved reference"。
-     *
-     * 但该方法只在 file:// 豁免路径(Android 7-9 的 legacy 设备,
-     * DownloadWriter 的 saveViaLegacyFile fallback)才需要 ——
-     * API 29+ 设备走 MediaStore content://,`needStrictModeRelax`
-     * 恒为 false,永远不会进来。所以用反射兼容两端:
-     *   - API 24-35:反射找到方法,正常豁免 FileUriExposedException
-     *   - API 36+:方法已不存在,保持原策略直接返回(该路径在
-     *     API 36 设备上不可达,见上)
-     */
-    private fun disableDeathOnFileUriExposureCompat(vmPolicy: StrictMode.VmPolicy): StrictMode.VmPolicy {
-        return try {
-            val builder = StrictMode.VmPolicy.Builder(vmPolicy)
-            StrictMode.VmPolicy.Builder::class.java
-                .getMethod("disableDeathOnFileUriExposure")
-                .invoke(builder)
-            builder.build()
-        } catch (_: Exception) {
-            vmPolicy
-        }
+        return "OK"
     }
 }

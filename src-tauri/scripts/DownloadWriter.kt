@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import java.io.File
 
 /**
@@ -192,10 +193,18 @@ object DownloadWriter {
      *     don't request on Q+ and don't want to request on legacy either
      *     (Google Play policy / privacy creep).
      *
-     * Returns a `file://` URI. The caller (FileOpener.openWith) is
-     * responsible for relaxing StrictMode death-on-file-uri-exposure
-     * around startActivity, since `file://` URIs can trigger
-     * FileUriExposedException on API 24+.
+     * Returns a FileProvider `content://` URI, NOT a `file://` URI:
+     *   - `file://` triggers FileUriExposedException on API 24+ and even
+     *     a StrictMode relax can't make other apps read an app-private
+     *     dir (different UID, no read permission) — a dead end for the
+     *     "open with" handoff.
+     *   - FileProvider wraps the private file in a `content://` URI and
+     *     the ACTION_VIEW intent carries FLAG_GRANT_READ_URI_PERMISSION,
+     *     granting the receiving app a temporary read lease — the
+     *     standard share-file mechanism (same as WeChat / file managers).
+     *   - The provider + `<external-files-path name="downloads"
+     *     path="Download/">` entry are declared in the CI manifest /
+     *     res/xml patches, so this URI resolves at runtime.
      */
     private fun saveViaLegacyFile(
         context: Context,
@@ -210,11 +219,10 @@ object DownloadWriter {
         } else {
             throw RuntimeException("Failed to create app-private Download dir: $appDir")
         }
-        // On legacy storage the on-disk path IS the openable path. Prefix
-        // with file:// so ACTION_VIEW consumes it directly. The caller
-        // wraps startActivity in a StrictMode-disable block to survive
-        // FileUriExposedException on API 24+ — see FileOpener.openWith.
-        return SaveResult("file://${file.absolutePath}", file.absolutePath, mime)
+        // displayPath keeps the human-readable on-disk path; the openable
+        // URI is a FileProvider content:// that ACTION_VIEW can hand off.
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return SaveResult(uri.toString(), file.absolutePath, mime)
     }
 
     private fun guessMime(filename: String): String = when {
