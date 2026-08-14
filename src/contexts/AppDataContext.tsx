@@ -188,7 +188,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     // so the toast cannot be lost to a race.
     const justMigratedRef = useRef(false);
 
-    const [events, setEvents] = useState<DoseEvent[]>(() => {
+    const [events, setEventsState] = useState<DoseEvent[]>(() => {
         const saved = localStorage.getItem('hrt-events');
         const parsed: DoseEvent[] = saved ? JSON.parse(saved) : [];
         // One-shot per-dose-weight migration: backfill events that predate the
@@ -206,6 +206,33 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         return parsed;
     });
+
+    // Wrap the exported `setEvents` so any time events change we also bump
+    // `currentTime` in the SAME React batch. Without this, OverviewView's
+    // "上次用药" / "下次计划" go stale right after a "已服用" tap:
+    //   - `lastE2Dose` / `lastAntiandrogenDose` filter future events with
+    //     `if (ev.timeH > h) continue` where `h = currentTime.getTime() /
+    //     3600000`. `currentTime` ticks every 60s via setInterval, so
+    //     within that window `h` lags the actual `Date.now()` by up to
+    //     60s. A freshly logged event has `timeH = Date.now() / 3600000`
+    //     which can be > h, so it gets filtered out and the *previous*
+    //     "last dose" stays on screen until the next minute boundary.
+    //   - `nextE2Due` / `nextAntiandrogenDue` depend on
+    //     `[plans, currentTime]` and are not recomputed on events change.
+    //     With stale `currentTime`, `nextDueAfter(plan, currentTime)`
+    //     still returns today's scheduled moment after the user already
+    //     took it, so "下次计划" keeps showing "今天" until either the
+    //     next 60s tick or an app restart (which resets `currentTime`
+    //     back to `new Date()` at provider mount).
+    // Bumping `currentTime` alongside `setEventsState` puts both into
+    // the same render cycle; every useMemo that depends on `h` /
+    // `currentTime` recomputes immediately. Storage-event reloads and
+    // cloud-sync snapshots also go through this wrapper, so the same
+    // freshness guarantee covers those paths too.
+    const setEvents = useCallback((updater: React.SetStateAction<DoseEvent[]>) => {
+        setEventsState(updater);
+        setCurrentTime(new Date());
+    }, []);
 
     // Fire the migration toast once after mount when initial-load migration
     // happened this session. Effect runs after children mount, so MainLayout's
