@@ -65,19 +65,22 @@ object FileOpener {
     }
 
     /**
-     * 文本类导出(JSON 等)的「开放所有」打开方式。
+     * 文本类导出(JSON 等)的「开放所有」打开/分享方式。
      *
      * Android 的 chooser 按 MIME 过滤,单一 MIME 永远只能覆盖一类
-     * app(application/json → JSON 工具;text/plain → 文本编辑器;
-     * 万能类型 → 文件管理器本体),没有"全部列出"的官方开关。这里把
-     * 多类目标的并集拼进同一个 chooser:
-     *   - 主 intent VIEW + 万能类型:文件管理器本体(ES/MT 等注册兜底
-     *     万能类型的 app)
-     *   - EXTRA_INITIAL_INTENTS:显式附加注册了 text/plain、
-     *     application/json、application/octet-stream 的 app
+     * app,没有"全部列出"的官方开关。这里把多类目标的并集拼进
+     * 同一个 chooser:
+     *   - 主 intent ACTION_SEND + text/plain + EXTRA_STREAM:
+     *     微信/QQ 等 IM 的"发送给朋友"标准入口。它们不响应
+     *     ACTION_VIEW(响应了也只是打开内部文件查看器,临时授权
+     *     在微信内部转手后丢失,报"获取资源失败");ACTION_SEND
+     *     是它们专门支持的文件分享通道,授权处理最稳。
+     *   - EXTRA_INITIAL_INTENTS:显式附加注册了 ACTION_VIEW 的
+     *     app(text/plain 文本编辑器、万能类型文件管理器),
+     *     每个 target 独立指定 ACTION_VIEW 打开文件。
      *
-     * 每个附加 target 都带 FLAG_GRANT_READ_URI_PERMISSION,与主
-     * intent 的授权一致,用户挑哪个 app 都能读文件。
+     * 每个 target 都带 FLAG_GRANT_READ_URI_PERMISSION,用户挑
+     * 哪个 app 都能读文件。
      *
      * 注意:Android 11+ 包可见性限制下,queryIntentActivities 只
      * 返回本应用自己的组件,除非 manifest 声明了对应的 <queries>
@@ -85,9 +88,11 @@ object FileOpener {
      */
     private fun openWithEverything(context: Context, uri: Uri, mime: String): String {
         val pm = context.packageManager
-        val baseIntent = Intent(Intent.ACTION_VIEW).apply {
-            setData(uri)
-            type = "*/*"
+        // 主 intent 用 ACTION_SEND:IM 的"发送给朋友"文件分享标准入口。
+        // 纯文本类型,微信/QQ/邮件/蓝牙全部覆盖。
+        val baseIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val chooser = Intent.createChooser(baseIntent, "打开方式").apply {
@@ -96,20 +101,43 @@ object FileOpener {
 
         val extraTargets = mutableListOf<Intent>()
         val seen = mutableSetOf<String>() // "package/class" 去重
-        for (candidateMime in listOf("text/plain", "application/json", "application/octet-stream")) {
-            if (candidateMime == mime) continue
+        // 主 intent 能解析到的 app 已出现在 chooser 主列表,附加
+        // 列表先标记去重,避免重复显示。
+        for (ri in pm.queryIntentActivities(baseIntent, 0)) {
+            val ai = ri.activityInfo ?: continue
+            seen.add("${ai.packageName}/${ai.name}")
+        }
+        // 附加 ACTION_VIEW 类:文本编辑器(text/plain)+ 文件管理器
+        // 本体(万能类型),以"打开文件"方式消费 URI。
+        val viewProbes = listOf("text/plain" to "text/plain", "application/json" to "application/json")
+        for ((probeMime, targetMime) in viewProbes) {
             val probe = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, candidateMime)
+                setDataAndType(uri, probeMime)
             }
             for (ri in pm.queryIntentActivities(probe, 0)) {
                 val ai = ri.activityInfo ?: continue
                 val key = "${ai.packageName}/${ai.name}"
                 if (!seen.add(key)) continue
                 extraTargets += Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, candidateMime)
+                    setDataAndType(uri, targetMime)
                     setClassName(ai.packageName, ai.name)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
+            }
+        }
+        // 万能类型(文件管理器本体:ES/MT 等注册兜底)
+        val catchAll = Intent(Intent.ACTION_VIEW).apply {
+            setData(uri)
+            type = "*/*"
+        }
+        for (ri in pm.queryIntentActivities(catchAll, 0)) {
+            val ai = ri.activityInfo ?: continue
+            val key = "${ai.packageName}/${ai.name}"
+            if (!seen.add(key)) continue
+            extraTargets += Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                setClassName(ai.packageName, ai.name)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
 

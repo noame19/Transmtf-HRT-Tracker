@@ -143,15 +143,20 @@ jobs:
           else:
               print("FileProvider already declared — no-op")
           # <queries> — Android 11+ 包可见性:FileOpener.openWithEverything
-          # 用 queryIntentActivities 把 text/plain、application/json、
-          # application/octet-stream 的目标附加进 chooser,没有这个
+          # 用 queryIntentActivities 查询附加目标(text/plain 文本编辑器、
+          # 万能类型文件管理器)并统计主 SEND intent 的匹配数,没有这个
           # 声明时 query 只返回本应用自己的组件,附加名单为空。
+          # VIEW 覆盖打开类;SEND 覆盖分享类(微信/QQ 等 IM)。
           if "<queries>" not in s and "</manifest>" in s:
               queries = (
                   '\n    <queries>\n'
                   '        <intent>\n'
                   '            <action android:name="android.intent.action.VIEW" />\n'
                   '            <data android:mimeType="*/*" />\n'
+                  '        </intent>\n'
+                  '        <intent>\n'
+                  '            <action android:name="android.intent.action.SEND" />\n'
+                  '            <data android:mimeType="text/plain" />\n'
                   '        </intent>\n'
                   '    </queries>\n'
               )
