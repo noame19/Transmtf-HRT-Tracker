@@ -70,28 +70,37 @@ object FileOpener {
      * Android 的 chooser 按 MIME 过滤,单一 MIME 永远只能覆盖一类
      * app,没有"全部列出"的官方开关。这里把多类目标的并集拼进
      * 同一个 chooser:
-     *   - 主 intent ACTION_SEND + text/plain + EXTRA_STREAM:
-     *     微信/QQ 等 IM 的"发送给朋友"标准入口。它们不响应
-     *     ACTION_VIEW(响应了也只是打开内部文件查看器,临时授权
-     *     在微信内部转手后丢失,报"获取资源失败");ACTION_SEND
-     *     是它们专门支持的文件分享通道,授权处理最稳。
-     *   - EXTRA_INITIAL_INTENTS:显式附加注册了 ACTION_VIEW 的
-     *     app(text/plain 文本编辑器、万能类型文件管理器),
-     *     每个 target 独立指定 ACTION_VIEW 打开文件。
+     *   - 主 intent ACTION_SEND + text/星 + EXTRA_STREAM:覆盖
+     *     微信/QQ/蓝牙/邮件这些 IM 通道(它们响应 SEND text 星);
+     *     视频/音乐/图片 app 不响应 text 星,自然不会出现在
+     *     主列表,避免之前 catchAll 星/星 探测把 mxplayer/夸克
+     *     视频拉进来的问题。
+     *   - EXTRA_INITIAL_INTENTS:精确文本/文档类 MIME 的 VIEW
+     *     目标(text/plain 文本编辑器、application/json JSON
+     *     工具、text 星 文件管理器本体、application/octet-stream
+     *     通用处理者)。每个 target 独立指定 ACTION_VIEW 打开文件。
+     *
+     * 关键平衡:不用 星/星 兜底 ⇒ 视频/音乐/图片 app 不会被拉进
+     * 列表(它们只注册 video 星 / audio 星 / image 星 / 星/星,
+     * 不响应文本类 MIME);MT 这类注册 text 星 的文件管理器天然
+     * 在 text 星 探测里命中。
      *
      * 每个 target 都带 FLAG_GRANT_READ_URI_PERMISSION,用户挑
      * 哪个 app 都能读文件。
      *
      * 注意:Android 11+ 包可见性限制下,queryIntentActivities 只
      * 返回本应用自己的组件,除非 manifest 声明了对应的 <queries>
-     * (CI 注入 VIEW 万能类型)。chooser 主列表不受此限制。
+     * (CI 注入 VIEW text 星 + SEND text 星)。chooser 主列表
+     * 不受此限制。
      */
     private fun openWithEverything(context: Context, uri: Uri, mime: String): String {
         val pm = context.packageManager
         // 主 intent 用 ACTION_SEND:IM 的"发送给朋友"文件分享标准入口。
-        // 纯文本类型,微信/QQ/邮件/蓝牙全部覆盖。
+        // text/星 覆盖纯文本、JSON、HTML 等所有文本子类,微信/QQ/
+        // MT/蓝牙/邮件全部覆盖;视频/音乐/图片 app 不响应 text/星,
+        // 自然不在主列表里。
         val baseIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
+            type = "text/*"
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -107,9 +116,15 @@ object FileOpener {
             val ai = ri.activityInfo ?: continue
             seen.add("${ai.packageName}/${ai.name}")
         }
-        // 附加 ACTION_VIEW 类:文本编辑器(text/plain)+ 文件管理器
-        // 本体(万能类型),以"打开文件"方式消费 URI。
-        val viewProbes = listOf("text/plain" to "text/plain", "application/json" to "application/json")
+        // 附加 ACTION_VIEW 类:精确文本/文档 MIME,排除视频/音乐/
+        // 图片。text/星 探测命中注册了通用文本处理的文件管理器
+        // (MT 管理器等),不再用 星/星 兜底。
+        val viewProbes = listOf(
+            "text/plain" to "text/plain",
+            "application/json" to "application/json",
+            "text/*" to mime,
+            "application/octet-stream" to mime,
+        )
         for ((probeMime, targetMime) in viewProbes) {
             val probe = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, probeMime)
@@ -123,21 +138,6 @@ object FileOpener {
                     setClassName(ai.packageName, ai.name)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-            }
-        }
-        // 万能类型(文件管理器本体:ES/MT 等注册兜底)
-        val catchAll = Intent(Intent.ACTION_VIEW).apply {
-            setData(uri)
-            type = "*/*"
-        }
-        for (ri in pm.queryIntentActivities(catchAll, 0)) {
-            val ai = ri.activityInfo ?: continue
-            val key = "${ai.packageName}/${ai.name}"
-            if (!seen.add(key)) continue
-            extraTargets += Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mime)
-                setClassName(ai.packageName, ai.name)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
         }
 
