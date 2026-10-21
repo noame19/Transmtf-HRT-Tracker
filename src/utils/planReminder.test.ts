@@ -146,6 +146,70 @@ describe('hasMatchingEvent', () => {
             NOW, events, 120,
         )).toBe(true);
     });
+
+    // ── dose awareness ───────────────────────────────────────────────────
+    //
+    // Matching used to ignore doseMG entirely. That silently swallowed a
+    // reminder whenever the user ran two plans for the same ester+route at
+    // overlapping times with different amounts — recording the larger dose
+    // also "satisfied" the smaller plan's due. These tests pin the window.
+
+    it('treats an unknown plan dose as a match (rate-only patch plans have doseMG=0)', () => {
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 20, 0)];
+        events[0].doseMG = 0;
+        expect(hasMatchingEvent(
+            { ester: Ester.EV, route: Route.injection, doseMG: 0 },
+            NOW, events,
+        )).toBe(true);
+    });
+
+    it('treats an unknown event dose as a match (never hides a reminder)', () => {
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 20, 0)];
+        (events[0] as any).doseMG = undefined;
+        expect(hasMatchingEvent(
+            { ester: Ester.EV, route: Route.injection, doseMG: 5 },
+            NOW, events,
+        )).toBe(true);
+    });
+
+    it('accepts a half dose (tapering / splitting is legitimate)', () => {
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 20, 0)];
+        events[0].doseMG = 2.5;
+        expect(hasMatchingEvent(
+            { ester: Ester.EV, route: Route.injection, doseMG: 5 },
+            NOW, events,
+        )).toBe(true);
+    });
+
+    it('rejects a clearly different dose for the same ester+route+time', () => {
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 20, 0)];
+        events[0].doseMG = 1;   // 1mg recorded, 5mg planned → ratio 0.2
+        expect(hasMatchingEvent(
+            { ester: Ester.EV, route: Route.injection, doseMG: 5 },
+            NOW, events,
+        )).toBe(false);
+    });
+
+    it('rejects a dose far above the plan (ratio > 2×)', () => {
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 20, 0)];
+        events[0].doseMG = 12;  // 12mg recorded vs 5mg planned → ratio 2.4
+        expect(hasMatchingEvent(
+            { ester: Ester.EV, route: Route.injection, doseMG: 5 },
+            NOW, events,
+        )).toBe(false);
+    });
+
+    it('findDueReminders keeps the small plan due when only the large dose was recorded', () => {
+        // Two plans, same ester+route, 30min apart, different doses.
+        const small = mkDailyPlan(Ester.EV, Route.injection, 20, 0, { doseMG: 2 });
+        const large = mkDailyPlan(Ester.EV, Route.injection, 19, 30, { doseMG: 6 });
+        const events = [mkEvent(Ester.EV, Route.injection, 2026, 6, 5, 19, 30)];
+        events[0].doseMG = 6;
+        const result = findDueReminders([small, large], events, NOW);
+        // The 6mg due is satisfied; the 2mg due at 20:00 must still surface.
+        expect(result).toHaveLength(1);
+        expect(result[0].plan.id).toBe(small.id);
+    });
 });
 
 // ── findDueReminders ──────────────────────────────────────────────────────

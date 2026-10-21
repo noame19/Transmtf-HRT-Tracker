@@ -42,21 +42,62 @@ export const PLAN_REMINDER_AUTO_DISMISS_MIN = PLAN_REMINDER_LATE_END_MIN;
 // ── Matching ──────────────────────────────────────────────────────────────
 
 /**
+ * How far an already-recorded dose may deviate from the plan's dose and still
+ * count as "this planned dose was taken".
+ *
+ * Deliberately loose in BOTH directions but not unbounded:
+ *   - lower 0.5× so a legitimate half-dose still satisfies the reminder
+ *     (splitting a pill / tapering is real and common);
+ *   - upper 2× so a double dose is not silently treated as "covered" either —
+ *     the user still gets reminded that the planned dose is outstanding.
+ *
+ * The window exists because matching used to ignore dose entirely, and that
+ * is wrong when a user runs two plans for the same ester+route at overlapping
+ * times with different amounts (e.g. EV 2mg at 09:00 and EV 6mg at 10:00):
+ * recording the 6mg dose *also* marked the 2mg due as satisfied, so the
+ * reminder for the dose they never took disappeared.
+ */
+export const PLAN_REMINDER_DOSE_RATIO_MIN = 0.5;
+export const PLAN_REMINDER_DOSE_RATIO_MAX = 2;
+
+/**
+ * Does `eventDose` plausibly satisfy `planDose`? Returns TRUE (i.e. "don't
+ * filter this event out") whenever either side is unusable, so unknown data
+ * can never *hide* a reminder — only a confident mismatch can.
+ *
+ * The unusable cases matter:
+ *   - rate-only patch plans store `doseMG = 0` with the real strength in
+ *     `extras.releaseRateUGPerDay`;
+ *   - patch events recorded the same way have `doseMG = 0`;
+ *   - legacy/hand-edited rows can have a missing or non-finite dose.
+ */
+export function dosePlausiblyMatches(planDose: unknown, eventDose: unknown): boolean {
+    const p = typeof planDose === 'number' ? planDose : NaN;
+    const e = typeof eventDose === 'number' ? eventDose : NaN;
+    if (!Number.isFinite(p) || !Number.isFinite(e) || p <= 0 || e <= 0) return true;
+    const ratio = e / p;
+    return ratio >= PLAN_REMINDER_DOSE_RATIO_MIN && ratio <= PLAN_REMINDER_DOSE_RATIO_MAX;
+}
+
+/**
  * Is there an existing DoseEvent that "satisfies" the given due moment?
  *
- * Match criteria (all three):
+ * Match criteria (all four):
  *   1. Time within ±toleranceMin of `due` (so users can record slightly
  *      early/late and still satisfy the plan).
  *   2. Same ester (so CPA cannot satisfy an EV plan).
  *   3. Same canonical route (so oral / sublingual are interchangeable, same
  *      as the compliance check).
+ *   4. Dose within [`DOSE_RATIO_MIN`×, `DOSE_RATIO_MAX`×] of the plan dose —
+ *      see `dosePlausiblyMatches` for why the window is wide and why an
+ *      unknown dose on either side is treated as a match.
  *
- * We intentionally do NOT compare doseMG: a user who records a half-dose
- * for legitimate reasons still satisfies the "I took this" intent, and the
- * compliance banner is the right place to surface dosing deviations.
+ * `doseMG` is optional on the plan argument so existing call sites and tests
+ * that only care about ester/route keep working; passing it enables the dose
+ * check.
  */
 export function hasMatchingEvent(
-    plan: Pick<Plan, 'ester' | 'route'>,
+    plan: Pick<Plan, 'ester' | 'route'> & { doseMG?: number },
     due: Date,
     events: DoseEvent[],
     toleranceMin: number = PLAN_REMINDER_TOLERANCE_MIN,
@@ -68,7 +109,9 @@ export function hasMatchingEvent(
         if (e.ester !== plan.ester) continue;
         if (canonicalComplianceRoute(e.route) !== planRoute) continue;
         const evMs = e.timeH * 3600000;
-        if (Math.abs(evMs - dueMs) <= tolMs) return true;
+        if (Math.abs(evMs - dueMs) > tolMs) continue;
+        if (!dosePlausiblyMatches(plan.doseMG, e.doseMG)) continue;
+        return true;
     }
     return false;
 }
