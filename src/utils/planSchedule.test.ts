@@ -647,3 +647,142 @@ describe('dueMomentsInRange — leadMinutes invariant', () => {
         expect(next5?.getMinutes()).toBe(0);
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 小数周期（1.5 / 3.5 天）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('fractional every_n_days intervals', () => {
+    // 从 2026-07-01 local midnight 起算第 N 天的本地零点。
+    const dayOffset = (n: number) => new Date(2026, 6, 1 + n, 0, 0, 0);
+
+    /** 收集从 anchor 起 30 天内命中的「第几天」。 */
+    function hitDays(intervalDays: number, spanDays = 30): number[] {
+        const plan = makePlan({ schedule: { kind: 'every_n_days', intervalDays, times: ['20:00'] } });
+        const hits: number[] = [];
+        for (let n = 0; n < spanDays; n++) {
+            const d = dayOffset(n);
+            // dueMomentsInRange 按 [from, to) 取，这里直接查当天有没有时刻。
+            const from = new Date(d.getTime());
+            const to = new Date(d.getTime() + 24 * 3600000);
+            if (dueMomentsInRange(plan, from, to).length > 0) hits.push(n);
+        }
+        return hits;
+    }
+
+    it('keeps integer intervals bit-identical to the old modulo rule', () => {
+        expect(hitDays(1, 12)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+        expect(hitDays(2, 12)).toEqual([0, 2, 4, 6, 8, 10]);
+        expect(hitDays(5, 30)).toEqual([0, 5, 10, 15, 20, 25]);
+        expect(hitDays(7, 30)).toEqual([0, 7, 14, 21, 28]);
+    });
+
+    it('schedules 1.5-day interval with alternating 2/1 day gaps', () => {
+        // 0, 1.5→2, 3, 4.5→5(或4)… 投影到最近的日历日：0,2,3,5,6,8,9,11,12
+        expect(hitDays(1.5, 13)).toEqual([0, 2, 3, 5, 6, 8, 9, 11, 12]);
+    });
+
+    it('schedules 3.5-day interval with alternating 4/3 day gaps', () => {
+        // 0, 3.5→4, 7, 10.5→11, 14, 17.5→18, 21, 24.5→25
+        expect(hitDays(3.5, 26)).toEqual([0, 4, 7, 11, 14, 18, 21, 25]);
+    });
+
+    it('averages out to the requested interval', () => {
+        const days = hitDays(3.5, 60);
+        const span = days[days.length - 1] - days[0];
+        const avg = span / (days.length - 1);
+        // 日粒度投影允许 ±0.15 天偏差（3.5 → 实际 3.545）
+        expect(Math.abs(avg - 3.5)).toBeLessThan(0.15);
+    });
+
+    it('never fires twice on the same day for fractional intervals ≥ 1', () => {
+        for (const interval of [1.5, 2.5, 3.5, 5.5]) {
+            const days = hitDays(interval, 40);
+            expect(new Set(days).size).toBe(days.length);
+        }
+    });
+
+    it('accepts intervalDays = 0.5 in validatePlan but rejects < 0.5', () => {
+        const ok = makePlan({ schedule: { kind: 'every_n_days', intervalDays: 0.5, times: ['20:00'] } });
+        expect(validatePlan(ok)).toEqual([]);
+        const bad = makePlan({ schedule: { kind: 'every_n_days', intervalDays: 0.4, times: ['20:00'] } });
+        expect(validatePlan(bad).length).toBeGreaterThan(0);
+    });
+
+    it('rejects absurdly long intervals', () => {
+        const long = makePlan({ schedule: { kind: 'every_n_days', intervalDays: 400, times: ['20:00'] } });
+        expect(validatePlan(long).length).toBeGreaterThan(0);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// weekly 每星期独立时间（timesByWeekday 叠加层）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('weekly timesByWeekday overlay', () => {
+    // 2026-07-06 是周一（Mon）。
+    const startH = new Date(2026, 6, 6, 0, 0, 0).getTime() / 3600000;
+    const mondayPlan = (overlay?: Record<number, string[]>) => makePlan({
+        startDateH: startH,
+        schedule: {
+            kind: 'weekly',
+            weekdays: [1, 3], // Mon, Wed
+            times: ['20:00'],
+            ...(overlay ? { timesByWeekday: overlay } : {}),
+        },
+    });
+
+    /** 取某一天的命中时刻的「小时:分钟」列表。 */
+    function hoursOn(plan: Plan, y: number, mo: number, d: number): string[] {
+        const from = new Date(y, mo, d, 0, 0, 0);
+        const to = new Date(y, mo, d + 1, 0, 0, 0);
+        return dueMomentsInRange(plan, from, to).map((m) => {
+            const dd = new Date(m);
+            return `${String(dd.getHours()).padStart(2, '0')}:${String(dd.getMinutes()).padStart(2, '0')}`;
+        });
+    }
+
+    it('falls back to shared times when the overlay is absent', () => {
+        const p = mondayPlan();
+        expect(hoursOn(p, 2026, 6, 6)).toEqual(['20:00']); // Mon
+        expect(hoursOn(p, 2026, 6, 8)).toEqual(['20:00']); // Wed
+    });
+
+    it('uses per-weekday times when the overlay is present', () => {
+        // 用户真实诉求：周一 21:00、周三 09:00
+        const p = mondayPlan({ 1: ['21:00'], 3: ['09:00'] });
+        expect(hoursOn(p, 2026, 6, 6)).toEqual(['21:00']); // Mon
+        expect(hoursOn(p, 2026, 6, 8)).toEqual(['09:00']); // Wed
+    });
+
+    it('lets a weekday missing from the overlay keep the shared times', () => {
+        const p = mondayPlan({ 3: ['09:00'] });
+        expect(hoursOn(p, 2026, 6, 6)).toEqual(['20:00']); // Mon 回落
+        expect(hoursOn(p, 2026, 6, 8)).toEqual(['09:00']); // Wed 用自己的
+    });
+
+    it('supports multiple times per weekday', () => {
+        const p = mondayPlan({ 1: ['08:00', '21:00'] });
+        expect(hoursOn(p, 2026, 6, 6)).toEqual(['08:00', '21:00']);
+    });
+
+    it('does not fire on unselected weekdays', () => {
+        const p = mondayPlan({ 1: ['21:00'], 3: ['09:00'] });
+        expect(hoursOn(p, 2026, 6, 7)).toEqual([]); // Tue
+        expect(hoursOn(p, 2026, 6, 9)).toEqual([]); // Thu
+    });
+
+    it('summarizes per-day times when they differ', () => {
+        const p = mondayPlan({ 1: ['21:00'], 3: ['09:00'] });
+        const out = summarizeSchedule(p, tStub);
+        expect(out).toContain('21:00');
+        expect(out).toContain('09:00');
+    });
+
+    it('keeps the compact summary when all days agree', () => {
+        const p = mondayPlan();
+        const out = summarizeSchedule(p, tStub);
+        expect(out).toContain('20:00');
+        expect(out).not.toContain('·');
+    });
+});

@@ -184,11 +184,41 @@ export type PlanExtras = Partial<Record<ExtraKey, number>>;
  *
  * `times` are wall-clock `HH:MM` strings in the user's local timezone. A plan
  * can have up to 4 daily times (mirroring `BatchDoseModal.timesPerDay`).
+ *
+ * `weekly` carries an OPTIONAL `timesByWeekday` overlay so each weekday can
+ * have its own dose times. Real regimens need this: e.g. apply on Mon 21:00
+ * but Wed 09:00. Semantics:
+ *
+ *   - absent / `undefined`  → every selected weekday uses the shared `times`
+ *                             (this is what all pre-existing plans look like,
+ *                             so old persisted JSON keeps working untouched)
+ *   - present               → a weekday listed in `weekdays` but missing from
+ *                             the overlay also falls back to `times`
+ *
+ * Exposed as an overlay rather than restructuring `weekdays` into an array of
+ * objects so no data migration is required on either the TS or the Kotlin
+ * side — the Android scheduler reads the same field defensively.
  */
 export type PlanSchedule =
     | { kind: 'daily'; times: string[] }
     | { kind: 'every_n_days'; intervalDays: number; times: string[] }
-    | { kind: 'weekly'; weekdays: number[]; times: string[] }; // 0=Sun..6=Sat (matches Date.getDay())
+    | {
+        kind: 'weekly';
+        weekdays: number[];
+        times: string[];
+        timesByWeekday?: Partial<Record<number, string[]>>;
+    }; // 0=Sun..6=Sat (matches Date.getDay())
+
+/** Resolve the dose times that apply on a given weekday (0=Sun..6=Sat).
+ *  Centralised here so the scheduler, the summary formatter and the editor UI
+ *  can never disagree about the overlay's precedence. */
+export function timesForWeekday(
+    schedule: Extract<PlanSchedule, { kind: 'weekly' }>,
+    weekday: number,
+): string[] {
+    const override = schedule.timesByWeekday?.[weekday];
+    return override && override.length > 0 ? override : schedule.times;
+}
 
 /** Drug-class grouping — derived from ester, used for UI grouping/colors. */
 export type DrugCategory = 'estrogen' | 'anti_androgen' | 'progestin' | 'other';

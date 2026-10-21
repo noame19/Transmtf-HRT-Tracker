@@ -1,4 +1,4 @@
-import { Ester, Plan, Route } from '../../types';
+import { Ester, Plan, PlanSchedule, Route } from '../../types';
 
 /**
  * Bounds for `every_n_days` interval. The lower bound is 0.5 rather than a
@@ -115,10 +115,13 @@ function isInDateWindow(plan: Plan, at: Date): boolean {
 export function dueMomentsInRange(plan: Plan, from: Date, to: Date): Date[] {
     if (!plan.enabled) return [];
     const out: Date[] = [];
-    const times = plan.schedule.times
-        .map(parseHHMM)
-        .filter((x): x is { h: number; m: number } => x !== null);
-    if (times.length === 0) return [];
+    if (parseTimes(plan.schedule.times).length === 0) {
+        // A weekly plan may take all of its times from the per-weekday
+        // overlay, so an empty shared `times` is not automatically fatal.
+        const hasOverlay = plan.schedule.kind === 'weekly' &&
+            Object.values(plan.schedule.timesByWeekday ?? {}).some((ts) => (ts ?? []).length > 0);
+        if (!hasOverlay) return [];
+    }
 
     const startDay = startOfLocalDay(from);
     const endDay = startOfLocalDay(to);
@@ -129,7 +132,7 @@ export function dueMomentsInRange(plan: Plan, from: Date, to: Date): Date[] {
     for (let i = 0; i < totalDays; i++) {
         const day = new Date(startDay.getFullYear(), startDay.getMonth(), startDay.getDate() + i);
         if (!matchesScheduleDay(plan, day)) continue;
-        for (const { h, m } of times) {
+        for (const { h, m } of timesOnDay(plan.schedule, day)) {
             const moment = localDateAt(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
             // Skip moments outside [from, to) or before startDate / after endDate.
             if (moment < from) continue;
@@ -139,6 +142,27 @@ export function dueMomentsInRange(plan: Plan, from: Date, to: Date): Date[] {
         }
     }
     return out;
+}
+
+function parseTimes(raw: string[]): Array<{ h: number; m: number }> {
+    return raw
+        .map(parseHHMM)
+        .filter((x): x is { h: number; m: number } => x !== null);
+}
+
+/**
+ * The dose times that apply on `day`.
+ *
+ * `daily` / `every_n_days` always use the shared `schedule.times`. `weekly`
+ * consults the optional per-weekday overlay first (see `PlanSchedule`'s doc
+ * comment) so e.g. Monday 21:00 and Wednesday 09:00 can coexist in one plan.
+ */
+function timesOnDay(schedule: PlanSchedule, day: Date): Array<{ h: number; m: number }> {
+    if (schedule.kind === 'weekly') {
+        const override = schedule.timesByWeekday?.[day.getDay()];
+        if (override && override.length > 0) return parseTimes(override);
+    }
+    return parseTimes(schedule.times);
 }
 
 function matchesScheduleDay(plan: Plan, day: Date): boolean {
@@ -340,13 +364,28 @@ export function summarizeSchedule(plan: Plan, t: (k: string, fallback?: string) 
                 .replace('{times}', fmtTimes(plan.schedule.times));
         }
         case 'weekly': {
-            const dayKeys = plan.schedule.weekdays.map((d) => `plan.weekday.${d}`);
-            const days = plan.schedule.weekdays
-                .map((d, i) => t(dayKeys[i], ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d] ?? '?'))
-                .join(' / ');
-            return t('plan.summary.weekly', 'Weekly')
-                .replace('{days}', days)
-                .replace('{times}', fmtTimes(plan.schedule.times));
+            const schedule = plan.schedule;
+            const dayLabel = (d: number) =>
+                t(`plan.weekday.${d}`, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d] ?? '?');
+            // When every selected weekday shares the same times we keep the
+            // compact "Mon / Thu 11:00" form. As soon as the per-weekday
+            // overlay makes them differ, each day gets its own times so the
+            // card can't imply that Monday is also dosed at Wednesday's hour.
+            const perDay = schedule.weekdays.map((d) => fmtTimes(
+                schedule.timesByWeekday?.[d]?.length ? schedule.timesByWeekday[d] as string[] : schedule.times,
+            ));
+            const distinct = new Set(perDay);
+            if (distinct.size <= 1) {
+                return t('plan.summary.weekly', 'Weekly')
+                    .replace('{days}', schedule.weekdays.map(dayLabel).join(' / '))
+                    .replace('{times}', perDay[0] ?? '');
+            }
+            const joined = schedule.weekdays
+                .map((d, i) => `${dayLabel(d)} ${perDay[i]}`)
+                .join(' · ');
+            return t('plan.summary.weekly_per_day', '{days}')
+                .replace('{days}', joined)
+                .replace('{times}', '');
         }
     }
 }

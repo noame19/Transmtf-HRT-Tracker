@@ -101,6 +101,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     const [intervalDays, setIntervalDays] = useState('5');
     const [weekdays, setWeekdays] = useState<number[]>([1, 3, 5]); // Mon Wed Fri
     const [times, setTimes] = useState<string[]>(['20:00']);
+    // 每个星期几的独立时间叠加层（方案 1）：字段缺失 = 沿用共享 times。
+    // 只在「选了多个星期且它们时间不同」时才会写入，单选星期时直接编 times，
+    // 免得给用户的数据里凭空多出一层 overlay。
+    const [timesByWeekday, setTimesByWeekday] = useState<Partial<Record<number, string[]>>>({});
+    // 当前正在编辑哪个星期的时间（weekly 多选时才用得上）
+    const [editingWeekday, setEditingWeekday] = useState<number | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [leadMinutes, setLeadMinutes] = useState('5');
@@ -199,6 +205,11 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             }
             if (planToEdit.schedule.kind === 'weekly') {
                 setWeekdays(planToEdit.schedule.weekdays);
+                setTimesByWeekday(planToEdit.schedule.timesByWeekday ?? {});
+                setEditingWeekday(planToEdit.schedule.weekdays[0] ?? null);
+            } else {
+                setTimesByWeekday({});
+                setEditingWeekday(null);
             }
             setTimes(planToEdit.schedule.times.length > 0 ? planToEdit.schedule.times : ['20:00']);
             setStartDate(toLocalDateStr(new Date(planToEdit.startDateH * 3600000)));
@@ -281,6 +292,8 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setScheduleKind('every_n_days');
             setIntervalDays('5');
             setWeekdays([1, 3, 5]);
+            setTimesByWeekday({});
+            setEditingWeekday(null);
             // 时间默认值：当前时刻（对齐用药记录弹窗的「新增」默认行为），起始日期保持今天。
             const nowInit = new Date();
             const hh = String(nowInit.getHours()).padStart(2, '0');
@@ -384,22 +397,57 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         }
     }, [isOpen, planToEdit, route, events]);
 
+    /** weekly 多选时当前正在编辑的那一天；单选/非 weekly 时返回 null（= 编辑共享 times）。
+     *  用派生值而不是 effect 回写状态，免得「取消勾选正在编辑的那一天」后
+     *  editingWeekday 变成悬空值。 */
+    const activeDay: number | null = (scheduleKind === 'weekly' && weekdays.length > 1)
+        ? (editingWeekday !== null && weekdays.includes(editingWeekday) ? editingWeekday : (weekdays[0] ?? null))
+        : null;
+
+    /** Reading: activeDay 的列表，没有 overlay 时回落共享 times。 */
+    const activeTimes: string[] = (activeDay !== null && (timesByWeekday[activeDay]?.length ?? 0) > 0)
+        ? timesByWeekday[activeDay] as string[]
+        : times;
+
+    /** Writing: activeDay 为空时改共享 times，否则只写这一天的 overlay。 */
+    const setActiveTimes = (next: string[]) => {
+        if (activeDay === null) {
+            setTimes(next);
+        } else {
+            setTimesByWeekday((prev) => ({ ...prev, [activeDay]: next }));
+        }
+    };
+
     const addTimeSlot = () => {
-        if (times.length >= 4) return; // cap matches BatchDoseModal's timesPerDay
-        setTimes([...times, '12:00']);
+        if (activeTimes.length >= 4) return; // cap matches BatchDoseModal's timesPerDay
+        setActiveTimes([...activeTimes, '12:00']);
     };
     const removeTimeSlot = (idx: number) => {
-        if (times.length <= 1) return;
-        setTimes(times.filter((_, i) => i !== idx));
+        if (activeTimes.length <= 1) return;
+        setActiveTimes(activeTimes.filter((_, i) => i !== idx));
     };
     const updateTime = (idx: number, val: string) => {
-        const next = [...times];
+        const next = [...activeTimes];
         next[idx] = val;
-        setTimes(next);
+        setActiveTimes(next);
     };
     const toggleWeekday = (day: number) => {
-        setWeekdays(weekdays.includes(day) ? weekdays.filter((d) => d !== day) : [...weekdays, day].sort());
+        const next = weekdays.includes(day) ? weekdays.filter((d) => d !== day) : [...weekdays, day].sort();
+        setWeekdays(next);
+        // 取消勾选时顺便清掉这一天的 overlay，避免“取消又勾回来”时
+        // 带上一个用户已经看不见的时间块。
+        if (!next.includes(day)) {
+            setTimesByWeekday((prev) => {
+                if (!(day in prev)) return prev;
+                const copy = { ...prev };
+                delete copy[day];
+                return copy;
+            });
+        }
     };
+
+    /** 把所有星期的独立时间收回到共享 times（删掉 overlay 字段）。 */
+    const resetTimesByWeekday = () => setTimesByWeekday({});
 
     /** ±0.5 快捷按钮：1.5 / 3.5 天这类方案靠手输太容易错，给一对步进按钮。
      *  内部按 0.5 的倍数对齐，避免连续点击累积出 1.4999999998 这种浮点噪声。 */
@@ -465,6 +513,22 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
     // 照搬 DoseFormModal.safeEster。
     const safeEster = availableEsters.includes(ester) ? ester : availableEsters[0];
 
+    /** weekly 的调度对象。只给「真的有自己的时间且与共享值不同」的星期写 overlay，
+     *  其它星期一律省略——这样旧计划、以及用户没改过时间的计划，存出去还是
+     *  原来的 `{ kind:'weekly', weekdays, times }` 形状，不会凭空多一个字段。 */
+    const buildWeeklySchedule = (): PlanSchedule => {
+        const overlay: Partial<Record<number, string[]>> = {};
+        for (const d of weekdays) {
+            const own = timesByWeekday[d];
+            if (!own || own.length === 0) continue;
+            const same = own.length === times.length && own.every((v, i) => v === times[i]);
+            if (!same) overlay[d] = own;
+        }
+        return Object.keys(overlay).length > 0
+            ? { kind: 'weekly', weekdays, times, timesByWeekday: overlay }
+            : { kind: 'weekly', weekdays, times };
+    };
+
     /** Build a Plan object from the current form state. Pure w.r.t. component
      *  state — used both by the compliance-preview useMemo and by handleSave.
      *  Centralising avoids drift between what we *preview* and what we *save*. */
@@ -481,7 +545,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                 ? { kind: 'daily', times }
                 : scheduleKind === 'every_n_days'
                     ? { kind: 'every_n_days', intervalDays: parseFloat(intervalDays) || MIN_INTERVAL_DAYS, times }
-                    : { kind: 'weekly', weekdays, times };
+                    : buildWeeklySchedule();
 
         // Build per-route extras so a plan with route=patchApply / route=gel
         // carries the same intent into DoseFormModal.prefillFromPlan when the
@@ -1148,26 +1212,73 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                             </div>
                         )}
 
-                        {/* Time chips */}
+                        {/* Time chips。weekly 多选时，上面的星期按钮变成「选中哪一天就在下面编哪一天」，
+                            这样周一 21:00 / 周三 09:00 这类方案能直接填。单选星期时仍走共享 times。 */}
                         <div className="space-y-2">
-                            <label className="block text-sm font-bold"
-                                style={{ color: 'var(--text-secondary)' }}>
-                                {t('plan.field.times') || '时间'}
-                            </label>
-                            {times.map((tt, idx) => (
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="block text-sm font-bold"
+                                    style={{ color: 'var(--text-secondary)' }}>
+                                    {activeDay !== null
+                                        ? `${weekdayLabels[activeDay]} ${t('plan.field.times') || '时间'}`
+                                        : (t('plan.field.times') || '时间')}
+                                </label>
+                                {Object.keys(timesByWeekday).length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={resetTimesByWeekday}
+                                        className="text-[11px] font-bold px-2 py-1 rounded-lg btn-press-glass"
+                                        style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
+                                    >
+                                        {t('plan.field.times_reset_all') || '所有星期统一'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* 多选星期时的「在哪一天上编辑」切换条 */}
+                            {activeDay !== null && weekdays.length > 1 && (
+                                <div className="flex gap-1.5 flex-wrap pb-1">
+                                    {weekdays.map((d) => {
+                                        const isActive = d === activeDay;
+                                        const own = (timesByWeekday[d]?.length ?? 0) > 0;
+                                        return (
+                                            <button
+                                                key={d}
+                                                type="button"
+                                                onClick={() => setEditingWeekday(d)}
+                                                aria-pressed={isActive}
+                                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition btn-press-glass"
+                                                style={isActive
+                                                    ? { background: 'var(--accent-500)', color: '#fff' }
+                                                    : { background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
+                                            >
+                                                {weekdayLabels[d]}
+                                                {/* 小圆点 = 这一天有自己的时间，不是从共享 times 回落的 */}
+                                                {own && (
+                                                    <span
+                                                        className="inline-block w-1.5 h-1.5 rounded-full ml-1 align-middle"
+                                                        style={{ background: isActive ? '#fff' : 'var(--accent-500)' }}
+                                                    />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {activeTimes.map((tt, idx) => (
                                 <div key={idx} className="flex items-center gap-2">
                                     <input
                                         type="time"
                                         value={tt}
                                         onChange={(e) => updateTime(idx, e.target.value)}
-                                        className="flex-1 p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        className="flex-1 min-w-0 p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
                                         style={{
                                             background: 'var(--bg-card-hover)',
                                             border: '1px solid var(--border-primary)',
                                             color: 'var(--text-primary)',
                                         }}
                                     />
-                                    {times.length > 1 && (
+                                    {activeTimes.length > 1 && (
                                         <button
                                             onClick={() => removeTimeSlot(idx)}
                                             className="p-2 rounded-lg"
@@ -1179,7 +1290,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                     )}
                                 </div>
                             ))}
-                            {times.length < 4 && (
+                            {activeTimes.length < 4 && (
                                 <button
                                     onClick={addTimeSlot}
                                     className="w-full py-2 rounded-lg text-xs font-bold transition btn-press-glass"

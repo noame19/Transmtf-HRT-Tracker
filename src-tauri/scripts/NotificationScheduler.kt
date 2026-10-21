@@ -412,8 +412,9 @@ object NotificationScheduler {
      */
     private fun planUpcomingMoments(plan: ParsedPlan, fromMs: Long, toMs: Long): List<Pair<Long, String>> {
         val out = mutableListOf<Pair<Long, String>>()
-        val times = plan.times
-        if (times.isEmpty()) return out
+        // 顶层 times 为空但 weekly 叠加层里有时间的计划也要能调度，
+        // 所以判断条件改成「两者皆空才退出」。
+        if (plan.times.isEmpty() && plan.timesByWeekday.isEmpty()) return out
         val startCal = plan.startCal
         // leadMinutes shifts the alarm EARLIER by N minutes before the
         // scheduled due time. The user's plan moment is the canonical due
@@ -426,6 +427,10 @@ object NotificationScheduler {
                 add(java.util.Calendar.DAY_OF_YEAR, i)
             }
             if (!matchesScheduleDay(plan, day)) continue
+            // weekly 计划允许每天用自己的时间；其它 schedule 一律用共享 times。
+            // 优先级与 TS 侧 planSchedule.timesOnDay 完全一致。
+            val dow = day.get(java.util.Calendar.DAY_OF_WEEK) - 1 // 0=Sun..6=Sat
+            val times = plan.timesByWeekday[dow]?.takeIf { it.isNotEmpty() } ?: plan.times
             for ((h, m) in times) {
                 val moment = java.util.Calendar.getInstance().apply {
                     timeInMillis = day.timeInMillis
@@ -481,8 +486,21 @@ object NotificationScheduler {
         }
     }
 
-    private fun daysBetween(a: java.util.Calendar, b: java.util.Calendar): Int {
-        val aMid = stripTime(a).timeInMillis
+    /** 解析 ["21:00", "09:30"] 这类时间数组。任一元素非法则返回 null，
+     *  调用方据此把整条计划当成没配时间（与旧实现 `?: continue` 行为一致）。 */
+    private fun parseTimesArray(arr: org.json.JSONArray): List<Pair<Int, Int>>? {
+        return (0 until arr.length()).map { idx ->
+            val s = arr.optString(idx, "")
+            val parts = s.split(":")
+            if (parts.size != 2) return null
+            val h = parts[0].toIntOrNull() ?: return null
+            val m = parts[1].toIntOrNull() ?: return null
+            if (h !in 0..23 || m !in 0..59) return null
+            h to m
+        }
+    }
+
+    private fun daysBetween(a: java.util.Calendar, b: java.util.Calendar): Int {        val aMid = stripTime(a).timeInMillis
         val bMid = stripTime(b).timeInMillis
         return ((bMid - aMid) / 86400000L).toInt()
     }
@@ -512,6 +530,9 @@ object NotificationScheduler {
         val intervalDays: Double,
         val weekdays: Set<Int>,
         val times: List<Pair<Int, Int>>,
+        /** 每个星期几的独立时间叠加层（对应 types.ts 的 PlanSchedule.timesByWeekday）。
+         *  空 Map 表示所有星期共用 `times`，与旧数据完全一致。 */
+        val timesByWeekday: Map<Int, List<Pair<Int, Int>>>,
         val startCal: java.util.Calendar,
         val endMs: Long?,
         /** Minutes before each scheduled due time the alarm should fire —
@@ -538,15 +559,22 @@ object NotificationScheduler {
                 (0 until wdsArr.length()).map { wdsArr.getInt(it) }.toSet()
             } else emptySet()
             val timesArr = sched.optJSONArray("times") ?: continue
-            val times = (0 until timesArr.length()).mapNotNull { idx ->
-                val s = timesArr.optString(idx, "")
-                val parts = s.split(":")
-                if (parts.size != 2) null
-                else {
-                    val h = parts[0].toIntOrNull() ?: return@mapNotNull null
-                    val m = parts[1].toIntOrNull() ?: return@mapNotNull null
-                    if (h !in 0..23 || m !in 0..59) null else (h to m)
+            val times = parseTimesArray(timesArr) ?: continue
+            // 可选叠加层，JSON 形状：{"1": ["21:00"], "3": ["09:00"]}。
+            // 缺字段或解析失败时得到空 Map，行为与旧版本逐位一致。
+            val tbwObj = sched.optJSONObject("timesByWeekday")
+            val timesByWeekday: Map<Int, List<Pair<Int, Int>>> = if (tbwObj == null) emptyMap() else {
+                val map = mutableMapOf<Int, List<Pair<Int, Int>>>()
+                val keys = tbwObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val dow = k.toIntOrNull() ?: continue
+                    if (dow !in 0..6) continue
+                    val arr = tbwObj.optJSONArray(k) ?: continue
+                    val parsed = parseTimesArray(arr) ?: continue
+                    if (parsed.isNotEmpty()) map[dow] = parsed
                 }
+                map
             }
             val startMs = obj.optLong("startDateH", 0L) * 3600000L
             val startCal = java.util.Calendar.getInstance().apply { timeInMillis = startMs }
@@ -555,7 +583,7 @@ object NotificationScheduler {
             } else null
             val leadMinutes = obj.optInt("leadMinutes", 0).coerceIn(0, 30)
             val notifyEnabled = obj.optBoolean("notifyEnabled", true)
-            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, startCal, endMs, leadMinutes, notifyEnabled))
+            out.add(ParsedPlan(id, enabled, kind, interval, weekdays, times, timesByWeekday, startCal, endMs, leadMinutes, notifyEnabled))
         }
         return out
     }
