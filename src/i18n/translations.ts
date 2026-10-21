@@ -1191,7 +1191,7 @@ export const TRANSLATIONS_BASE = {
         "settings.battery_opt.desc": "Whitelist this app so the Android notification bar fires medication reminders on time.",
         "settings.health.title": "Reminders may not arrive",
         "settings.health.notifications_off": "Notifications for this app are turned off system-wide, so reminders will not appear.",
-        "settings.health.channel_muted": "The "Medication Reminders" notification category is muted — reminders will not make a sound or show a banner.",
+        "settings.health.channel_muted": "The “Medication Reminders” notification category is muted — reminders will not make a sound or show a banner.",
         "settings.health.battery_optimized": "This app is still subject to battery optimization, so reminders may be delayed.",
         "settings.health.no_alarms": "No reminder alarms could be registered. Check the "notify" toggle on your plans.",
 
