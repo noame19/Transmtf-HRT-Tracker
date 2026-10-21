@@ -154,6 +154,33 @@ const MainLayout: React.FC = () => {
     }, [currentTime]);
 
     const reminderKey = useCallback((planId: string, dueMs: number) => `${planId}@${dueMs}`, []);
+
+    /**
+     * Normalize the Android side's timestamp into the same "due moment" space
+     * that `findDueReminders` works in.
+     *
+     * The Kotlin scheduler registers each alarm at `due - leadMinutes`
+     * (`alarmMs = rawMs - leadMs` in planUpcomingMoments) and writes that same
+     * `alarmMs` into `pending_deep_link`. `findDueReminders` instead returns
+     * the *raw* due moment (it leaves the lead offset to the call site). So for
+     * any plan with `leadMinutes > 0` the two sides produced DIFFERENT dedup
+     * keys for the same dose — e.g. `planA@12:00` from the notification vs
+     * `planA@12:10` from the in-app sweep.
+     *
+     * That mismatch is what made the modal reappear right after tapping
+     * 已服用: the notification path marked alarmMs as handled, then the
+     * 1-second in-app effect looked up dueMs, found it unhandled, and re-opened
+     * the modal. Adding the lead back here puts both sides on the due axis.
+     *
+     * Only the Android payload goes through this — the in-app paths already
+     * speak due-space.
+     */
+    const alarmToDueMs = useCallback((plan: Plan | undefined, alarmMs: number): number => {
+        const leadMin = plan?.leadMinutes;
+        if (typeof leadMin !== 'number' || !Number.isFinite(leadMin) || leadMin <= 0) return alarmMs;
+        return alarmMs + leadMin * 60000;
+    }, []);
+
     const markHandled = useCallback((key: string) => {
         setHandledReminders(prev => prev.has(key) ? prev : new Set(prev).add(key));
     }, []);
@@ -291,7 +318,11 @@ const MainLayout: React.FC = () => {
                 const action: string | undefined = payload?.action;
                 const { plans: latestPlans, events: latestEvents } = stateRef.current;
                 const plan = latestPlans.find(p => p.id === planId);
-                const key = `${planId}@${scheduledAtMs}`;
+                // Android speaks "alarm time" (due - leadMinutes); every dedup
+                // set and every in-app lookup speaks "due time". Normalize once
+                // here so the two never drift apart (see alarmToDueMs).
+                const dueMs = alarmToDueMs(plan, scheduledAtMs);
+                const key = reminderKey(planId, dueMs);
                 if (action === 'confirm') {
                     if (!plan) return;
                     // 以前这里只挑 weightKG，heightCm 被漏掉，计划产生的记录在
@@ -327,8 +358,8 @@ const MainLayout: React.FC = () => {
                     // surface the modal without applying any side effect.
                     setPendingReminder({
                         planId,
-                        scheduledAtMs,
-                        state: classifyDueState(new Date(scheduledAtMs), new Date()),
+                        scheduledAtMs: dueMs,
+                        state: classifyDueState(new Date(dueMs), new Date()),
                     });
                 }
             } catch { /* ignore polling errors silently */ }
@@ -336,7 +367,7 @@ const MainLayout: React.FC = () => {
         tick();
         const id = setInterval(tick, 1500);
         return () => clearInterval(id);
-    }, [markHandled]);
+    }, [markHandled, reminderKey, alarmToDueMs]);
 
     const matchedPendingPlan = useMemo(() => {
         if (!pendingReminder) return null;
@@ -367,6 +398,12 @@ const MainLayout: React.FC = () => {
         setPrefillFromPlan(plan);
         setPrefillTimeOverride(scheduledAt);
         setIsFormOpen(true);
+        // The modal took over this due. Mark it handled so the 1-second
+        // in-app sweep doesn't re-open the reminder modal on top of the form
+        // the user is now filling in. (handleDirectConfirm writes the event
+        // straight away and marks handled itself; this path defers to the
+        // form, so the marker has to be set here instead.)
+        markHandled(reminderKey(plan.id, scheduledAt.getTime()));
     };
 
     /**
