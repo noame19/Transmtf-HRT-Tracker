@@ -1,6 +1,6 @@
 import React from 'react';
 import { Syringe, Pill, Droplet, Sticker, X, Brain } from 'lucide-react';
-import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, isE2Family, ExtraKey } from '../../logic';
+import { Route, DoseEvent, Ester, getBioavailabilityMultiplier, getToE2Factor, isE2Family, ExtraKey } from '../lib/logic';
 import { Lang } from '../i18n/translations';
 
 export const formatDate = (date: Date, lang: Lang) => {

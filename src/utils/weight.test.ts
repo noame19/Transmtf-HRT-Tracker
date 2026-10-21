@@ -9,7 +9,7 @@ import {
     prefillHeightCM,
     resolveBodyStats,
 } from './weight';
-import { Ester, ExtraKey, Route, type DoseEvent } from '../../types';
+import { Ester, ExtraKey, Route, type DoseEvent } from '../lib/types';
 
 const mk = (over: Partial<DoseEvent> & { timeH: number }): DoseEvent => ({
     id: `e-${over.timeH}`,

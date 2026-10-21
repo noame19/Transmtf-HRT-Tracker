@@ -1,4 +1,4 @@
-import type { DoseEvent, LabResult, Plan, Route } from '../../types';
+import type { DoseEvent, LabResult, Plan, Route } from '../lib/types';
 import type { BasicInfo, PostponeLogEntry, DueLogEntry } from '../components/BasicInfoModal';
 
 // ── Public types ──────────────────────────────────────────────────────

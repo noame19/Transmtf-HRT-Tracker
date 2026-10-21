@@ -144,7 +144,7 @@ This README explains the algorithms used for each drug/route, key parameters and
   - **表面层快速清空**：$k_{\text{Pen}}+k_{\text{Loss}} = \lambda_s \approx 1.4\ \mathrm{h^{-1}}$（$t_{1/2}\approx 0.5\,$h，溶剂干燥、药物或渗入皮肤或经蒸发/转移/洗脱损失）。决定系统吸收分数的是这二者的**分配比**而非时间尺度：$F_{\text{ref}} = k_{\text{Pen}}/(k_{\text{Pen}}+k_{\text{Loss}})$。
   - **慢相由皮肤贮库释放**主导：$k_{\text{Rel}}\approx 0.022\ \mathrm{h^{-1}}$（$t_{1/2}\approx 31\,$h），对应涂抹后数小时到次日的平台与拖尾。
   - **系统清除** $k_e = $ `CorePK.kClear` $= 0.41\ \mathrm{h^{-1}}$（与其他游离 E2 路由一致）。
-- **代码入口**：`gelEventCentralAmount(...)` → `resolveGelKinetics(...)` 解析速率常数 → `gel3CompCentralAmount(...)`（`pk.ts`）。速率常数在**模拟时**根据事件存储的 `产品 id + 部位 + 面积 + washAfterH` 解析，事件本身只存这些引用——因此编辑一个自定义产品会即时联动其全部历史记录。
+- **代码入口**：`gelEventCentralAmount(...)` → `resolveGelKinetics(...)` 解析速率常数 → `gel3CompCentralAmount(...)`（`src/lib/pk.ts`）。速率常数在**模拟时**根据事件存储的 `产品 id + 部位 + 面积 + washAfterH` 解析，事件本身只存这些引用——因此编辑一个自定义产品会即时联动其全部历史记录。
 
 ### 4.2 产品注册表（`GEL_PRODUCTS`）
 每个凝胶产品是注册表中的一条记录，同时驱动 PK 引擎与录入 UI；新增凝胶只需注册一条，用户也可保存遵循同一结构的自定义产品（id ≥ `GEL_CUSTOM_ID_BASE = 1000`，经 `sanitizeGelProduct` 校验：仅三个速率常数 `kPenBase/kLoss/kRel` 不可缺省，缺失的元数据给安全默认）。

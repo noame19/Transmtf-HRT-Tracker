@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { DoseEvent, LabResult, type GelProductSpec } from '../../logic';
+import { DoseEvent, LabResult, type GelProductSpec } from '../lib/logic';
 import { X, Download, Copy } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { invoke } from '@tauri-apps/api/core';

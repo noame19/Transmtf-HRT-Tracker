@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { LabResult } from '../../logic';
+import { LabResult } from '../lib/logic';
 import { X, Calendar, Activity, TestTube, FileText, Trash2, Check, FlaskConical } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useFocusTrap } from '../hooks/useFocusTrap';

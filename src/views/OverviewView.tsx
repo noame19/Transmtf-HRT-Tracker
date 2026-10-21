@@ -6,8 +6,8 @@ import ResultChart from '../components/ResultChart';
 import MedicationHeatmap from '../components/MedicationHeatmap';
 import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
-import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
-import { Plan } from '../../types';
+import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../lib/logic';
+import { Plan } from '../lib/types';
 import { formatNextDue, nextDueAfter, pickPrimaryEnabledPlan, formatPlanDose } from '../utils/planSchedule';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */

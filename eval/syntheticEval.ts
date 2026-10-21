@@ -17,15 +17,15 @@
  * validating against the user's own accumulating real labs over time.
  */
 
-import { Route, Ester, type DoseEvent, type LabResult } from '../types';
-import { runSimulation, interpolateConcentration_E2 } from '../pk';
+import { Route, Ester, type DoseEvent, type LabResult } from '../src/lib/types';
+import { runSimulation, interpolateConcentration_E2 } from '../src/lib/pk';
 import {
     computeSimulationWithCI,
     initPersonalModel,
     replayPersonalModel,
-} from '../personalModel';
-import { mipdDrugE2AtTimeSorted } from '../mipd';
-import type { CalibrationModel } from '../calibration';
+} from '../src/lib/personalModel';
+import { mipdDrugE2AtTimeSorted } from '../src/lib/mipd';
+import type { CalibrationModel } from '../src/lib/calibration';
 
 // ---------------------------------------------------------------------------
 // Deterministic RNG (so benchmarks are reproducible — no Math.random())

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { Bell, Check, FastForward, SkipForward } from 'lucide-react';
-import { Plan } from '../../types';
+import { Plan } from '../lib/types';
 import { ConfirmButton } from './ConfirmButton';
 import { useConfirmButton } from '../hooks/useConfirmButton';
 

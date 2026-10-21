@@ -12,7 +12,7 @@ const config: Config = {
   darkMode: 'class',
   content: [
     './index.html',
-    './index.tsx',
+    './src/main.tsx',
     './src/**/*.{ts,tsx}',
   ],
   theme: {

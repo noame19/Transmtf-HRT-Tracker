@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { Bell, Check, X, FastForward, SkipForward } from 'lucide-react';
-import { Plan } from '../../types';
+import { Plan } from '../lib/types';
 import type { PendingReminder } from './ReminderBanner';
 import { ConfirmButton } from './ConfirmButton';
 import { formatPlanDose } from '../utils/planSchedule';

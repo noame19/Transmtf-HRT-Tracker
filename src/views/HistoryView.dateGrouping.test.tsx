@@ -23,8 +23,8 @@ vi.mock('../contexts/DialogContext', () => ({
 }));
 
 import HistoryView from './HistoryView';
-import type { DoseEvent, Plan } from '../../types';
-import { Route } from '../../types';
+import type { DoseEvent, Plan } from '../lib/types';
+import { Route } from '../lib/types';
 
 // Build a minimal DoseEvent with the fields HistoryView reads.
 // `groupId` is optional — the date-grouping tests pass one explicitly

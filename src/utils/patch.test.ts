@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DoseEvent, Ester, ExtraKey, Route } from '../../types';
+import { DoseEvent, Ester, ExtraKey, Route } from '../lib/types';
 import {
     isPatchApply,
     isPatchRemove,

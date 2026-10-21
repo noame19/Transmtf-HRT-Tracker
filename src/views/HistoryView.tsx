@@ -3,8 +3,8 @@ import { Activity, Plus, Layers, CalendarClock, Sticker, Check, X } from 'lucide
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { formatDateTime, formatTime, formatDateWithYear, dateKey, getRouteIcon } from '../utils/helpers';
-import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../../logic';
-import { Plan } from '../../types';
+import { DoseEvent, Route as RouteEnum, Ester, ExtraKey, getToE2Factor, isAntiandrogen } from '../lib/logic';
+import { Plan } from '../lib/types';
 import PlanList from '../components/PlanList';
 import HistoryBulkActionBar from '../components/HistoryBulkActionBar';
 import ReminderBanner, { PendingReminder } from '../components/ReminderBanner';

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { buildAITextExport, type AIExportInput } from './aiExport';
-import type { DoseEvent, LabResult, Plan } from '../../types';
+import type { DoseEvent, LabResult, Plan } from '../lib/types';
 import type { BasicInfo, PostponeLogEntry, DueLogEntry } from '../components/BasicInfoModal';
 
 // ── Test fixtures ─────────────────────────────────────────────────────

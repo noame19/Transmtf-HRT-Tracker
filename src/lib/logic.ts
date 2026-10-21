@@ -93,4 +93,4 @@ export {
     type MipdPrediction,
     type GpResidualConfig,
 } from './mipd';
-export { encryptData, decryptData } from './src/utils/dataEncryption';
+export { encryptData, decryptData } from '../utils/dataEncryption';

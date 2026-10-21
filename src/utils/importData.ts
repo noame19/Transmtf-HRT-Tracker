@@ -13,8 +13,8 @@
  * ("clear it").
  */
 import { v4 as uuidv4 } from 'uuid';
-import { Ester, Route, type DoseEvent, type LabResult, type Plan, type PlanExtras } from '../../types';
-import { sanitizeGelProducts, type GelProductSpec } from '../../pk';
+import { Ester, Route, type DoseEvent, type LabResult, type Plan, type PlanExtras } from '../lib/types';
+import { sanitizeGelProducts, type GelProductSpec } from '../lib/pk';
 import { reconcileImportedPatchEvents } from './patchReconcile';
 import {
     BACKUP_SCHEMA_VERSION_V2,

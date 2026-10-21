@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { DoseEvent, Route } from '../../types';
+import { DoseEvent, Route } from '../lib/types';
 
 const MAX_PATCH_WEAR_HOURS = 14 * 24;
 

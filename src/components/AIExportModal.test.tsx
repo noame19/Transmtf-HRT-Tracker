@@ -29,7 +29,7 @@ afterEach(() => {
 
 import AIExportModal from './AIExportModal';
 import type { BasicInfo } from './BasicInfoModal';
-import type { DoseEvent, LabResult, Plan } from '../../types';
+import type { DoseEvent, LabResult, Plan } from '../lib/types';
 
 const basicInfo: BasicInfo = {
     route: 'MtF', birth: '1998-05', heightCm: 168, allergies: '', hrtStart: '2024-03-15',

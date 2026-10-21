@@ -1,7 +1,7 @@
 import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAppData } from '../contexts/AppDataContext';
-import { DoseEvent } from '../../logic';
+import { DoseEvent } from '../lib/logic';
 import OverviewView from '../views/OverviewView';
 
 interface OutletContext {

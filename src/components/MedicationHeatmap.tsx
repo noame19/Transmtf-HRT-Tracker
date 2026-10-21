@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, RotateCcw } from 'lucide-react';
-import { DoseEvent, Route, Ester, Plan } from '../../types';
+import { DoseEvent, Route, Ester, Plan } from '../lib/types';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatTime } from '../utils/helpers';
 import { isPatchRemove } from '../utils/patch';
 import { drugCategoryOf, dueMomentsInRange } from '../utils/planSchedule';
-import { isE2Family } from '../../logic';
+import { isE2Family } from '../lib/logic';
 import type { PostponeLogEntry, DueLogEntry } from '../contexts/AppDataContext';
 import { loadBasicInfo } from './BasicInfoModal';
 import {

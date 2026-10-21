@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../contexts/LanguageContext';
-import { Ester, Route } from '../../logic';
+import { Ester, Route } from '../lib/logic';
 import { DOSE_QUICK_PRESETS, drugKeyOf } from '../utils/doseForm';
 
 interface QuickDosePanelProps {

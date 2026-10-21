@@ -9,7 +9,7 @@ import {
     Route, Ester, ExtraKey, GEL_PRODUCTS, GEL_DEFAULT_PRODUCT_ID, GEL_CUSTOM_ID_BASE,
     sanitizeGelProducts,
     type DoseEvent, type GelProductSpec,
-} from '../../logic';
+} from '../lib/logic';
 
 /**
  * Display order for the route selector. Decoupled from the `Route` enum

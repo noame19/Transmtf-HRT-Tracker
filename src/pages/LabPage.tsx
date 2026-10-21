@@ -1,7 +1,7 @@
 import React from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAppData } from '../contexts/AppDataContext';
-import { LabResult } from '../../logic';
+import { LabResult } from '../lib/logic';
 import LabView from '../views/LabView';
 
 interface OutletContext {

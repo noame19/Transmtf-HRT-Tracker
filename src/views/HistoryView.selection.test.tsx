@@ -23,7 +23,7 @@ vi.mock('../contexts/DialogContext', () => ({
 }));
 
 import HistoryView from './HistoryView';
-import type { DoseEvent, Plan } from '../../types';
+import type { DoseEvent, Plan } from '../lib/types';
 
 // Build a minimal DoseEvent with the fields HistoryView reads
 const mkEvent = (id: string, timeH: number, route: DoseEvent['route'] = 'injection' as any): DoseEvent => ({

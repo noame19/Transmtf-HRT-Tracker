@@ -1,4 +1,4 @@
-import type { DoseEvent } from '../../logic';
+import type { DoseEvent } from '../lib/logic';
 
 export const DEFAULT_WEIGHT_KG = 70;
 const LEGACY_WEIGHT_STORAGE_KEY = 'hrt-weight';

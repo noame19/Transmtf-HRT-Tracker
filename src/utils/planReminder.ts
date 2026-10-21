@@ -1,4 +1,4 @@
-import { DoseEvent, Plan, Route } from '../../types';
+import { DoseEvent, Plan, Route } from '../lib/types';
 import { dueMomentsInRange } from './planSchedule';
 import { canonicalComplianceRoute } from './planCompliance';
 

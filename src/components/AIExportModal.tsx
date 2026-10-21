@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import type { DoseEvent, LabResult, Plan } from '../../types';
+import type { DoseEvent, LabResult, Plan } from '../lib/types';
 import type { BasicInfo, PostponeLogEntry, DueLogEntry } from './BasicInfoModal';
 import { buildAITextExport, type SupportedLang } from '../utils/aiExport';
 

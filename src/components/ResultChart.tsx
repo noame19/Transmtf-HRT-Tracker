@@ -5,7 +5,7 @@ import {
     SimulationResult, DoseEvent, interpolateConcentration_E2,
     interpolateCompoundConcentration, isAntiandrogen, isE2Family,
     pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, LabResult, convertToPgMl
-} from '../../logic';
+} from '../lib/logic';
 import { Activity, RotateCcw, Camera, FlaskConical } from 'lucide-react';
 import * as echarts from 'echarts';
 import { ECHART_THEME, LAB_FLASK_PATH, aaBandFill, resolveCssVar } from './ResultChart.theme';

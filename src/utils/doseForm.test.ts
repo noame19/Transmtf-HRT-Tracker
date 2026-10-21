@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Ester, Route } from '../../types';
+import { Ester, Route } from '../lib/types';
 import {
     DEFAULT_DOSE_MAP,
     DOSE_GUIDE_CONFIG,

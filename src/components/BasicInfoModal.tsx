@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import type { DoseEvent } from '../../types';
+import type { DoseEvent } from '../lib/types';
 import { isPatchRemove } from '../utils/patch';
 import { findLatestWeight, findLatestHeight } from '../utils/weight';
 

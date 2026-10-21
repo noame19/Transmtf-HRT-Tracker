@@ -10,7 +10,7 @@ import {
     DoseEvent, SimulationResult, LabResult,
     interpolateConcentration_E2, interpolateCompoundConcentration, convertToPgMl,
     pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, Ester,
-} from '../../logic';
+} from '../lib/logic';
 import ResultChartStatic from './ResultChartStatic';
 import { API_ORIGIN } from '../api/config';
 

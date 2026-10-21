@@ -5,8 +5,8 @@ import {
     runSimulation, createCalibrationInterpolator,
     replayPersonalModel, computeSimulationWithCI, initPersonalModel,
     ekfUpdatePersonalModel, isAntiandrogen, GelProductSpec, setCustomGelProducts,
-} from '../../logic';
-import { Plan } from '../../types';
+} from '../lib/logic';
+import { Plan } from '../lib/types';
 import { drugCategoryOf, sanitizePlansForConflict, dueMomentsInRange } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';

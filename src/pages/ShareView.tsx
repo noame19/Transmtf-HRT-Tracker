@@ -5,7 +5,7 @@ import apiClient from '../api/client';
 import ResultChart from '../components/ResultChart';
 import PINInput from '../components/PINInput';
 import { Share2, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
-import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator, setCustomGelProducts, type GelProductSpec } from '../../logic';
+import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator, setCustomGelProducts, type GelProductSpec } from '../lib/logic';
 import { backfillEventWeights, eventsNeedWeightMigration, backfillEventHeights, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const ShareView: React.FC = () => {

@@ -32,7 +32,7 @@ import type {
   SetLoginPasswordRequest,
   RemoveLoginPasswordRequest,
   UserMeResponse,
-} from './types';
+} from '../lib/types';
 
 import { API_BASE_URL } from './config';
 

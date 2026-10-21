@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Ester, ExtraKey, Plan, Route } from '../../types';
+import { Ester, ExtraKey, Plan, Route } from '../lib/types';
 import {
     drugCategoryOf,
     planKey,

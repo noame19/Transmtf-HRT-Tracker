@@ -24,8 +24,8 @@ import {
     GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
     resolveGelCoverageArea, GEL_COAPPLICATION_ORDER,
     type GelProductSpec,
-} from '../../logic';
-import { Plan } from '../../types';
+} from '../lib/logic';
+import { Plan } from '../lib/types';
 import { Calendar, X, Clock, Info, Save, Trash2, Bookmark, Check, Pencil } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 

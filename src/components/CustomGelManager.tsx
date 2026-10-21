@@ -6,7 +6,7 @@ import { nextGelProductId } from '../utils/doseForm';
 import {
     type GelForm, EMPTY_GEL_FORM, productToForm, validateGelForm, gelFormsEqual,
 } from '../utils/gelForm';
-import { Route, ExtraKey, type GelProductSpec } from '../../logic';
+import { Route, ExtraKey, type GelProductSpec } from '../lib/logic';
 import { FlaskConical, Plus, Pencil, Trash2 } from 'lucide-react';
 
 const CustomGelManager: React.FC = () => {

@@ -22,7 +22,7 @@ import {
     resolveGelCoverageArea, isAntiandrogen,
     SL_TIER_ORDER, SublingualTierParams,
     getToE2Factor,
-} from '../../logic';
+} from '../lib/logic';
 import { findConflicts, validatePlan, MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS, MIN_PATCH_RATE } from '../utils/planSchedule';
 import { analyzePlanCompliance } from '../utils/planCompliance';
 import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info, Clock, Minus, Plus } from 'lucide-react';

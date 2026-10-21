@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FlaskConical, Plus, Brain, AlertTriangle, ChevronDown, ChevronUp, CheckCircle2, Cpu, Waves, Clock, History, Sparkles } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel, CalibrationMode } from '../../logic';
+import { LabResult, PersonalModelState, EKFDiagnostics, CalibrationModel, CalibrationMode } from '../lib/logic';
 
 interface LabViewProps {
   labResults: LabResult[];

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DoseEvent, Ester, Plan, Route } from '../../types';
+import { DoseEvent, Ester, Plan, Route } from '../lib/types';
 import {
     buildHeatmapRange,
     monthLabelFor,

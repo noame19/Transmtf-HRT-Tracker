@@ -1,4 +1,4 @@
-import { Ester, ExtraKey, Plan, PlanSchedule, Route } from '../../types';
+import { Ester, ExtraKey, Plan, PlanSchedule, Route } from '../lib/types';
 
 /**
  * A patch plan may carry its strength either as a total dose (`doseMG > 0`,

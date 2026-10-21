@@ -2,8 +2,8 @@
  * Pure helpers for the custom-gel editor form and for building a gel dose event's
  * extras. Extracted from the React components so they can be unit-tested in node.
  */
-import { ExtraKey, type DoseEvent } from '../../types';
-import { GEL_SITE_ORDER, GEL_COVERAGE_TEMPLATES, type GelProductSpec } from '../../pk';
+import { ExtraKey, type DoseEvent } from '../lib/types';
+import { GEL_SITE_ORDER, GEL_COVERAGE_TEMPLATES, type GelProductSpec } from '../lib/pk';
 
 // Fast surface-depletion rate shared with the PK priors (pk.ts). The user-facing
 // "reference bioavailability" only sets the penetration/loss SPLIT, not the

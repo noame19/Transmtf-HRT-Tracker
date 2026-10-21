@@ -34,7 +34,7 @@ import {
     Bot,
 } from 'lucide-react';
 
-import { decryptData } from '../../logic';
+import { decryptData } from '../lib/logic';
 import { computeDataHash } from '../utils/dataHash';
 import { writeCustomGelProducts, readDoseTemplates, writeDoseTemplates, readDoseByDrug, writeDoseByDrug, readLastDrug, writeLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';

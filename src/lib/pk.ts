@@ -1,5 +1,5 @@
 import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type ConcUnit } from './types';
-import { patchGroupOf } from './src/utils/patch';
+import { patchGroupOf } from '../utils/patch';
 
 /**
  * Route-specific metadata for transdermal gel absorption.

@@ -1,4 +1,4 @@
-import { DoseEvent, Ester, Plan, Route } from '../../types';
+import { DoseEvent, Ester, Plan, Route } from '../lib/types';
 import { DrugCategory, drugCategoryOf } from './planSchedule';
 import { isPatchRemove } from './patch';
 

@@ -15,7 +15,7 @@ vi.mock('../contexts/DialogContext', () => ({
 vi.mock('../components/PlanList', () => ({ default: () => null }));
 
 import HistoryView from './HistoryView';
-import { DoseEvent, Route } from '../../types';
+import { DoseEvent, Route } from '../lib/types';
 
 const HOUR = 3600000;
 const makeEvent = (overrides: Partial<DoseEvent> = {}): DoseEvent => ({

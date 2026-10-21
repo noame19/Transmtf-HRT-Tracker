@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { DoseEvent, Ester, Route } from '../../types';
+import { DoseEvent, Ester, Route } from '../lib/types';
 import { reconcileImportedPatchEvents } from './patchReconcile';
 
 const HOUR = 3600000;

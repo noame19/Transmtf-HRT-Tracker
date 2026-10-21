@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pill, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
 import { useTranslation } from '../contexts/LanguageContext';
 import { ComplianceMismatch } from '../utils/planCompliance';
-import { Ester, Route } from '../../types';
+import { Ester, Route } from '../lib/types';
 
 interface ComplianceBannerProps {
     /** Mismatches from `analyzePlanCompliance`. Empty = render nothing. */

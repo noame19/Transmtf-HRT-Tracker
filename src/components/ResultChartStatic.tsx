@@ -8,7 +8,7 @@ import {
     XAxis, YAxis, CartesianGrid, ReferenceLine, ReferenceDot,
     Area, AreaChart, ComposedChart, Scatter
 } from 'recharts';
-import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, convertToPgMl } from '../../logic';
+import { SimulationResult, DoseEvent, LabResult, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, Ester, convertToPgMl } from '../lib/logic';
 import { formatDate } from '../utils/helpers';
 
 interface SimCI {

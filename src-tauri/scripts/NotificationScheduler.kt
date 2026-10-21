@@ -530,7 +530,7 @@ object NotificationScheduler {
         val intervalDays: Double,
         val weekdays: Set<Int>,
         val times: List<Pair<Int, Int>>,
-        /** 每个星期几的独立时间叠加层（对应 types.ts 的 PlanSchedule.timesByWeekday）。
+        /** 每个星期几的独立时间叠加层（对应 src/lib/types.ts 的 PlanSchedule.timesByWeekday）。
          *  空 Map 表示所有星期共用 `times`，与旧数据完全一致。 */
         val timesByWeekday: Map<Int, List<Pair<Int, Int>>>,
         val startCal: java.util.Calendar,

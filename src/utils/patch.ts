@@ -1,4 +1,4 @@
-import { DoseEvent, Route } from '../../types';
+import { DoseEvent, Route } from '../lib/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Patch (贴片) pairing helpers.

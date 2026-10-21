@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAppData } from '../contexts/AppDataContext';
-import { DoseEvent } from '../../logic';
-import { Plan } from '../../types';
+import { DoseEvent } from '../lib/logic';
+import { Plan } from '../lib/types';
 import HistoryView from '../views/HistoryView';
 import type { PendingReminder } from '../components/ReminderBanner';
 import { analyzePlanCompliance } from '../utils/planCompliance';

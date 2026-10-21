@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ExtraKey } from '../../types';
-import type { GelProductSpec } from '../../pk';
-import { GEL_COVERAGE_TEMPLATES } from '../../pk';
+import { ExtraKey } from '../lib/types';
+import type { GelProductSpec } from '../lib/pk';
+import { GEL_COVERAGE_TEMPLATES } from '../lib/pk';
 import {
     productToForm, validateGelForm, gelFormsEqual, buildGelExtras, resolveGelAreaToStore, parseField, LAMBDA_SURFACE,
 } from './gelForm';

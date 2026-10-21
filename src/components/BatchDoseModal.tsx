@@ -24,7 +24,7 @@ import {
     GEL_COVERAGE_TEMPLATES, GEL_COVERAGE_DEFAULT_IDX, GEL_COVERAGE_MANUAL_IDX,
     resolveGelCoverageArea, GEL_COAPPLICATION_ORDER,
     type GelProductSpec,
-} from '../../logic';
+} from '../lib/logic';
 import {
     Layers, X, ChevronRight, ChevronLeft, AlertTriangle,
     Trash2, Plus, Calendar, Clock, Info, MousePointerClick,

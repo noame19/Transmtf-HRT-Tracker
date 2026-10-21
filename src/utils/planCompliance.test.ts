@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DoseEvent, Ester, Plan, Route } from '../../types';
+import { DoseEvent, Ester, Plan, Route } from '../lib/types';
 import {
     analyzePlanCompliance,
     canonicalComplianceRoute,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runBenchmark, formatMetricsTable } from './syntheticEval';
-import type { CalibrationModel } from '../calibration';
+import type { CalibrationModel } from '../src/lib/calibration';
 
 /**
  * Leave-one-lab-out benchmark over a synthetic single-patient cohort. This is

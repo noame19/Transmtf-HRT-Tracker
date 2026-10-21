@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseImportedBackup, importHasContent, importFallbackWeight } from './importData';
-import { Ester, Route } from '../../types';
+import { Ester, Route } from '../lib/types';
 
 const ev = { timeH: 100, doseMG: 1.5, route: 'gel', ester: 'E2', weightKG: 70, extras: {} };
 const lab = { timeH: 50, concValue: 120, unit: 'pmol/l' };
