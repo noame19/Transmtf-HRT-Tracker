@@ -391,7 +391,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     onPointerUp={onItemPointerEnd}
                     onPointerLeave={onItemPointerEnd}
                     onPointerCancel={onItemPointerEnd}
-                    className="p-4 flex items-center gap-4 transition-all cursor-pointer group relative btn-press-glass"
+                    className="p-4 flex items-center gap-3 sm:gap-4 transition-all cursor-pointer group relative btn-press-glass"
                     style={{
                       background: selectionMode && selectedIds.has(ev.id) ? 'var(--bg-card-hover)' : 'transparent',
                     }}
@@ -439,7 +439,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                               <span style={{ color: 'var(--text-primary)' }}>{`${ev.extras[ExtraKey.releaseRateUGPerDay]} µg/d`}</span>
                             </>
                           )}
-                          <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border ml-auto" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
+                          {/* 体重徽章以前带 ml-auto，被推到行尾，和上一行右对齐的时间徽章
+                              一起把中间的途径 / µg·d 挤成一条缝（手机宽度下尤其明显）。
+                              改成跟随流式排布，窄屏自然换行。 */}
+                          <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border" style={{ color: 'var(--text-secondary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
                             {`${ev.weightKG} ${t('field.weight_unit')}`}
                           </span>
                         </div>
@@ -482,12 +485,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                           e.stopPropagation();
                           onRemovePatch(ev.id);
                         }}
-                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 h-9 rounded-xl text-xs font-bold btn-press-glass transition"
+                        // 窄屏只留图标 + 「摘下」两个字，把宽度让给时间和体重；
+                        // 宽屏才展开成完整的「贴片摘下」。
+                        // 高屏手机的 360dp 宽度下，原来的四字标签会把整行挤到换行。
+                        className="shrink-0 inline-flex items-center gap-1 px-2 sm:gap-1.5 sm:px-3 py-2 h-9 rounded-xl text-xs font-bold btn-press-glass transition"
                         style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-primary)' }}
                         aria-label={t('btn.patch_remove') || '贴片移除'}
+                        title={t('btn.patch_remove') || '贴片移除'}
                       >
                         <Sticker size={13} />
-                        <span>{t('btn.patch_remove') || '贴片移除'}</span>
+                        <span className="sm:hidden">{t('btn.patch_remove_short') || '摘下'}</span>
+                        <span className="hidden sm:inline">{t('btn.patch_remove') || '贴片移除'}</span>
                       </button>
                     )}
                   </div>

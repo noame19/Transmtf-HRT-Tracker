@@ -281,6 +281,7 @@ export const TRANSLATIONS_BASE = {
         "btn.remove": "移除",
         "btn.clear": "清除",
         "btn.patch_remove": "贴片摘下",
+        "btn.patch_remove_short": "摘下",
 
         "dialog.confirm_title": "确认",
         "dialog.alert_title": "提示",
@@ -1278,6 +1279,7 @@ export const TRANSLATIONS_BASE = {
         "btn.remove": "Remove",
         "btn.clear": "Clear",
         "btn.patch_remove": "Remove Patch",
+        "btn.patch_remove_short": "Remove",
 
         "dialog.confirm_title": "Confirm",
         "dialog.alert_title": "Alert",
@@ -2259,6 +2261,7 @@ export const TRANSLATIONS = {
         "hint.patch_remove_time": "不填則只產生貼上記錄；之後可在用藥紀錄頁點「貼片移除」一鍵補登。",
         "hint.patch_unpaired_remove": "此貼片沒有配對的撕下記錄(如時間不同,需手動填寫摘下時間)",
         "btn.patch_remove": "貼片摘下",
+        "btn.patch_remove_short": "摘下",
         "btn.clear": "清除",
         "error.invalidDate": "無效日期。",
         "error.patch_remove_before_apply": "摘下時間必須晚於給藥時間。",
@@ -2815,6 +2818,7 @@ export const TRANSLATIONS = {
         "btn.delete": "削除",
         "btn.clear": "クリア",
         "btn.patch_remove": "パッチ除去",
+        "btn.patch_remove_short": "除去",
 
         "dialog.confirm_title": "確認",
         "dialog.alert_title": "お知らせ",
