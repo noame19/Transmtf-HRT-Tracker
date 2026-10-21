@@ -420,6 +420,32 @@ export function summarizeSchedule(plan: Plan, t: (k: string, fallback?: string) 
 }
 
 /** Human-readable preview line used in the plan card subtitle. */
+/**
+ * Human-readable dose for a plan card / banner / reminder title.
+ *
+ * A patch plan that only carries a release rate has `doseMG === 0` on purpose
+ * (the PK engine doses from `rateMGh`, not from a bolus). Rendering
+ * `${plan.doseMG} mg` for those produced a literal "剂量 0 mg" on every
+ * surface — technically true, completely wrong to read.
+ *
+ * Returns e.g. `"100 µg/d"` for rate-only patches and `"6.25 mg"` otherwise.
+ * Callers should append `t('plan.card.dose_unit')` themselves when they want
+ * the "剂量" prefix.
+ */
+export function formatPlanDose(plan: Pick<Plan, 'route' | 'doseMG' | 'extras'>): string {
+    const rate = planReleaseRate(plan);
+    if (rate > 0 && isRateOnlyPlan(plan)) return `${parseFloat(rate.toFixed(3))} µg/d`;
+    if (rate > 0) {
+        // Legacy rows carry both a mg dose and a rate (they were written by an
+        // older editor that showed both fields). The mg value is what the PK
+        // engine prefers there, so show it but keep the rate visible.
+        const mg = Number.isFinite(plan.doseMG) ? parseFloat(plan.doseMG.toFixed(3)) : 0;
+        return `${mg} mg · ${parseFloat(rate.toFixed(3))} µg/d`;
+    }
+    const mg = Number.isFinite(plan.doseMG) ? parseFloat(plan.doseMG.toFixed(3)) : 0;
+    return `${mg} mg`;
+}
+
 export function planSubtitle(plan: Plan, t: (k: string, fallback?: string) => string): string {
     const sched = summarizeSchedule(plan, t);
     const next = nextDueAfter(plan, new Date());

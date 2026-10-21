@@ -8,7 +8,7 @@ import ShareImageModal from '../components/ShareImageModal';
 import { formatTime } from '../utils/helpers';
 import { DoseEvent, SimulationResult, LabResult, Route, Ester, ExtraKey, SL_TIER_ORDER, interpolateConcentration_E2, interpolateCompoundConcentration, isAntiandrogen, isE2Family, pickPrimaryAntiandrogen, ANTIANDROGENS, formatAntiandrogenConc, convertToPgMl } from '../../logic';
 import { Plan } from '../../types';
-import { drugCategoryOf, formatNextDue, nextDueAfter, pickPrimaryEnabledPlan } from '../utils/planSchedule';
+import { formatNextDue, nextDueAfter, pickPrimaryEnabledPlan, formatPlanDose } from '../utils/planSchedule';
 
 /** Convert hex color string to "r,g,b" for use in rgba() */
 function hexToRgb(hex: string): string {
@@ -109,13 +109,6 @@ const OverviewView: React.FC<OverviewViewProps> = ({
   const primaryAASpec = primaryAA ? ANTIANDROGENS[primaryAA]! : null;
   const aaCI = (primaryAA && simCI) ? simCI.antiandrogen[primaryAA] : undefined;
   const hasPersonalAaModel = !!aaCI && aaCI.adjusted.length === (simCI?.timeH.length ?? -1) && aaCI.adjusted.length > 0;
-
-  // Format a stored dose (mg) for display: show the exact value the user
-  // entered instead of rounding it. Trailing zeros are stripped so 12.5 → "12.5",
-  // 25 → "25", 6.25 → "6.25". Capped at 3 decimals to drop floating-point noise,
-  // matching the precision the dose editor persists (DoseFormModal uses toFixed(3)).
-  // Declared early so callers above the return (renderDoseTime 等) can reference it.
-  const formatDoseMG = (mg: number): string => `${parseFloat(mg.toFixed(3))}`;
 
   const rawLevel = useMemo(() => {
     if (!simulation) return 0;
@@ -372,7 +365,7 @@ const OverviewView: React.FC<OverviewViewProps> = ({
           {/* 药名 + 剂量 */}
           {plan ? (
             <p className="text-[11px] md:text-xs font-semibold mt-0.5 truncate" style={{ color: PLAN_MAIN, opacity: 0.9 }}>
-              {drugName} {formatDoseMG(plan.doseMG)}mg
+              {drugName} {formatPlanDose(plan)}
             </p>
           ) : (
             <p className="text-[11px] md:text-xs font-medium mt-0.5" style={{ color: PLAN_MAIN, opacity: 0.6 }}>—</p>

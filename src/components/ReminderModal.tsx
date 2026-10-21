@@ -4,6 +4,7 @@ import { Bell, Check, X, FastForward, SkipForward } from 'lucide-react';
 import { Plan } from '../../types';
 import type { PendingReminder } from './ReminderBanner';
 import { ConfirmButton } from './ConfirmButton';
+import { formatPlanDose } from '../utils/planSchedule';
 import { useConfirmButton } from '../hooks/useConfirmButton';
 
 interface ReminderModalProps {
@@ -83,7 +84,8 @@ const ReminderModal: React.FC<ReminderModalProps> = ({
     const mm = scheduled.getMinutes().toString().padStart(2, '0');
     const timeLabel = `${hh}:${mm}`;
 
-    const drugLabel = `${t(`ester.${plan.ester}`)} · ${plan.doseMG} mg · ${t(`route.${plan.route}`)}`;
+    // rate-only 贴片计划的 doseMG 是 0，直接拼出来会显示「· 0 mg ·」。
+    const drugLabel = `${t(`ester.${plan.ester}`)} · ${formatPlanDose(plan)} · ${t(`route.${plan.route}`)}`;
 
     const title = isLate
         ? (t('reminder.banner.late.title') || '已过服药时间')

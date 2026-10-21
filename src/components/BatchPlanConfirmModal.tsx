@@ -5,6 +5,7 @@ import { getRouteIcon, formatTime } from '../utils/helpers';
 import { DoseEvent } from '../../logic';
 import { Plan, Route as RouteEnum } from '../../types';
 import { resolveBodyStats } from '../utils/weight';
+import { formatPlanDose } from '../utils/planSchedule';
 import { X, ListChecks, Check } from 'lucide-react';
 
 interface BatchPlanConfirmModalProps {
@@ -87,7 +88,7 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-                                    {t(`ester.${plan.ester}`)} · {plan.doseMG} mg · {t(`route.${plan.route}`)}
+                                    {t(`ester.${plan.ester}`)} · {formatPlanDose(plan)} · {t(`route.${plan.route}`)}
                                 </div>
                                 <div className="text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
                                     {formatTime(scheduledAt)}

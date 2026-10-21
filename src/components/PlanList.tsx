@@ -4,7 +4,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { getRouteIcon } from '../utils/helpers';
 import { Ester, Route as RouteEnum } from '../../types';
 import { Plan } from '../../types';
-import { planSubtitle, findConflicts } from '../utils/planSchedule';
+import { planSubtitle, findConflicts, formatPlanDose } from '../utils/planSchedule';
 import { ComplianceMismatch } from '../utils/planCompliance';
 import { CalendarClock, Plus, Pencil, Trash2, AlertTriangle, Check } from 'lucide-react';
 
@@ -186,7 +186,7 @@ const PlanList: React.FC<PlanListProps> = ({
                                     <div>
                                         <span className="text-[11px] font-mono font-semibold px-1.5 py-0.5 rounded border mr-2"
                                             style={{ color: 'var(--text-primary)', background: 'var(--bg-card-hover)', borderColor: 'var(--border-secondary)' }}>
-                                            {`${t('plan.card.dose_unit') || '剂量'} ${plan.doseMG} mg`}
+                                            {`${t('plan.card.dose_unit') || '剂量'} ${formatPlanDose(plan)}`}
                                         </span>
                                         <span>{planSubtitle(plan, (k, fb) => t(k as any) || fb || k)}</span>
                                     </div>
