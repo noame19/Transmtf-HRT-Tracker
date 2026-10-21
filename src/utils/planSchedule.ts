@@ -1,4 +1,27 @@
-import { Ester, Plan, PlanSchedule, Route } from '../../types';
+import { Ester, ExtraKey, Plan, PlanSchedule, Route } from '../../types';
+
+/**
+ * A patch plan may carry its strength either as a total dose (`doseMG > 0`,
+ * the classic "patch releases X mg over its lifetime" figure) or as a release
+ * rate (`extras.releaseRateUGPerDay > 0`, which is what the box usually
+ * prints and what most people actually copy down). Exactly one of the two is
+ * required — never both, never neither.
+ *
+ * Records already worked this way (`DoseFormModal` stores `doseMG: 0` plus a
+ * rate in `extras`). Plans did not, so a rate-only plan failed validation with
+ * "dose must be > 0" and could never be saved. This helper is the single
+ * source of truth for "is this plan's strength specified?" so the validator,
+ * the card subtitle and the editor can't drift apart.
+ */
+export function planReleaseRate(plan: Pick<Plan, 'route' | 'extras'>): number {
+    const raw = plan.extras?.[ExtraKey.releaseRateUGPerDay];
+    return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
+/** True when the plan is a patch whose strength is expressed as µg/day only. */
+export function isRateOnlyPlan(plan: Pick<Plan, 'route' | 'doseMG' | 'extras'>): boolean {
+    return plan.route === Route.patchApply && planReleaseRate(plan) > 0 && !(plan.doseMG > 0);
+}
 
 /**
  * Bounds for `every_n_days` interval. The lower bound is 0.5 rather than a
@@ -423,10 +446,14 @@ export interface PlanValidationError {
 
 export function validatePlan(plan: Plan): PlanValidationError[] {
     const errors: PlanValidationError[] = [];
-    if (!Number.isFinite(plan.doseMG) || plan.doseMG <= 0) {
+    // 贴片计划的「强度」可以用总剂量（mg）或释放速率（µg/d）任一表达，
+    // 两者都没有才算错。之前一律要求 doseMG > 0，导致只填速率的贴片计划
+    // 永远存不下去（UI 在 rate 模式下还不渲染剂量输入框，直接无解）。
+    const rateOnly = isRateOnlyPlan(plan);
+    if (!Number.isFinite(plan.doseMG) || (plan.doseMG <= 0 && !rateOnly)) {
         errors.push({
             field: 'dose',
-            message: 'dose must be > 0',
+            message: 'dose must be > 0 (or a release rate for patch plans)',
             messageKey: 'plan.error.dose_invalid',
         });
     }
@@ -458,7 +485,7 @@ export function validatePlan(plan: Plan): PlanValidationError[] {
     }
     switch (plan.schedule.kind) {
         case 'every_n_days':
-            // 小数周期（如 1.5 / 3.5 天）现已支持；上限 60 天是为了不让
+            // 小数周期（如 1.5 / 3.5 天）现已支持；上限 365 天是为了不让
             // dueMomentsInRange / Kotlin 通知调度白撞 366 天循环。
             if (
                 !Number.isFinite(plan.schedule.intervalDays) ||

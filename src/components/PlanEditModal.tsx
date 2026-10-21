@@ -191,9 +191,12 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             setEster(planToEdit.ester);
             // 编辑模式：planToEdit.doseMG 是化合物 mg；按 ester 换算系数反算等效 E2
             // （照搬 DoseFormModal 编辑分支的逻辑）。
+            // rate-only 的计划 doseMG 就是 0，不能直接 toFixed 成 "0.000" —— 
+            // 那会让用户切回「总剂量」时看到一个假的 0 而非空白。
             const factor = getToE2Factor(planToEdit.ester) || 1;
-            setRawDoseStr(planToEdit.doseMG.toFixed(3));
-            setE2DoseStr((planToEdit.doseMG * factor).toFixed(3));
+            const hasMgDose = Number.isFinite(planToEdit.doseMG) && planToEdit.doseMG > 0;
+            setRawDoseStr(hasMgDose ? planToEdit.doseMG.toFixed(3) : '');
+            setE2DoseStr(hasMgDose ? (planToEdit.doseMG * factor).toFixed(3) : '');
             setLastEditedField(planToEdit.ester === Ester.E2 ? 'bio' : 'raw');
             setUseCustomDose(
                 hasQuickDosePanel(planToEdit.route, planToEdit.ester) &&
@@ -533,7 +536,13 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
      *  state — used both by the compliance-preview useMemo and by handleSave.
      *  Centralising avoids drift between what we *preview* and what we *save*. */
     const buildDraft = (): Plan => {
-        const dose = parseFloat(rawDoseStr);
+        // 贴片 rate 模式：强度由 extras.releaseRateUGPerDay 表达，总剂量刻意写成 0
+        // （与 DoseFormModal 的记录侧语义一致，PK 对 patchApply 也只看 rateMGh）。
+        // 之前写的是 parseFloat('') = NaN，validatePlan 必报 dose_invalid，
+        // 导致「只填速率」的贴片计划永远存不下去。
+        const rateMode = route === Route.patchApply && patchMode === 'rate';
+        const parsedDose = parseFloat(rawDoseStr);
+        const dose = rateMode ? 0 : parsedDose;
         const lead = parseInt(leadMinutes, 10);
 
         const startD = parseLocalDate(startDate);

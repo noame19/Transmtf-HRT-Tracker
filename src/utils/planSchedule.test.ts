@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Ester, Plan, Route } from '../../types';
+import { Ester, ExtraKey, Plan, Route } from '../../types';
 import {
     drugCategoryOf,
     planKey,
@@ -10,6 +10,8 @@ import {
     findConflicts,
     summarizeSchedule,
     validatePlan,
+    planReleaseRate,
+    isRateOnlyPlan,
     formatNextDue,
     sanitizePlansForConflict,
     pickPrimaryEnabledPlan,
@@ -784,5 +786,56 @@ describe('weekly timesByWeekday overlay', () => {
         const out = summarizeSchedule(p, tStub);
         expect(out).toContain('20:00');
         expect(out).not.toContain('·');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 贴片计划「总剂量 / 释放速率」二选一
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('rate-only patch plans', () => {
+    const patchPlan = (overrides: Partial<Plan> = {}) => makePlan({
+        route: Route.patchApply,
+        ester: Ester.E2,
+        doseMG: 0,
+        extras: { [ExtraKey.releaseRateUGPerDay]: 100 },
+        ...overrides,
+    });
+
+    it('planReleaseRate reads a positive rate from extras', () => {
+        expect(planReleaseRate(patchPlan())).toBe(100);
+        expect(planReleaseRate(patchPlan({ extras: {} }))).toBe(0);
+        expect(planReleaseRate(patchPlan({ extras: { [ExtraKey.releaseRateUGPerDay]: 0 } }))).toBe(0);
+        expect(planReleaseRate(patchPlan({ extras: { [ExtraKey.releaseRateUGPerDay]: -5 } }))).toBe(0);
+    });
+
+    it('isRateOnlyPlan only matches patches whose doseMG is absent', () => {
+        expect(isRateOnlyPlan(patchPlan())).toBe(true);
+        // 同时带总剂量和速率的旧数据不算 rate-only（保留原有的剂量语义）
+        expect(isRateOnlyPlan(patchPlan({ doseMG: 30 }))).toBe(false);
+        // 非贴片途径永远不是 rate-only
+        expect(isRateOnlyPlan(makePlan({ doseMG: 0, extras: { [ExtraKey.releaseRateUGPerDay]: 100 } }))).toBe(false);
+    });
+
+    it('validatePlan accepts a patch plan with only a release rate', () => {
+        // 这是本次修复的核心：之前 doseMG=0 一定报 plan.error.dose_invalid，
+        // 而 rate 模式下 UI 又不渲染剂量输入框，用户根本无解。
+        expect(validatePlan(patchPlan())).toEqual([]);
+    });
+
+    it('validatePlan still rejects a patch plan with neither dose nor rate', () => {
+        const errors = validatePlan(patchPlan({ extras: {} }));
+        expect(errors.map((e) => e.messageKey)).toContain('plan.error.dose_invalid');
+    });
+
+    it('validatePlan still rejects non-patch plans with doseMG = 0', () => {
+        const errors = validatePlan(makePlan({ doseMG: 0 }));
+        expect(errors.map((e) => e.messageKey)).toContain('plan.error.dose_invalid');
+    });
+
+    it('validatePlan rejects NaN dose even when a rate is present', () => {
+        // NaN 是「表单还没算出来」的信号，不能因为填了速率就放行。
+        const errors = validatePlan(patchPlan({ doseMG: NaN }));
+        expect(errors.map((e) => e.messageKey)).toContain('plan.error.dose_invalid');
     });
 });
