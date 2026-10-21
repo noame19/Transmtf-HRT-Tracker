@@ -1,5 +1,20 @@
 import { Ester, Plan, Route } from '../../types';
 
+/**
+ * Bounds for `every_n_days` interval. The lower bound is 0.5 rather than a
+ * number close to 0 so that a mis-typed "0.05" cannot quietly turn a plan
+ * into a near-continuous drip. The upper bound is 365 days: long-acting
+ * depots (estradiol undecylate, EU_DEPOT_PK t½ ≈ 35 d) are legitimately dosed
+ * every couple of months, and `dueMomentsInRange` already caps its day scan
+ * at 366 days, so anything beyond that could never produce a moment anyway.
+ *
+ * Fractions are deliberately allowed (1.5 or 3.5 days is a real regimen),
+ * see `matchesScheduleDay` for how a fractional period maps onto calendar
+ * days.
+ */
+export const MIN_INTERVAL_DAYS = 0.5;
+export const MAX_INTERVAL_DAYS = 365;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers for plan scheduling + smart-prefill matching. No DOM / no React.
 // All times use the user's local Date (no timezone math) — consistent with the
@@ -133,10 +148,26 @@ function matchesScheduleDay(plan: Plan, day: Date): boolean {
         case 'every_n_days': {
             const interval = plan.schedule.intervalDays;
             if (!Number.isFinite(interval) || interval <= 0) return false;
-            const anchor = new Date(plan.startDateH * 3600000);
+            const anchor = startOfLocalDay(new Date(plan.startDateH * 3600000));
             const days = daysBetween(anchor, day);
             if (days < 0) return false;
-            return days % Math.round(interval) === 0;
+            // Fractional intervals (e.g. 3.5 days) cannot be expressed as
+            // `days % interval` — a modulo only has 0/1 as its answer while a
+            // fractional period puts the k-th dose *between* two calendar
+            // days. Project the day onto the nearest occurrence index instead:
+            //
+            //   n = round(days / interval)        → which dose is this?
+            //   round(n * interval)               → the day it lands on
+            //
+            // For integer intervals this reduces to `days % interval === 0`
+            // exactly (round() is the identity on integers), so existing
+            // integer plans keep their current schedule bit-for-bit. For
+            // fractional intervals the day offsets alternate between the two
+            // neighbouring integers, e.g. interval=3.5 starting at day 0 →
+            // days 0, 4, 7, 11, 14 … (gaps 4/3/4/3, average 3.5) and
+            // interval=1.5 → days 0, 2, 3, 5, 6, 8 … (gaps 2/1/2/1, avg 1.5).
+            const n = Math.round(days / interval);
+            return Math.abs(days - Math.round(n * interval)) < 1e-6;
         }
         case 'weekly': {
             if (!plan.schedule.weekdays || plan.schedule.weekdays.length === 0) return false;
@@ -388,10 +419,16 @@ export function validatePlan(plan: Plan): PlanValidationError[] {
     }
     switch (plan.schedule.kind) {
         case 'every_n_days':
-            if (!Number.isFinite(plan.schedule.intervalDays) || plan.schedule.intervalDays < 1) {
+            // 小数周期（如 1.5 / 3.5 天）现已支持；上限 60 天是为了不让
+            // dueMomentsInRange / Kotlin 通知调度白撞 366 天循环。
+            if (
+                !Number.isFinite(plan.schedule.intervalDays) ||
+                plan.schedule.intervalDays < MIN_INTERVAL_DAYS ||
+                plan.schedule.intervalDays > MAX_INTERVAL_DAYS
+            ) {
                 errors.push({
                     field: 'interval',
-                    message: 'interval must be ≥ 1 day',
+                    message: `interval must be in [${MIN_INTERVAL_DAYS}, ${MAX_INTERVAL_DAYS}] days`,
                     messageKey: 'plan.error.interval_invalid',
                 });
             }

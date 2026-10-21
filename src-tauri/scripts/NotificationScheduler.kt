@@ -456,11 +456,20 @@ object NotificationScheduler {
         return when (plan.scheduleKind) {
             "daily" -> true
             "every_n_days" -> {
+                // 小数周期（1.5 / 3.5 天）不能取模：取模只有 0/1 两个答案，
+                // 而小数周期会把第 k 次落在两个日历日之间。改为把天数投影到
+                // 最近的「次数」上再回投：
+                //   n = round(days / interval)   → 这是第几次
+                //   round(n * interval)          → 它落在第几天
+                // 整数周期下与旧的 `days % interval == 0` 完全等价。
+                // 必须与 TS 侧 planSchedule.matchesScheduleDay 保持一致，
+                // 否则 app 内预览时间和系统通知时间会对不上。
                 val interval = plan.intervalDays
-                if (interval <= 0) return false
+                if (interval <= 0.0) return false
                 val daysSinceStart = daysBetween(plan.startCal, day)
                 if (daysSinceStart < 0) return false
-                daysSinceStart % interval == 0
+                val n = Math.round(daysSinceStart / interval)
+                Math.abs(daysSinceStart - Math.round(n * interval)) < 1e-6
             }
             "weekly" -> {
                 val weekdays = plan.weekdays
@@ -500,7 +509,7 @@ object NotificationScheduler {
         val id: String,
         val enabled: Boolean,
         val scheduleKind: String,
-        val intervalDays: Int,
+        val intervalDays: Double,
         val weekdays: Set<Int>,
         val times: List<Pair<Int, Int>>,
         val startCal: java.util.Calendar,
@@ -523,7 +532,7 @@ object NotificationScheduler {
             val enabled = obj.optBoolean("enabled", true)
             val sched = obj.optJSONObject("schedule") ?: continue
             val kind = sched.optString("kind", "")
-            val interval = sched.optInt("intervalDays", 0)
+            val interval = sched.optDouble("intervalDays", 0.0)
             val wdsArr = sched.optJSONArray("weekdays")
             val weekdays = if (wdsArr != null) {
                 (0 until wdsArr.length()).map { wdsArr.getInt(it) }.toSet()

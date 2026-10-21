@@ -151,11 +151,16 @@ class ReminderReceiver : BroadcastReceiver() {
                 val kind = sched.optString("kind")
                 val startMs = obj.optLong("startDateH", 0L) * 3600000L
                 if (kind == "every_n_days" && startMs < firedAtMs) {
-                    val interval = sched.optInt("intervalDays", 1)
-                    val daysSinceStart = ((firedAtMs - startMs) / 86400000L).toInt()
-                    val cyclesDone = daysSinceStart / interval + 1
-                    val newStart = (startMs + cyclesDone * interval * 86400000L) / 3600000L
-                    obj.put("startDateH", newStart)
+                    // 注意这里必须用 optDouble：贴片常见 3.5 天周期，optInt 会把它
+                    // 截成 3，镇点（startDateH）就被推到错误的一天，下一次通知直接偏掉。
+                    // 改成毫秒累加后，与 TS 侧 occurrencesPerDay 的数学保持同构。
+                    val intervalDays = sched.optDouble("intervalDays", 1.0)
+                    if (intervalDays > 0.0) {
+                        val intervalMs = (intervalDays * 86400000.0).toLong()
+                        val cyclesDone = (firedAtMs - startMs) / intervalMs + 1
+                        val newStart = (startMs + cyclesDone * intervalMs) / 3600000L
+                        obj.put("startDateH", newStart)
+                    }
                 }
                 // For 'daily' / 'weekly' we don't need to shift — the next
                 // moment is the following day/week automatically.

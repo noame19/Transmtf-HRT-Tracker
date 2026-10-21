@@ -23,9 +23,9 @@ import {
     SL_TIER_ORDER, SublingualTierParams,
     getToE2Factor,
 } from '../../logic';
-import { findConflicts, validatePlan } from '../utils/planSchedule';
+import { findConflicts, validatePlan, MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from '../utils/planSchedule';
 import { analyzePlanCompliance } from '../utils/planCompliance';
-import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info, Clock } from 'lucide-react';
+import { X, Save, Trash2, Calendar, Droplet, AlertTriangle, Info, Clock, Minus, Plus } from 'lucide-react';
 
 interface PlanEditModalProps {
     isOpen: boolean;
@@ -401,6 +401,27 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
         setWeekdays(weekdays.includes(day) ? weekdays.filter((d) => d !== day) : [...weekdays, day].sort());
     };
 
+    /** ±0.5 快捷按钮：1.5 / 3.5 天这类方案靠手输太容易错，给一对步进按钮。
+     *  内部按 0.5 的倍数对齐，避免连续点击累积出 1.4999999998 这种浮点噪声。 */
+    const bumpInterval = (delta: number) => {
+        const cur = parseFloat(intervalDays);
+        const base = Number.isFinite(cur) ? cur : MIN_INTERVAL_DAYS;
+        const next = Math.min(
+            MAX_INTERVAL_DAYS,
+            Math.max(MIN_INTERVAL_DAYS, Math.round((base + delta) * 2) / 2),
+        );
+        setIntervalDays(String(next));
+    };
+
+    /** 失焦时把用户手输的值对到合法区间，并收掉无意义的浮点尾巴。 */
+    const normalizeInterval = (raw: string): string => {
+        const v = parseFloat(raw);
+        if (!Number.isFinite(v)) return String(MIN_INTERVAL_DAYS);
+        const clamped = Math.min(MAX_INTERVAL_DAYS, Math.max(MIN_INTERVAL_DAYS, v));
+        // 保留一位小数就够了（0.5 步进），同时把 3.5 而不是 3.500000001 写回去。
+        return String(Math.round(clamped * 10) / 10);
+    };
+
     /** Drop the patch-mode overlay/area fields when the user navigates away
      *  from those routes, so a stale gel `areaCM2` can't accidentally leak
      *  into a freshly-edited E2-injection plan's extras. Mirrors the same
@@ -459,7 +480,7 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
             scheduleKind === 'daily'
                 ? { kind: 'daily', times }
                 : scheduleKind === 'every_n_days'
-                    ? { kind: 'every_n_days', intervalDays: parseInt(intervalDays, 10) || 1, times }
+                    ? { kind: 'every_n_days', intervalDays: parseFloat(intervalDays) || MIN_INTERVAL_DAYS, times }
                     : { kind: 'weekly', weekdays, times };
 
         // Build per-route extras so a plan with route=patchApply / route=gel
@@ -1050,19 +1071,45 @@ const PlanEditModal: React.FC<PlanEditModalProps> = ({ isOpen, onClose, planToEd
                                     style={{ color: 'var(--text-secondary)' }}>
                                     {t('plan.field.interval') || '间隔（天）'}
                                 </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    value={intervalDays}
-                                    onChange={(e) => setIntervalDays(e.target.value)}
-                                    className="w-full p-3 rounded-xl text-base font-bold font-mono outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                                    style={{
-                                        background: 'var(--bg-card-hover)',
-                                        border: '1px solid var(--border-primary)',
-                                        color: 'var(--text-primary)',
-                                    }}
-                                />
+                                <div className="flex items-center gap-2">
+                                    {/* 小数周期：1.5 / 3.5 天这类方案没法用整数档位凑出来，
+                                        步进固定 0.5 是刻意的（比 step="any" 好用，
+                                        滑盘式输入在手机端不会一下跳到 1.3333）。 */}
+                                    <button
+                                        type="button"
+                                        onClick={() => bumpInterval(-0.5)}
+                                        aria-label={t('plan.interval_minus') || '减少 0.5 天'}
+                                        className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center btn-press-glass"
+                                        style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-secondary)' }}
+                                    >
+                                        <Minus size={16} />
+                                    </button>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={MIN_INTERVAL_DAYS}
+                                        max={MAX_INTERVAL_DAYS}
+                                        step="0.5"
+                                        value={intervalDays}
+                                        onChange={(e) => setIntervalDays(e.target.value)}
+                                        onBlur={() => setIntervalDays(normalizeInterval(intervalDays))}
+                                        className="flex-1 min-w-0 p-3 rounded-xl text-base font-bold font-mono text-center outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
+                                        style={{
+                                            background: 'var(--bg-card-hover)',
+                                            border: '1px solid var(--border-primary)',
+                                            color: 'var(--text-primary)',
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => bumpInterval(0.5)}
+                                        aria-label={t('plan.interval_plus') || '增加 0.5 天'}
+                                        className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center btn-press-glass"
+                                        style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-secondary)' }}
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                </div>
                             </div>
                         )}
 

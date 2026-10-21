@@ -15,6 +15,7 @@ import {
     getAllGelProducts, readLastGelEvent,
 } from '../utils/doseForm';
 import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
+import { MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS } from '../utils/planSchedule';
 import {
     Route, Ester, ExtraKey, DoseEvent,
     getToE2Factor, isAntiandrogen,
@@ -152,7 +153,9 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
     // 间隔 = 几天 + 几小时，内部统一存 hours
     const [intervalDaysStr, setIntervalDaysStr] = useState('1');
     const [intervalHoursStr, setIntervalHoursStr] = useState('0');
-    const intervalDays = Math.max(1, parseInt(intervalDaysStr) || 1);
+    // 小数天也允许（1.5 / 3.5 天是真实方案）。之前用 parseInt 会把 3.5 截成 3，
+    // 跟 PlanEditModal 那边是同一个毛病，一起改成 parseFloat + 0.5 步进。
+    const intervalDays = Math.max(MIN_INTERVAL_DAYS, parseFloat(intervalDaysStr) || MIN_INTERVAL_DAYS);
     // 「间隔小时」字段只对贴片路径生效：贴片需要小时级精度算撕下时间，
     // 其它路径（口服/注射/凝胶/植入）按整数天循环就够了，强行让用户填小时反而多余。
     const intervalHours = (route === Route.patchApply)
@@ -1191,7 +1194,7 @@ const BatchDoseModal: React.FC<BatchDoseModalProps> = ({ isOpen, onClose, onSave
                                             <label className="block text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                                                 {route === Route.patchApply ? t('batch.interval_days_label_patch') : t('batch.interval_days_label')}
                                             </label>
-                                            <input type="number" min="1" max="365"
+                                            <input type="number" inputMode="decimal" min={MIN_INTERVAL_DAYS} max={MAX_INTERVAL_DAYS} step="0.5"
                                                 value={intervalDaysStr}
                                                 onChange={e => setIntervalDaysStr(e.target.value)}
                                                 onBlur={() => setIntervalDaysStr(String(intervalDays))}
