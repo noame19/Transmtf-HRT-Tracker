@@ -16,6 +16,7 @@ import {
 } from '../utils/doseForm';
 import { findPatchRemoveForApply } from '../utils/patch';
 import { buildGelExtras, resolveGelAreaToStore } from '../utils/gelForm';
+import { MIN_PATCH_RATE } from '../utils/planSchedule';
 import {
     Route, Ester, ExtraKey, DoseEvent, SL_TIER_ORDER, SublingualTierParams,
     getToE2Factor, isAntiandrogen,
@@ -531,6 +532,20 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
     };
 
     const [isSaving, setIsSaving] = useState(false);
+
+    /** 贴片释放速率的就地错误提示。
+     *  旧行为只在点保存时闪一个 alert，用户在手机上根本看不出是哪一项错了，
+     *  体感就是「我明明填了却提交不了」。这里把判定提前到输入框旁边：
+     *  只有真填了东西且不合法时才报错，空字符串交给保存按钮去拦。 */
+    const patchRateError: string | null = (() => {
+        if (route !== Route.patchApply || patchMode !== 'rate') return null;
+        const raw = patchRate.trim();
+        if (raw === '') return null;
+        const val = parseFloat(raw);
+        if (!Number.isFinite(val)) return t('error.invalidNumber') || '请输入有效数字';
+        if (val <= 0) return t('error.nonPositive') || '不能输入小于等于 0 的值。';
+        return null;
+    })();
     const [templates, setTemplates] = useState<DoseTemplate[]>(() => {
         try {
             const saved = localStorage.getItem('hrt-dose-templates');
@@ -1171,14 +1186,25 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                                     <input
                                         type="number"
                                         inputMode="decimal"
-                                        min="0"
-                                        step="1"
+                                        min={MIN_PATCH_RATE}
+                                        step="any"
                                         value={patchRate}
                                         onChange={e => setPatchRate(e.target.value)}
                                         className="w-full p-4 rounded-xl focus:ring-2 focus:ring-pink-300 outline-none"
-                                        style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}
+                                        style={{
+                                            background: 'var(--bg-card-hover)',
+                                            border: `1px solid ${patchRateError ? 'var(--danger-500, #ef4444)' : 'var(--border-primary)'}`,
+                                            color: 'var(--text-primary)',
+                                        }}
                                         placeholder="e.g. 50"
                                     />
+                                    {/* 以前只靠保存时弹 alert，用户在手机上根本看不出是哪一项错了，
+                                        体感就是「明明填了却提交不了」。这里就地给出原因。 */}
+                                    {patchRateError && (
+                                        <p className="text-xs font-semibold" style={{ color: 'var(--danger-500, #ef4444)' }}>
+                                            {patchRateError}
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
@@ -1451,7 +1477,8 @@ const DoseFormModal: React.FC<DoseFormModalProps> = ({ isOpen, onClose, eventToE
                     )}
                     <button
                         onClick={handleSave}
-                        disabled={isSaving}
+                        // 速率填了但不合法时直接禁用保存，而不是让用户点下去才知道错。
+                        disabled={isSaving || patchRateError !== null}
                         className={`flex-1 h-14 text-white text-lg font-bold rounded-xl transition-all flex items-center justify-center gap-2 glass-btn-primary btn-press-glass ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {isSaving ? (

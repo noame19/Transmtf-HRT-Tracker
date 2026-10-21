@@ -38,6 +38,12 @@ export function isRateOnlyPlan(plan: Pick<Plan, 'route' | 'doseMG' | 'extras'>):
 export const MIN_INTERVAL_DAYS = 0.5;
 export const MAX_INTERVAL_DAYS = 365;
 
+/** Smallest meaningful patch release rate, in µg/day. Transdermal patches are
+ *  dosed in whole µg/day (25 / 50 / 100 …) so the floor only exists to keep a
+ *  stray "0" or negative out. Kept here next to the other plan bounds so the
+ *  editor input's `min`, the validator and `planReleaseRate` can't drift. */
+export const MIN_PATCH_RATE = 0.1;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers for plan scheduling + smart-prefill matching. No DOM / no React.
 // All times use the user's local Date (no timezone math) — consistent with the

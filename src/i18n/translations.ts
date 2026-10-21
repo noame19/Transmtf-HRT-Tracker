@@ -247,6 +247,7 @@ export const TRANSLATIONS_BASE = {
         "qr.help": "数据可能包含个人隐私，请谨慎分享。",
 
         "error.nonPositive": "不能输入小于等于 0 的值。",
+        "error.invalidNumber": "请输入有效数字（例如 50）",
         "error.invalidDate": "无效日期。",
         "error.patch_remove_before_apply": "摘下时间必须晚于给药时间。",
 
@@ -1243,6 +1244,7 @@ export const TRANSLATIONS_BASE = {
         "qr.help": "Contains personal dosage data. Share carefully.",
 
         "error.nonPositive": "Value must be greater than zero.",
+        "error.invalidNumber": "Enter a valid number (e.g. 50)",
         "error.invalidDate": "Invalid date.",
         "error.patch_remove_before_apply": "Remove time must be after the apply time.",
 
@@ -2150,6 +2152,7 @@ export const TRANSLATIONS = {
         "qr.help": "資料可能包含個人資訊，請謹慎分享。",
 
         "error.nonPositive": "不能輸入小於或等於 0 的值",
+        "error.invalidNumber": "請輸入有效數字（例如 50）",
 
         "export.encrypt_ask": "要加密匯出嗎？",
         "export.encrypt_ask_desc": "加密後會產生一組隨機密碼，匯入時必須輸入該密碼。",
@@ -2781,6 +2784,7 @@ export const TRANSLATIONS = {
         "qr.help": "個人データを含む可能性があります。共有にはご注意ください。",
 
         "error.nonPositive": "0 以下の値は入力できません。",
+        "error.invalidNumber": "有効な数値を入力してください（例: 50）",
 
         "export.encrypt_ask": "暗号化してエクスポートしますか？",
         "export.encrypt_ask_desc": "暗号化するとランダムなパスワードが生成され、インポート時にそのパスワードが必要になります。",
