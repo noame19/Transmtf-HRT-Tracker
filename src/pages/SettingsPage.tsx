@@ -38,6 +38,21 @@ import { decryptData } from '../lib/logic';
 import { computeDataHash } from '../utils/dataHash';
 import { writeCustomGelProducts, readDoseTemplates, writeDoseTemplates, readDoseByDrug, writeDoseByDrug, readLastDrug, writeLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
+
+/**
+ * Snapshot produced by the Kotlin `NotificationScheduler.getHealth()`.
+ * Mirrors the JSON keys one-for-one; every field is a plain boolean/number
+ * so the UI never has to interpret Android internals.
+ */
+interface ReminderHealth {
+    notificationsEnabled: boolean;
+    channelExists: boolean;
+    channelMuted: boolean;
+    batteryOptimized: boolean;
+    alarmsScheduled: number;
+    lastScheduleAtMs: number;
+    lastFireAtMs: number;
+}
 import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
 import {
     BACKUP_SUBDIR,
@@ -213,9 +228,36 @@ const SettingsPage: React.FC = () => {
         }
     }, []);
 
+    /**
+     * Reminder health snapshot. Android can silently stop delivering
+     * reminders for reasons the app never sees: the channel got muted, the
+     * user revoked POST_NOTIFICATIONS, or an OEM cleaner wiped our alarms.
+     * Without this the UI just shows "提醒已开启" while nothing fires, which
+     * is indistinguishable from a bug. `null` = not checked (web preview).
+     */
+    const [reminderHealth, setReminderHealth] = useState<ReminderHealth | null>(null);
+    const refreshReminderHealth = useCallback(async () => {
+        if (!isTauri) {
+            setReminderHealth(null);
+            return;
+        }
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (typeof invoke !== 'function') {
+            setReminderHealth(null);
+            return;
+        }
+        try {
+            const raw = await invoke<string | null>('get_reminder_health');
+            setReminderHealth(raw ? JSON.parse(raw) as ReminderHealth : null);
+        } catch {
+            setReminderHealth(null);
+        }
+    }, []);
+
     useEffect(() => {
         refreshBatteryOptStatus();
-    }, [refreshBatteryOptStatus]);
+        refreshReminderHealth();
+    }, [refreshBatteryOptStatus, refreshReminderHealth]);
 
     /**
      * Re-check battery-optimization status whenever the WebView regains
@@ -1053,6 +1095,48 @@ const SettingsPage: React.FC = () => {
                                 <Toggle checked={remindersEnabled} onChange={handleToggleReminders} />
                             </div>
                         </div>
+
+                        {/* Reminder health diagnostics — only rendered when the
+                         *  system reports something that would stop reminders
+                         *  from arriving. Silence is the default: a healthy
+                         *  setup adds no rows, so the settings page stays
+                         *  short for users who never hit this. */}
+                        {remindersEnabled && isTauri && reminderHealth && (() => {
+                            const problems: string[] = [];
+                            if (!reminderHealth.notificationsEnabled) {
+                                problems.push(t('settings.health.notifications_off')
+                                    || '系统已关闭本应用的通知，提醒不会出现。');
+                            } else if (reminderHealth.channelMuted) {
+                                problems.push(t('settings.health.channel_muted')
+                                    || '「Medication Reminders」通知类别被静音，提醒不会发出声音或横幅。');
+                            }
+                            if (reminderHealth.batteryOptimized) {
+                                problems.push(t('settings.health.battery_optimized')
+                                    || '本应用仍受系统电池优化限制，提醒可能被延迟。');
+                            }
+                            if (reminderHealth.alarmsScheduled === 0 && plans.length > 0) {
+                                problems.push(t('settings.health.no_alarms')
+                                    || '没有成功注册任何提醒闹钟，请检查计划的「通知」开关。');
+                            }
+                            if (problems.length === 0) return null;
+                            return (
+                                <div className="border-t pt-4" style={{ borderColor: 'var(--border-secondary)' }}>
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="shrink-0 mt-0.5 text-amber-500" size={20} />
+                                        <div className="min-w-0 space-y-1">
+                                            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                                {t('settings.health.title') || '提醒可能不会送达'}
+                                            </p>
+                                            {problems.map((msg) => (
+                                                <p key={msg} className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                    · {msg}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Battery optimization whitelist — a sibling row to the
                          *  reminders toggle. This is the "doze / not optimized"

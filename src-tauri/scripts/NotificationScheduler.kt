@@ -55,35 +55,119 @@ object NotificationScheduler {
     private const val PLANS_JSON_KEY = "plans_json"
     private const val PENDING_KEY = "pending_deep_link"
 
-    /** 30-day scheduling horizon — anything further is dropped, the next
-     *  reminder sync (or the boot receiver) will re-fill the window. */
-    private const val HORIZON_DAYS = 30L
+    /** Scheduling horizon in days. Was 30 — that silently capped reminders
+     *  for anyone who doesn't open the app for a month (nothing re-fills the
+     *  window except a JS sync, a boot, or a receiver fire). AlarmManager can
+     *  hold ~500 alarms per app, so a 90-day window is still comfortable for
+     *  the handful of plans a user actually has. */
+    private const val HORIZON_DAYS = 90L
+
+    /** Scheduling never registers an alarm closer than this. When an alarm
+     *  fires, `ReminderReceiver` immediately re-runs `scheduleReminders`; the
+     *  moment that just fired is only microseconds in the past, so a naive
+     *  `alarmMs < now` check could still re-register it and the user would get
+     *  the same reminder twice. A one-second grace also drops alarms that
+     *  could never usefully fire (already due). */
+    private const val SCHEDULE_GRACE_MS = 1_000L
+
+    /** Marks that we already tried to repair the channel's importance after
+     *  finding it downgraded. Repair is one-shot per install so we never
+     *  fight the user's explicit choice on every sync. */
+    private const val CHANNEL_REPAIRED_KEY = "channel_importance_repaired"
+
+    /** Health counters, read by `getHealth` and surfaced in the settings UI. */
+    private const val HEALTH_ALARMS_KEY = "health_alarms_scheduled"
+    private const val HEALTH_LAST_SCHEDULE_KEY = "health_last_schedule_at"
+    private const val HEALTH_LAST_FIRE_KEY = "health_last_fire_at"
 
     /**
-     * Idempotent channel creation. API 26+ requires a channel for any
-     * notification; older devices get the legacy notification path (which
-     * still works fine because `NotificationCompat.Builder` accepts the
-     * channel id unconditionally and silently ignores it pre-Oreo).
+     * Idempotent channel creation + validation. API 26+ requires a channel
+     * for any notification; older devices get the legacy notification path
+     * (which still works fine because `NotificationCompat.Builder` accepts
+     * the channel id unconditionally and silently ignores it pre-Oreo).
+     *
+     * The validation half matters as much as the creation half: a user can
+     * swipe the channel down to "Silent" / "Off" in system settings, and
+     * `createNotificationChannel` on an existing id is a NO-OP for
+     * importance — Android deliberately won't let apps override the user's
+     * choice. So a silent channel stays silent forever, notifications fire
+     * into the void, and nothing anywhere reports it. That is the single
+     * most common cause of "sometimes it just doesn't remind me".
+     *
+     * We therefore:
+     *   1. Detect a downgraded/blocked channel and try ONE repair (delete +
+     *      recreate at HIGH, which resets importance on most OEM builds).
+     *   2. Log a warning with the actual importance so logcat shows why
+     *      nothing fires. `getHealth()` reports the same facts to the UI.
      */
     @JvmStatic
     fun ensureChannel(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val existing = nm.getNotificationChannel(CHANNEL_ID)
+            var existing = nm.getNotificationChannel(CHANNEL_ID)
             if (existing == null) {
-                val ch = NotificationChannel(
-                    CHANNEL_ID,
-                    CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_HIGH,
-                ).apply {
-                    description = CHANNEL_DESC
-                    enableVibration(true)
-                }
-                nm.createNotificationChannel(ch)
+                nm.createNotificationChannel(newHighChannel())
                 Log.i(TAG, "ensureChannel: created channel $CHANNEL_ID")
+                existing = nm.getNotificationChannel(CHANNEL_ID)
+            } else if (existing.importance < NotificationManager.IMPORTANCE_HIGH) {
+                // Downgraded by the user (or by an aggressive OEM cleaner).
+                // Try the delete+recreate dance exactly once per install.
+                val alreadyTried = prefs(context).getBoolean(CHANNEL_REPAIRED_KEY, false)
+                if (!alreadyTried) {
+                    prefs(context).edit().putBoolean(CHANNEL_REPAIRED_KEY, true).apply()
+                    nm.deleteNotificationChannel(CHANNEL_ID)
+                    nm.createNotificationChannel(newHighChannel())
+                    existing = nm.getNotificationChannel(CHANNEL_ID)
+                    Log.i(TAG, "ensureChannel: channel was downgraded — recreated once")
+                }
+            }
+            if (existing != null && existing.importance < NotificationManager.IMPORTANCE_HIGH) {
+                Log.w(TAG, "ensureChannel: channel importance is ${existing.importance} (user setting)")
             }
         }
         return true
+    }
+
+    private fun newHighChannel(): NotificationChannel =
+        NotificationChannel(
+            CHANNEL_ID,
+            CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = CHANNEL_DESC
+            enableVibration(true)
+        }
+
+    /**
+     * Why reminders may not be reaching the user, in a shape the JS side can
+     * render. Every field is a plain boolean so the UI can decide the copy
+     * without knowing anything about Android internals.
+     *
+     * `alarmsScheduled` is the count from the most recent scheduleReminders
+     * call — 0 while plans exist is itself the bug signal.
+     */
+    @JvmStatic
+    fun getHealth(context: Context): String {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        var channelExists = true
+        var channelMuted = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = nm.getNotificationChannel(CHANNEL_ID)
+            channelExists = ch != null
+            // IMPORTANCE_NONE == user turned the channel off entirely.
+            channelMuted = ch != null && ch.importance == NotificationManager.IMPORTANCE_NONE
+        }
+        val prefs = prefs(context)
+        val obj = JSONObject()
+        obj.put("notificationsEnabled", notificationsEnabled)
+        obj.put("channelExists", channelExists)
+        obj.put("channelMuted", channelMuted)
+        obj.put("batteryOptimized", !isBatteryOptimizationIgnored(context))
+        obj.put("alarmsScheduled", prefs.getInt(HEALTH_ALARMS_KEY, 0))
+        obj.put("lastScheduleAtMs", prefs.getLong(HEALTH_LAST_SCHEDULE_KEY, 0L))
+        obj.put("lastFireAtMs", prefs.getLong(HEALTH_LAST_FIRE_KEY, 0L))
+        return obj.toString()
     }
 
     /**
@@ -256,11 +340,22 @@ object NotificationScheduler {
     fun scheduleReminders(context: Context, plansJson: String): Int {
         ensureChannel(context)
 
+        // Parse BEFORE touching anything. The old order wiped every alarm
+        // first and only then tried to parse — so one malformed payload (or
+        // an exception mid-parse) left the user with zero reminders until the
+        // next successful sync, which on a backgrounded app might be days.
+        val plans = try {
+            parsePlans(plansJson)
+        } catch (e: Exception) {
+            Log.e(TAG, "scheduleReminders: invalid plans JSON — keeping existing alarms", e)
+            return 0
+        }
+
         // Persist the plans list so the boot receiver can re-schedule after
         // a device restart without a roundtrip to JS.
         prefs(context).edit().putString(PLANS_JSON_KEY, plansJson).apply()
 
-        // Wipe existing alarms first. The request codes are derived from
+        // Wipe existing alarms. The request codes are derived from
         // (planId.hashCode() xor isoTime.hashCode()) so we can't enumerate
         // them without remembering — track the active ones in prefs.
         val activeCodes = prefs(context).getStringSet("active_request_codes", emptySet()) ?: emptySet()
@@ -271,15 +366,15 @@ object NotificationScheduler {
         }
         prefs(context).edit().remove("active_request_codes").apply()
 
-        val plans = try {
-            parsePlans(plansJson)
-        } catch (e: Exception) {
-            Log.e(TAG, "scheduleReminders: invalid plans JSON", e)
+        if (plans.isEmpty()) {
+            prefs(context).edit()
+                .putInt(HEALTH_ALARMS_KEY, 0)
+                .putLong(HEALTH_LAST_SCHEDULE_KEY, System.currentTimeMillis())
+                .apply()
             return 0
         }
-        if (plans.isEmpty()) return 0
 
-        val now = System.currentTimeMillis()
+        val now = System.currentTimeMillis() + SCHEDULE_GRACE_MS
         val horizonMs = now + TimeUnit.DAYS.toMillis(HORIZON_DAYS)
         val newCodes = HashSet<String>()
         var count = 0
@@ -289,7 +384,15 @@ object NotificationScheduler {
             // 2026-07-20 新增：per-plan 通知栏通知开关。关闭后该 plan 不调度 AlarmManager，
             // 但 app 内「该用药了」弹窗仍正常显示（弹窗由 plan.enabled + 当前时间驱动）。
             if (!plan.notifyEnabled) continue
-            val moments = planUpcomingMoments(plan, now, horizonMs)
+            // Per-plan isolation: one malformed plan must not cost every
+            // other plan its alarms (the loop used to abort on the first
+            // exception, silently leaving later plans unscheduled).
+            val moments = try {
+                planUpcomingMoments(plan, now, horizonMs)
+            } catch (e: Exception) {
+                Log.e(TAG, "scheduleReminders: plan ${plan.id} failed — skipping", e)
+                continue
+            }
             for ((moment, isoTime) in moments) {
                 val requestCode = (plan.id.hashCode() xor isoTime.hashCode())
                 val pi = buildPendingIntent(context, requestCode, plan.id, moment)
@@ -308,16 +411,27 @@ object NotificationScheduler {
                 // tapping it re-shows the heads-up notification (mirrors
                 // the behaviour of stock alarm-clock apps). RTC_WAKEUP is
                 // inside AlarmClockInfo — no longer a separate parameter.
-                am.setAlarmClock(
-                    AlarmManager.AlarmClockInfo(moment, pi),
-                    pi,
-                )
-                newCodes.add(requestCode.toString())
-                count++
+                try {
+                    am.setAlarmClock(
+                        AlarmManager.AlarmClockInfo(moment, pi),
+                        pi,
+                    )
+                    newCodes.add(requestCode.toString())
+                    count++
+                } catch (e: Exception) {
+                    // Some OEMs throw SecurityException on setAlarmClock when
+                    // their own alarm budget is exhausted. One lost alarm is
+                    // survivable; losing the whole sweep is not.
+                    Log.e(TAG, "scheduleReminders: setAlarmClock failed for ${plan.id}", e)
+                }
             }
         }
 
-        prefs(context).edit().putStringSet("active_request_codes", newCodes).apply()
+        prefs(context).edit()
+            .putStringSet("active_request_codes", newCodes)
+            .putInt(HEALTH_ALARMS_KEY, count)
+            .putLong(HEALTH_LAST_SCHEDULE_KEY, System.currentTimeMillis())
+            .apply()
         Log.i(TAG, "scheduleReminders: $count alarms across ${plans.size} plans")
         return count
     }

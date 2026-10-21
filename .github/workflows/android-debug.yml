@@ -169,6 +169,58 @@ jobs:
           echo "--- patched manifest ---"
           cat "$MANIFEST"
 
+      - name: Patch AndroidManifest.xml with reminder permissions + receivers
+        run: |
+          set -e
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "::error::AndroidManifest.xml not found"
+            exit 1
+          fi
+          # 提醒功能需要的权限。之前只有 release workflow 注入这些，debug APK
+          # 里 ReminderReceiver / BootReceiver 既没声明也没有闹钟权限，所以
+          # debug 包的用药提醒完全不会触发——调试时看起来像「通知不稳定」。
+          for PERM in \
+              'android.permission.POST_NOTIFICATIONS' \
+              'android.permission.RECEIVE_BOOT_COMPLETED' \
+              'android.permission.SCHEDULE_EXACT_ALARM' \
+              'android.permission.USE_EXACT_ALARM' \
+              'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'; do
+            SHORT="${PERM##*.}"
+            if ! grep -q "$SHORT" "$MANIFEST"; then
+              sed -i "s|</manifest>|    <uses-permission android:name=\"$PERM\" />\n</manifest>|" "$MANIFEST"
+              echo "added $PERM"
+            fi
+          done
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("src-tauri/gen/android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          if "ReminderReceiver" in s:
+              print("receivers already declared — no-op")
+          elif "</application>" in s:
+              injection = (
+                  "\n        <receiver android:name=\".ReminderReceiver\" android:exported=\"false\">"
+                  "\n            <intent-filter>"
+                  "\n                <action android:name=\"com.smirnovayama.hrttracker.REMINDER_FIRE\" />"
+                  "\n            </intent-filter>"
+                  "\n        </receiver>"
+                  "\n        <receiver android:name=\".BootReceiver\" android:exported=\"true\">"
+                  "\n            <intent-filter>"
+                  "\n                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />"
+                  "\n                <action android:name=\"android.intent.action.MY_PACKAGE_REPLACED\" />"
+                  "\n            </intent-filter>"
+                  "\n        </receiver>"
+              )
+              s = s.replace("</application>", injection + "\n    </application>", 1)
+              p.write_text(s)
+              print("injected ReminderReceiver + BootReceiver")
+          else:
+              raise SystemExit("no </application> — cannot inject receivers")
+          PY
+          echo "--- manifest after reminder patch ---"
+          grep -nE "receiver|uses-permission" "$MANIFEST" || true
+
       - name: Create res/xml/file_paths.xml for FileProvider (Android 9 legacy share)
         run: |
           set -e

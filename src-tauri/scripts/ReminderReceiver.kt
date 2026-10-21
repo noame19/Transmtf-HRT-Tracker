@@ -33,14 +33,25 @@ class ReminderReceiver : BroadcastReceiver() {
             return
         }
 
+        // Record the fire BEFORE any early return so the health panel can show
+        // "alarms are actually firing" even while notifications are muted.
+        val prefs = context.getSharedPreferences("hrt_notification_cache", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong("health_last_fire_at", System.currentTimeMillis())
+            .apply()
+
         if (!NotificationScheduler.areNotificationsEnabled(context)) {
-            Log.i(TAG, "onReceive: notifications disabled — skipping")
+            // Do NOT return early. Previously this dropped the alert AND left
+            // the alarm chain un-advanced, so turning notifications back on
+            // later produced... nothing, because the chain had already run dry
+            // at the horizon edge. Advance the schedule first, then bail.
+            Log.i(TAG, "onReceive: notifications disabled — advancing schedule only")
+            scheduleNextForPlan(context, prefs.getString("plans_json", "[]") ?: "[]", planId, scheduledAtMs)
             return
         }
         NotificationScheduler.ensureChannel(context)
 
         // Pull the plan out of the cached JSON to get its display label.
-        val prefs = context.getSharedPreferences("hrt_notification_cache", Context.MODE_PRIVATE)
         val plansJson = prefs.getString("plans_json", "[]") ?: "[]"
         val plan = findPlan(plansJson, planId)
         val title = plan?.title() ?: "该吃药了"
@@ -57,7 +68,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         val pi = PendingIntent.getActivity(
             context,
-            planId.hashCode(),
+            actionRequestCode(planId, scheduledAtMs, "body"),
             deepLink,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
@@ -82,7 +93,12 @@ class ReminderReceiver : BroadcastReceiver() {
         val notification = builder.build()
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(planId.hashCode(), notification)
+        // Key on (plan, scheduled moment) rather than plan alone. With the old
+        // plan-only id, a plan with two times a day had its second notification
+        // silently REPLACE the first — the user saw one reminder where they
+        // should have seen two. Still stable per moment, so onNewIntent's
+        // NotificationManager.cancel(notificationIdFor(...)) matches.
+        nm.notify(notificationIdFor(planId, scheduledAtMs), notification)
 
         // Stash the deep-link for the JS poller. We deliberately use the
         // same SharedPreferences that NotificationScheduler.readPending
@@ -119,9 +135,12 @@ class ReminderReceiver : BroadcastReceiver() {
             putExtra("deep_link_scheduled_at", scheduledAtMs)
             putExtra("deep_link_action", action)
         }
-        // Distinct requestCode per action so all three are simultaneously
-        // alive in the system (otherwise PI dedup would collapse them).
-        val requestCode = (planId.hashCode() xor action.hashCode())
+        // Distinct requestCode per (plan, moment, action). The moment has to
+        // be part of it: with only plan+action, FLAG_UPDATE_CURRENT made every
+        // future occurrence of the same action reuse ONE PendingIntent whose
+        // extras pointed at the most recently built moment. Tapping 已服用 on
+        // an older notification then recorded the wrong scheduled time.
+        val requestCode = actionRequestCode(planId, scheduledAtMs, action)
         return PendingIntent.getActivity(
             context,
             requestCode,
@@ -188,6 +207,38 @@ class ReminderReceiver : BroadcastReceiver() {
             null
         }
     }
+
+    /**
+     * Coerce an arbitrary (planId, moment, action) triple into the 32-bit int
+     * Android requires, without the collision-prone `hashCode()` xor chains
+     * that were here before.
+     *
+     * The old scheme (`planId.hashCode() xor action.hashCode()`) ignored the
+     * scheduled moment entirely, so two occurrences of the same plan shared
+     * one PendingIntent; `FLAG_UPDATE_CURRENT` then rewrote its extras every
+     * time a later alarm was scheduled, and tapping 已服用 on the notification
+     * that was still on screen sent the *other* moment's timestamp.
+     *
+     * XOR of two hashes is also a weak mixer — `a.hashCode()` xor
+     * `b.hashCode()` collides far more often than a proper hash. We now fold
+     * the moment in and run it through a small avalanche step.
+     */
+    private fun actionRequestCode(planId: String, scheduledAtMs: Long, action: String): Int {
+        var h = planId.hashCode()
+        h = h * 31 + (scheduledAtMs xor (scheduledAtMs ushr 32)).toInt()
+        h = h * 31 + action.hashCode()
+        // Final avalanche so nearby inputs don't land on nearby codes.
+        h = h xor (h ushr 16)
+        h *= 0x85ebca6b.toInt()
+        h = h xor (h ushr 13)
+        h *= 0xc2b2ae35.toInt()
+        h = h xor (h ushr 16)
+        return h
+    }
+
+    /** Stable per-(plan, moment) notification id. */
+    private fun notificationIdFor(planId: String, scheduledAtMs: Long): Int =
+        actionRequestCode(planId, scheduledAtMs, "notification")
 
     private data class FoundPlan(val ester: String, val route: String, val dose: Double) {
         fun title(): String = "$ester · $dose mg"

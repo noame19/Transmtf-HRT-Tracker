@@ -1026,6 +1026,46 @@ fn cancel_all_reminders(_app: tauri::AppHandle) -> Result<i32, String> {
     }
 }
 
+/// Reminder health snapshot: why reminders may not be reaching the user.
+///
+/// Returns JSON with `notificationsEnabled` / `channelExists` /
+/// `channelMuted` / `batteryOptimized` / `alarmsScheduled` /
+/// `lastScheduleAtMs` / `lastFireAtMs`. Every field is derived from live
+/// system state, so the settings UI can explain a silent-reminder problem
+/// instead of just showing "reminders are on".
+#[tauri::command]
+#[cfg_attr(not(target_os = "android"), allow(unused_variables, dead_code))]
+fn get_reminder_health(_app: tauri::AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        use jni::objects::JValue;
+        return with_android_env(|env, activity| {
+            let cls = load_notification_class(env, activity)?;
+            let result = env
+                .call_static_method(
+                    cls,
+                    "getHealth",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(activity)],
+                )
+                .map_err(|e| format!("call_static_method(getHealth): {}", e))?
+                .l()
+                .map_err(|e| format!("getHealth.l: {}", e))?;
+            if result.is_null() {
+                return Ok::<Option<String>, String>(None);
+            }
+            let jstr = env
+                .get_string((&result).into())
+                .map_err(|e| format!("get_string: {}", e))?;
+            Ok(Some(jstr.into()))
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("get_reminder_health only available on Android".to_string())
+    }
+}
+
 /// Returns the deep-link JSON written by `ReminderReceiver` after firing
 /// (one-shot read — the entry is cleared immediately so a fresh app launch
 /// never replays an old reminder). Returns `None` if nothing pending.
@@ -1124,6 +1164,7 @@ pub fn run() {
             cancel_plan_reminders,
             cancel_all_reminders,
             get_pending_reminders,
+            get_reminder_health,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
