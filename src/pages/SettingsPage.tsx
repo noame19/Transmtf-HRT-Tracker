@@ -38,7 +38,7 @@ import { decryptData } from '../../logic';
 import { computeDataHash } from '../utils/dataHash';
 import { writeCustomGelProducts, readDoseTemplates, writeDoseTemplates, readDoseByDrug, writeDoseByDrug, readLastDrug, writeLastDrug } from '../utils/doseForm';
 import { isRecord, parseImportedBackup, importHasContent, importFallbackWeight } from '../utils/importData';
-import { DEFAULT_WEIGHT_KG, latestEventWeight, prefillHeightCM } from '../utils/weight';
+import { DEFAULT_WEIGHT_KG, latestEventWeight } from '../utils/weight';
 import {
     BACKUP_SUBDIR,
     BACKUP_RETENTION_MS,
@@ -327,8 +327,10 @@ const SettingsPage: React.FC = () => {
     const processImportedData = (parsed: unknown): boolean => {
         try {
             const fallbackWeight = importFallbackWeight(parsed, DEFAULT_WEIGHT_KG);
-            const fallbackHeight = prefillHeightCM(events);
-            const parsedImport = parseImportedBackup(parsed, fallbackWeight, fallbackHeight);
+            // 不再把本机身高当兜底塞进导入的每一条记录：那会把「备份里
+            // 本来没有身高」永久伪装成一次真实测量。缺失的身高由
+            // backfillEventHeights 用时间上最近的实测值补。
+            const parsedImport = parseImportedBackup(parsed, fallbackWeight);
             const {
                 events: newEvents,
                 labResults: newLabResults,

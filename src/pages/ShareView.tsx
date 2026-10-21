@@ -6,7 +6,7 @@ import ResultChart from '../components/ResultChart';
 import PINInput from '../components/PINInput';
 import { Share2, Lock, AlertCircle, ArrowLeft } from 'lucide-react';
 import { DoseEvent, runSimulation, SimulationResult, LabResult, createCalibrationInterpolator, setCustomGelProducts, type GelProductSpec } from '../../logic';
-import { backfillEventWeights, eventsNeedWeightMigration, DEFAULT_WEIGHT_KG } from '../utils/weight';
+import { backfillEventWeights, eventsNeedWeightMigration, backfillEventHeights, DEFAULT_WEIGHT_KG } from '../utils/weight';
 
 const ShareView: React.FC = () => {
   const { shareId } = useParams<{ shareId: string }>();
@@ -34,9 +34,12 @@ const ShareView: React.FC = () => {
       // Resolve any shared custom gels so gel events render with their real
       // kinetics rather than falling back to the default product.
       setCustomGelProducts(shareData.gelProducts);
-      const events = eventsNeedWeightMigration(shareData.events)
+      const withWeights = eventsNeedWeightMigration(shareData.events)
         ? backfillEventWeights(shareData.events, shareData.weight)
         : shareData.events;
+      // 分享数据同样可能夹着一批缺 heightCm 的记录（老版本导出的），
+      // 用时间上最近的实测身高补齐，避免 PK 图上体重有、身高全是 '— cm'。
+      const events = backfillEventHeights(withWeights);
       const sim = runSimulation(events);
       setSimulation(sim);
     }

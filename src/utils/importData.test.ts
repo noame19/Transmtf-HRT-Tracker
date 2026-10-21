@@ -81,3 +81,50 @@ describe('importFallbackWeight', () => {
         expect(importFallbackWeight([], 70)).toBe(70);
     });
 });
+
+describe('height survives import — a missing height stays missing', () => {
+    it('keeps a valid per-event height untouched', () => {
+        const r = parseImportedBackup({
+            events: [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, heightCm: 176, extras: {} }],
+        }, 70);
+        expect(r.events[0].heightCm).toBe(176);
+    });
+
+    it('does NOT invent 160 (or the device height) for rows that never recorded one', () => {
+        // Before this change every imported row got fallbackHeight written into
+        // it, so "never measured" became indistinguishable from "measured 160".
+        const r = parseImportedBackup({
+            events: [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, extras: {} }],
+        }, 70);
+        expect(r.events[0].heightCm).toBeUndefined();
+    });
+
+    it('still honours an explicit fallback passed by the caller', () => {
+        const r = parseImportedBackup({
+            events: [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, extras: {} }],
+        }, 70, 168);
+        expect(r.events[0].heightCm).toBe(168);
+    });
+
+    it('rejects an out-of-range fallback rather than writing nonsense', () => {
+        const rows = [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, extras: {} }];
+        expect(parseImportedBackup({ events: rows }, 70, 5).events[0].heightCm).toBeUndefined();
+        expect(parseImportedBackup({ events: rows }, 70, 400).events[0].heightCm).toBeUndefined();
+    });
+
+    it('drops an out-of-range per-event height instead of clamping it', () => {
+        const r = parseImportedBackup({
+            events: [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, heightCm: 12, extras: {} }],
+        }, 70);
+        expect(r.events[0].heightCm).toBeUndefined();
+    });
+
+    it('v4 basicInfo.heightCm still seeds the fallback (back-compat)', () => {
+        const r = parseImportedBackup({
+            meta: { version: 4, schema: 'hrt-tracker-v4' },
+            basicInfo: { heightCm: 171 },
+            events: [{ timeH: 1, doseMG: 2, route: 'oral', ester: 'E2', weightKG: 55, extras: {} }],
+        }, 70);
+        expect(r.events[0].heightCm).toBe(171);
+    });
+});

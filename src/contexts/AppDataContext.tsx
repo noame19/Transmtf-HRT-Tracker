@@ -10,7 +10,14 @@ import { Plan } from '../../types';
 import { drugCategoryOf, sanitizePlansForConflict, dueMomentsInRange } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
-import { backfillEventWeights, eventsNeedWeightMigration, latestEventWeight, DEFAULT_WEIGHT_KG } from '../utils/weight';
+import {
+    backfillEventWeights,
+    eventsNeedWeightMigration,
+    eventsNeedHeightMigration,
+    backfillEventHeights,
+    latestEventWeight,
+    DEFAULT_WEIGHT_KG,
+} from '../utils/weight';
 
 const PERSONAL_MODEL_KEY = 'hrt-personal-model';
 const APPLY_E2_LEARNING_TO_CPA_KEY = 'hrt-apply-e2-learning-to-cpa';
@@ -25,6 +32,30 @@ const PLANS_KEY = 'hrt-plans';
 const REMINDERS_ENABLED_KEY = 'hrt-reminders-enabled';
 const POSTPONE_LOG_KEY = 'hrt-postpone-log';
 const DUE_LOG_KEY = 'hrt-due-log';
+
+/**
+ * Height counterpart of the weight migration. Events written by the plan /
+ * reminder one-tap confirm paths used to omit `heightCm` entirely, so a log
+ * could have a weight on every row and a height on only some of them.
+ *
+ * Deliberately narrow: only fills events that have NO usable height, and only
+ * with the nearest *measured* height in time (height barely moves over months,
+ * so a neighbour beats a constant). If the log contains no measurement at all
+ * nothing is written — a gap is reported as a gap rather than disguised as a
+ * 160 cm reading. Returns null when there is nothing to do so callers can skip
+ * the localStorage write entirely.
+ */
+function migrateHeights(events: DoseEvent[]): DoseEvent[] | null {
+    if (!eventsNeedHeightMigration(events)) return null;
+    const migrated = backfillEventHeights(events);
+    let changed = migrated.length !== events.length;
+    if (!changed) {
+        for (let i = 0; i < migrated.length; i++) {
+            if (migrated[i] !== events[i]) { changed = true; break; }
+        }
+    }
+    return changed ? migrated : null;
+}
 
 /** Single postpone action, logged so the heatmap KPI can show
  *  "本plan推迟数" / "本月推迟数" without parsing plan state deltas. */
@@ -193,18 +224,20 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         const parsed: DoseEvent[] = saved ? JSON.parse(saved) : [];
         // One-shot per-dose-weight migration: backfill events that predate the
         // schema change so every PK call has a real weight to work with.
-        if (eventsNeedWeightMigration(parsed)) {
+        let next = parsed;
+        if (eventsNeedWeightMigration(next)) {
             const legacyRaw = localStorage.getItem(LEGACY_WEIGHT_KEY);
             const legacyW = legacyRaw ? parseFloat(legacyRaw) : DEFAULT_WEIGHT_KG;
-            const migrated = backfillEventWeights(parsed, legacyW);
-            localStorage.setItem('hrt-events', JSON.stringify(migrated));
+            next = backfillEventWeights(next, legacyW);
             if (!localStorage.getItem(WEIGHT_MIGRATION_FLAG)) {
                 localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
                 justMigratedRef.current = true;
             }
-            return migrated;
         }
-        return parsed;
+        const heightMigrated = migrateHeights(next);
+        if (heightMigrated) next = heightMigrated;
+        if (next !== parsed) localStorage.setItem('hrt-events', JSON.stringify(next));
+        return next;
     });
 
     // Wrap the exported `setEvents` so any time events change we also bump
@@ -596,7 +629,7 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                         localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
                         window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
                     }
-                    setEvents(migrated);
+                    setEvents(migrateHeights(migrated) ?? migrated);
                 } else {
                     setEvents(parsed);
                 }
