@@ -4,7 +4,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { getRouteIcon, formatTime } from '../utils/helpers';
 import { DoseEvent } from '../../logic';
 import { Plan, Route as RouteEnum } from '../../types';
-import { prefillWeightKG } from '../utils/weight';
+import { resolveBodyStats } from '../utils/weight';
 import { X, ListChecks, Check } from 'lucide-react';
 
 interface BatchPlanConfirmModalProps {
@@ -25,7 +25,7 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
     if (!isOpen) return null;
 
     const handleConfirm = () => {
-        const defaultWeight = prefillWeightKG(events);
+        const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(events);
         const nowH = Date.now() / 3600000;
         const newEvents: DoseEvent[] = matches.map(({ plan, scheduledAt }) => {
             const timeH = scheduledAt.getTime() / 3600000;
@@ -36,6 +36,7 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
                 doseMG: plan.doseMG,
                 ester: plan.ester,
                 weightKG: defaultWeight,
+                heightCm: defaultHeight,
                 // Carry the plan's extras into the event so downstream PK code
                 // sees the same per-route settings the user configured.
                 extras: { ...plan.extras },

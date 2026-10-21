@@ -6,7 +6,7 @@ import { useTranslation } from '../contexts/LanguageContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useAppData, PER_DOSE_WEIGHT_MIGRATION_EVENT } from '../contexts/AppDataContext';
 import { formatDate, formatTime } from '../utils/helpers';
-import { prefillWeightKG } from '../utils/weight';
+import { resolveBodyStats } from '../utils/weight';
 import { DoseEvent, LabResult, Route, Ester } from '../../logic';
 import { Plan } from '../../types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
@@ -294,7 +294,10 @@ const MainLayout: React.FC = () => {
                 const key = `${planId}@${scheduledAtMs}`;
                 if (action === 'confirm') {
                     if (!plan) return;
-                    const defaultWeight = prefillWeightKG(latestEvents);
+                    // 以前这里只挑 weightKG，heightCm 被漏掉，计划产生的记录在
+                    // 历史列表 / AI 导出里都显示不出身高。改走 resolveBodyStats
+                    // 这个唯一入口，以后加第三项体征也不会再漏。
+                    const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(latestEvents);
                     const newEvent: DoseEvent = {
                         id: `event-${uuidv4()}`,
                         route: plan.route,
@@ -302,6 +305,7 @@ const MainLayout: React.FC = () => {
                         timeH: Date.now() / 3600000,
                         doseMG: plan.doseMG,
                         weightKG: defaultWeight,
+                        heightCm: defaultHeight,
                         extras: { ...plan.extras },
                     };
                     setEvents(prev => {
@@ -391,7 +395,7 @@ const MainLayout: React.FC = () => {
         const plan = matchedPendingPlan;
         setPendingReminder(null);
         if (!plan || !pendingReminder) return;
-        const defaultWeight = prefillWeightKG(events);
+        const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(events);
         const newEvent: DoseEvent = {
             id: `event-${uuidv4()}`,
             route: plan.route,
@@ -399,6 +403,7 @@ const MainLayout: React.FC = () => {
             timeH: Date.now() / 3600000,
             doseMG: plan.doseMG,
             weightKG: defaultWeight,
+            heightCm: defaultHeight,
             extras: { ...plan.extras },
         };
         setEvents(prev => {
@@ -420,7 +425,7 @@ const MainLayout: React.FC = () => {
         const target = bannerEntries.find(e => e.pending.scheduledAtMs === scheduledAtMs);
         if (!target) return;
         const plan = target.plan;
-        const defaultWeight = prefillWeightKG(events);
+        const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(events);
         const newEvent: DoseEvent = {
             id: `event-${uuidv4()}`,
             route: plan.route,
@@ -428,6 +433,7 @@ const MainLayout: React.FC = () => {
             timeH: Date.now() / 3600000,
             doseMG: plan.doseMG,
             weightKG: defaultWeight,
+            heightCm: defaultHeight,
             extras: { ...plan.extras },
         };
         setEvents(prev => {
@@ -687,6 +693,9 @@ const MainLayout: React.FC = () => {
                 timeH: nowH,
                 doseMG: 0,
                 weightKG: apply.weightKG,
+                // 摘下事件以前只继承 weightKG，身高丢了；记录列表里两条
+                // 记录会显得「同一次贴片，一个 176 一个空」。
+                heightCm: apply.heightCm,
                 extras: {},
                 companionGroupId: groupId,
             };

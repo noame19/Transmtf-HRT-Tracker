@@ -123,3 +123,86 @@ export function findLatestHeight(events: DoseEvent[]): number | null {
 export function prefillHeightCM(events: DoseEvent[]): number {
     return findLatestPositiveHeight(events) ?? DEFAULT_HEIGHT_CM;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Height migration — the weight counterpart above existed since day one, but
+// height had no equivalent. Events produced by the plan/reminder one-tap
+// confirm paths (MainLayout ×3, BatchPlanConfirmModal ×1) simply omitted
+// `heightCm`, so months of history ended up with a weight on every row and a
+// height on only some of them. Backfill is deliberately conservative: it only
+// fills events that have NO usable height, and takes the nearest earlier
+// measurement (falling forward to the nearest later one for events that
+// predate the user's first height entry). It never overwrites a real value.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** True when any event is missing a positive numeric heightCm. */
+export function eventsNeedHeightMigration(events: unknown): boolean {
+    if (!Array.isArray(events)) return false;
+    return events.some((e) => {
+        if (!e || typeof e !== 'object') return false; // weight migration drops those
+        const h = (e as { heightCm?: unknown }).heightCm;
+        return typeof h !== 'number' || !Number.isFinite(h) || h <= 0;
+    });
+}
+
+/**
+ * Fill in missing per-event heights using the nearest measured height in time.
+ * Height barely changes over months, so nearest-neighbour is a better estimate
+ * than a global constant — and unlike `backfillEventWeights` it must not write
+ * DEFAULT_HEIGHT_CM into every gap, because that silently turns "never
+ * recorded" into a fake 160 cm measurement.
+ *
+ * `fallbackHeight` (optional) is used only for events with no measured height
+ * on either side — typically an entirely fresh log. Pass undefined to leave
+ * those untouched so the UI can keep showing the honest "not recorded" state.
+ */
+export function backfillEventHeights(events: DoseEvent[], fallbackHeight?: number): DoseEvent[] {
+    const clean = (events || []).filter((ev) => ev && typeof ev === 'object');
+    const fb = (typeof fallbackHeight === 'number' && Number.isFinite(fallbackHeight) && fallbackHeight > 0)
+        ? fallbackHeight
+        : undefined;
+
+    // Collect measured heights, sorted by time, for nearest-neighbour lookup.
+    const measured = clean
+        .map((ev, idx) => ({ idx, timeH: ev.timeH, h: (ev as { heightCm?: unknown }).heightCm }))
+        .filter((x): x is { idx: number; timeH: number; h: number } =>
+            typeof x.h === 'number' && Number.isFinite(x.h) && x.h > 0)
+        .sort((a, b) => a.timeH - b.timeH);
+
+    if (measured.length === 0) {
+        return fb === undefined ? clean : clean.map(ev => ({ ...ev, heightCm: fb }));
+    }
+
+    const nearest = (timeH: number): number => {
+        // Binary search for the first measurement at/after timeH.
+        let lo = 0, hi = measured.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (measured[mid].timeH < timeH) lo = mid + 1; else hi = mid;
+        }
+        const after = measured[lo];
+        const before = lo > 0 ? measured[lo - 1] : undefined;
+        if (!before) return after.h;
+        if (!after) return before.h;
+        return (timeH - before.timeH) <= (after.timeH - timeH) ? before.h : after.h;
+    };
+
+    return clean.map((ev) => {
+        const h = (ev as { heightCm?: unknown }).heightCm;
+        const ok = typeof h === 'number' && Number.isFinite(h) && h > 0;
+        if (ok) return ev;
+        const estimate = measured.length > 0 ? nearest(ev.timeH) : fb;
+        return estimate === undefined ? ev : { ...ev, heightCm: estimate };
+    });
+}
+
+/**
+ * Single source of truth for "what body stats should this record carry".
+ * Every write path that creates a DoseEvent outside the full dose form (plan
+ * one-tap confirm, batch plan confirm, patch remove) should use this instead
+ * of hand-picking `prefillWeightKG` — that habit is exactly what dropped
+ * heightCm from those paths in the first place.
+ */
+export function resolveBodyStats(events: DoseEvent[]): { weightKG: number; heightCm: number } {
+    return { weightKG: prefillWeightKG(events), heightCm: prefillHeightCM(events) };
+}
