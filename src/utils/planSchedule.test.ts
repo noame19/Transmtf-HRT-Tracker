@@ -12,6 +12,7 @@ import {
     validatePlan,
     planReleaseRate,
     isRateOnlyPlan,
+    formatPlanDose,
     formatNextDue,
     sanitizePlansForConflict,
     pickPrimaryEnabledPlan,
@@ -837,5 +838,87 @@ describe('rate-only patch plans', () => {
         // NaN 是「表单还没算出来」的信号，不能因为填了速率就放行。
         const errors = validatePlan(patchPlan({ doseMG: NaN }));
         expect(errors.map((e) => e.messageKey)).toContain('plan.error.dose_invalid');
+    });
+});
+
+describe('formatPlanDose — rate-only plans never render as "0 mg"', () => {
+    const patchPlan = (overrides: Partial<Plan> = {}) => makePlan({
+        route: Route.patchApply,
+        ester: Ester.E2,
+        doseMG: 0,
+        extras: { [ExtraKey.releaseRateUGPerDay]: 100 },
+        ...overrides,
+    });
+
+    it('shows µg/d for a rate-only patch plan', () => {
+        expect(formatPlanDose(patchPlan())).toBe('100 µg/d');
+    });
+
+    it('keeps decimal rates intact (7.5 µg/d must not become 8)', () => {
+        expect(formatPlanDose(patchPlan({ extras: { [ExtraKey.releaseRateUGPerDay]: 7.5 } }))).toBe('7.5 µg/d');
+    });
+
+    it('shows both values for legacy rows that carry a mg dose AND a rate', () => {
+        // 老编辑器两边都写；PK 引擎优先用 mg。两个都给用户看，别偷偷丢一个。
+        expect(formatPlanDose(patchPlan({ doseMG: 30 }))).toBe('30 mg · 100 µg/d');
+    });
+
+    it('falls back to mg for plans without a rate', () => {
+        expect(formatPlanDose(makePlan({ doseMG: 6.25 }))).toBe('6.25 mg');
+        expect(formatPlanDose(makePlan({ doseMG: 25 }))).toBe('25 mg');
+    });
+
+    it('never prints NaN at the user', () => {
+        expect(formatPlanDose(makePlan({ doseMG: Number.NaN }))).toBe('0 mg');
+        expect(formatPlanDose(patchPlan({ doseMG: Number.NaN, extras: {} }))).toBe('0 mg');
+    });
+
+    it('a non-patch plan with a stray rate extra still renders as mg', () => {
+        // 只有 patchApply 才该按速率展示；口服沾上这个 extra 属于脏数据。
+        expect(formatPlanDose(makePlan({ doseMG: 2, extras: { [ExtraKey.releaseRateUGPerDay]: 100 } }))).toBe('2 mg');
+    });
+});
+
+describe('nextDueAfter — fractional & per-weekday schedules stay reachable', () => {
+    // Regression guard for the horizon math: dueMomentsInRange caps its scan at
+    // 366 days, and a long interval on top of that cap used to be able to
+    // return [] (i.e. "this plan never fires").
+    it('finds the next occurrence of a 1.5-day plan', () => {
+        const plan = makePlan({
+            schedule: { kind: 'every_n_days', intervalDays: 1.5, times: ['08:00'] },
+        });
+        const next = nextDueAfter(plan, new Date(2026, 6, 1, 0, 0, 0));
+        expect(next).not.toBeNull();
+        expect(next!.getHours()).toBe(8);
+    });
+
+    it('finds the next occurrence of a 365-day plan (the upper bound)', () => {
+        const plan = makePlan({
+            schedule: { kind: 'every_n_days', intervalDays: 365, times: ['08:00'] },
+        });
+        // Day 0 fires, so from a moment AFTER day 0's time the next one is a
+        // year out — still inside the 366-day scan window.
+        const next = nextDueAfter(plan, new Date(2026, 6, 1, 9, 0, 0));
+        expect(next).not.toBeNull();
+        expect(next!.getFullYear()).toBe(2027);
+    });
+
+    it('respects per-weekday times when looking for the next due', () => {
+        // 2026-07-06 is a Monday. Plan fires Mon 21:00 and Wed 09:00.
+        const plan = makePlan({
+            startDateH: new Date(2026, 6, 6, 0, 0, 0).getTime() / 3600000,
+            schedule: {
+                kind: 'weekly',
+                weekdays: [1, 3],
+                times: ['21:00'],
+                timesByWeekday: { 3: ['09:00'] },
+            },
+        });
+        const mon = nextDueAfter(plan, new Date(2026, 6, 6, 12, 0, 0));
+        expect(mon!.getDate()).toBe(6);
+        expect(mon!.getHours()).toBe(21);
+        const wed = nextDueAfter(plan, new Date(2026, 6, 7, 12, 0, 0));
+        expect(wed!.getDay()).toBe(3);
+        expect(wed!.getHours()).toBe(9);
     });
 });
