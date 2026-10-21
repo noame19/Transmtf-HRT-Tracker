@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { DoseEvent, Ester, Route } from '../lib/types';
-import { reconcileImportedPatchEvents } from './patchReconcile';
+import { reconcileImportedPatchEvents, sanitizePatchGroups } from './patchReconcile';
 
 const HOUR = 3600000;
 const makeEvent = (overrides: Partial<DoseEvent> = {}): DoseEvent => ({
@@ -101,5 +101,57 @@ describe('reconcileImportedPatchEvents', () => {
         expect(result).toHaveLength(1);
         expect(result[0].id).toBe('a');
         expect(result[0].companionGroupId).toBeUndefined();
+    });
+});
+describe('sanitizePatchGroups — the runtime half of the contract', () => {
+    const apply = (gid?: string, timeH = 0) =>
+        makeEvent({ id: `a-${timeH}`, route: Route.patchApply, timeH, companionGroupId: gid });
+    const remove = (gid?: string, timeH = 1) =>
+        makeEvent({ id: `r-${timeH}`, route: Route.patchRemove, timeH, companionGroupId: gid });
+
+    it('leaves a fully paired group untouched (same array reference)', () => {
+        const events = [apply('g1'), remove('g1')];
+        expect(sanitizePatchGroups(events)).toBe(events);
+    });
+
+    it('drops an orphan patchRemove', () => {
+        // Exactly what a bulk delete of the apply half used to leave behind.
+        const out = sanitizePatchGroups([apply(undefined), remove('ghost')]);
+        expect(out).toHaveLength(1);
+        expect(out[0].route).toBe(Route.patchApply);
+    });
+
+    it('strips a dangling groupId but keeps the apply', () => {
+        // The user is still wearing the patch; the apply must survive so the
+        // row can show its 摘下 button.
+        const out = sanitizePatchGroups([apply('solo')]);
+        expect(out).toHaveLength(1);
+        expect(out[0].route).toBe(Route.patchApply);
+        expect(out[0].companionGroupId).toBeUndefined();
+    });
+
+    it('keeps unrelated events byte-identical', () => {
+        const oral = makeEvent({ id: 'oral', route: Route.oral, timeH: 5 });
+        const out = sanitizePatchGroups([oral, remove('ghost')]);
+        expect(out).toHaveLength(1);
+        expect(out[0]).toBe(oral); // same object, not a clone
+    });
+
+    it('is idempotent', () => {
+        const once = sanitizePatchGroups([apply('solo'), remove('ghost')]);
+        expect(sanitizePatchGroups(once)).toBe(once);
+    });
+
+    it('returns the same reference when there are no patch events at all', () => {
+        const events = [makeEvent({ id: 'x', route: Route.oral, timeH: 1 })];
+        expect(sanitizePatchGroups(events)).toBe(events);
+    });
+
+    it('does NOT invent group ids (that heuristic stays import-only)', () => {
+        // Legacy pair with no groupId: reconcileImportedPatchEvents would pair
+        // them, sanitizePatchGroups must leave both alone.
+        const out = sanitizePatchGroups([apply(undefined, 0), remove(undefined, 24)]);
+        expect(out).toHaveLength(2);
+        out.forEach((e) => expect(e.companionGroupId).toBeUndefined());
     });
 });

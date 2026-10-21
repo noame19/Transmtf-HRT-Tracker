@@ -9,6 +9,7 @@ import {
 import { Plan } from '../lib/types';
 import { drugCategoryOf, sanitizePlansForConflict, dueMomentsInRange } from '../utils/planSchedule';
 import { computeDataHash } from '../utils/dataHash';
+import { sanitizePatchGroups } from '../utils/patchReconcile';
 import { GEL_PRODUCTS_KEY, readCustomGelProducts, writeCustomGelProducts } from '../utils/doseForm';
 import {
     backfillEventWeights,
@@ -55,6 +56,21 @@ function migrateHeights(events: DoseEvent[]): DoseEvent[] | null {
         }
     }
     return changed ? migrated : null;
+}
+
+/**
+ * Runtime patch-integrity pass. Import already runs the full reconciler
+ * (which can also invent group ids for pre-GroupId data); at runtime we only
+ * enforce the invariant — an orphan `patchRemove`, or an apply whose paired
+ * remove is gone. Without this, deleting a paired half (single delete, bulk
+ * delete, cloud merge) left an orphan behind until the next import.
+ *
+ * Returns null when nothing needed fixing, so the caller can skip the
+ * localStorage write (same contract as `migrateHeights`).
+ */
+function sanitizePatches(events: DoseEvent[]): DoseEvent[] | null {
+    const cleaned = sanitizePatchGroups(events);
+    return cleaned === events ? null : cleaned;
 }
 
 /** Single postpone action, logged so the heatmap KPI can show
@@ -236,6 +252,8 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
         const heightMigrated = migrateHeights(next);
         if (heightMigrated) next = heightMigrated;
+        const patchCleaned = sanitizePatches(next);
+        if (patchCleaned) next = patchCleaned;
         if (next !== parsed) localStorage.setItem('hrt-events', JSON.stringify(next));
         return next;
     });
@@ -629,9 +647,10 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
                         localStorage.setItem(WEIGHT_MIGRATION_FLAG, '1');
                         window.dispatchEvent(new CustomEvent(PER_DOSE_WEIGHT_MIGRATION_EVENT));
                     }
-                    setEvents(migrateHeights(migrated) ?? migrated);
+                    const withHeights = migrateHeights(migrated) ?? migrated;
+                    setEvents(sanitizePatches(withHeights) ?? withHeights);
                 } else {
-                    setEvents(parsed);
+                    setEvents(sanitizePatches(parsed) ?? parsed);
                 }
             }
 
