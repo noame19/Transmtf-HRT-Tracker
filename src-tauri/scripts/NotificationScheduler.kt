@@ -62,6 +62,12 @@ object NotificationScheduler {
      *  the handful of plans a user actually has. */
     private const val HORIZON_DAYS = 90L
 
+    /** 每个计划最多排多少个闹钟。Android 对单应用的精确闹钟有条数上限，90 天
+     *  × 每天多次会把上限撞干净（超出部分直接抛异常），而且一次广播里写几百
+     *  个闹钟会拖慢 onReceive。取 30：每日一次的计划有 30 天缓冲，每次响完
+     *  ReminderReceiver 会整表重排，链不会断。 */
+    private const val MAX_ALARMS_PER_PLAN = 30
+
     /** Scheduling never registers an alarm closer than this. When an alarm
      *  fires, `ReminderReceiver` immediately re-runs `scheduleReminders`; the
      *  moment that just fired is only microseconds in the past, so a naive
@@ -379,6 +385,16 @@ object NotificationScheduler {
         val newCodes = HashSet<String>()
         var count = 0
 
+        // Android 12+ 把精确闹钟做成了可被用户/系统关闭的特权。关掉之后
+        // setAlarmClock 会抛 SecurityException，而下面那个 try/catch 会把它
+        // 当成「偶发失败」吞掉——结果就是一个闹钟都没注册、通知永远不响，
+        // 而界面上看不出任何异常。所以先问一次能力，不具备就降级成不精确
+        // 闹钟：可能晚几分钟，但一定会响，比静默什么都不做强得多。
+        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || am.canScheduleExactAlarms()
+        if (!canExact) {
+            Log.w(TAG, "scheduleReminders: exact alarms not permitted — falling back to inexact")
+        }
+
         for (plan in plans) {
             if (!plan.enabled) continue
             // 2026-07-20 新增：per-plan 通知栏通知开关。关闭后该 plan 不调度 AlarmManager，
@@ -393,7 +409,14 @@ object NotificationScheduler {
                 Log.e(TAG, "scheduleReminders: plan ${plan.id} failed — skipping", e)
                 continue
             }
+            // 每个计划只排最近的若干个。Android 对单应用可挂的精确闹钟有条数
+            // 上限，90 天 × 每天多次会把它撞干净，而且一次广播里写几百个闹钟
+            // 本身就会拖慢 onReceive。ReminderReceiver 每次响完都会整表重排，
+            // 所以链不会断；保留 30 个只是为了「很久不打开 app」时仍有足够的
+            // 缓冲（每日一次即 30 天）。
+            var perPlan = 0
             for ((moment, isoTime) in moments) {
+                if (perPlan >= MAX_ALARMS_PER_PLAN) break
                 val requestCode = (plan.id.hashCode() xor isoTime.hashCode())
                 val pi = buildPendingIntent(context, requestCode, plan.id, moment)
                 // setAlarmClock = the only AlarmManager API that fires
@@ -412,17 +435,35 @@ object NotificationScheduler {
                 // the behaviour of stock alarm-clock apps). RTC_WAKEUP is
                 // inside AlarmClockInfo — no longer a separate parameter.
                 try {
-                    am.setAlarmClock(
-                        AlarmManager.AlarmClockInfo(moment, pi),
-                        pi,
-                    )
+                    if (canExact) {
+                        am.setAlarmClock(
+                            AlarmManager.AlarmClockInfo(moment, pi),
+                            pi,
+                        )
+                    } else {
+                        // RTC_WAKEUP + 允许 Doze 期间唤醒：精度降级，行为不丢。
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, moment, pi)
+                    }
                     newCodes.add(requestCode.toString())
                     count++
+                    perPlan++
                 } catch (e: Exception) {
                     // Some OEMs throw SecurityException on setAlarmClock when
                     // their own alarm budget is exhausted. One lost alarm is
                     // survivable; losing the whole sweep is not.
                     Log.e(TAG, "scheduleReminders: setAlarmClock failed for ${plan.id}", e)
+                    // 连精确闹钟的注册都失败（例如权限在检查后被收回），
+                    // 本次就切到不精确模式，别让这条计划整轮空掉。
+                    if (canExact) {
+                        try {
+                            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, moment, pi)
+                            newCodes.add(requestCode.toString())
+                            count++
+                            perPlan++
+                        } catch (e2: Exception) {
+                            Log.e(TAG, "scheduleReminders: inexact fallback failed too", e2)
+                        }
+                    }
                 }
             }
         }

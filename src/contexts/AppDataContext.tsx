@@ -795,15 +795,24 @@ export const AppDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
         const run = async () => {
             try {
-                if (!remindersEnabled) {
+                if (!remindersEnabled || plans.length === 0) {
                     await invoke('cancel_all_reminders');
                     return;
                 }
-                if (plans.length === 0) {
-                    await invoke('cancel_all_reminders');
-                    return;
-                }
+            } catch {
+                return;
+            }
+            // 通道与调度必须分开 try。两者原本包在同一个 try 里：只要
+            // ensure_notification_channel 抛一次异常（旧版安卓、OEM 改过的
+            // NotificationManager、通道被系统删过都可能），后面的
+            // schedule_plan_reminders 就永远不会执行 —— 结果是零个闹钟被注册，
+            // 时间到了什么都不响，而且因为异常被吞掉，界面上也看不出任何异常。
+            try {
                 await invoke('ensure_notification_channel');
+            } catch {
+                /* 通道修不好也要继续排闹钟，否则连降级提醒都没有 */
+            }
+            try {
                 await invoke('schedule_plan_reminders', { plansJson: JSON.stringify(plans) });
             } catch {
                 /* Command may not be wired yet (Step 7 lands later) — fail
