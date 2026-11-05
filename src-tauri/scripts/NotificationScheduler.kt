@@ -344,7 +344,15 @@ object NotificationScheduler {
      */
     @JvmStatic
     fun scheduleReminders(context: Context, plansJson: String): Int {
-        ensureChannel(context)
+        // 通道修不好不能让整次调度失败。ensureChannel 排在最开头且不在任何
+        // try 里，它一旦抛异常（通道被系统删过 / OEM 改过的 NotificationManager）
+        // 整个命令就 Err 返回，JS 侧看到的就是“零个闹钟”。没有通道顶多少一个
+        // heads-up 浮层，闹钟本身还是应该注册的。
+        try {
+            ensureChannel(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "scheduleReminders: ensureChannel failed — scheduling anyway", e)
+        }
 
         // Parse BEFORE touching anything. The old order wiped every alarm
         // first and only then tried to parse — so one malformed payload (or
