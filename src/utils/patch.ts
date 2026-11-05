@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { DoseEvent, Route } from '../lib/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8,9 +9,9 @@ import { DoseEvent, Route } from '../lib/types';
 //   2. `Route.patchRemove` — when the user takes it off.
 //
 // Pairing is the *UI's* concern only:
-//   - The PK engine (pk.ts / personalModel.ts / mipd.ts) still scans the time
-//     axis for the next `patchRemove` after each `patchApply`, so the engine
-//     keeps working on legacy data that has no `companionGroupId`.
+//   - The PK engine (pk.ts / personalModel.ts / mipd.ts) resolves the wear
+//     window by `companionGroupId` (strict, no time-axis fallback), so every
+//     `patchApply` must be born with a key — see `stampPatchGroup`.
 //   - The form's "unified 贴片" entry-point (DoseFormModal) writes BOTH events
 //     at save time and stamps them with a shared `companionGroupId` UUID so
 //     the /history list can render a "贴片移除" button on the apply card that
@@ -46,6 +47,26 @@ export const patchGroupOf = (ev: DoseEvent): string | null => {
     const id = ev.companionGroupId;
     return typeof id === 'string' && id.trim().length > 0 ? id : null;
 };
+
+/**
+ * Stamp a freshly built `patchApply` with the pairing key its future
+ * `patchRemove` will reuse.
+ *
+ * Why this exists: the dose FORM writes both halves itself and can hand them a
+ * shared id, but plan confirmation / batch confirm / reminder confirm build a
+ * single event straight from `plan.route` and never did. Those applies had no
+ * key, so `PrecomputedEventModel` found no remove and modelled the patch as
+ * worn forever — the E2 curve rose to a plateau and never came back down, and
+ * the "摘下" button could never pair either. Giving the apply a key at birth
+ * fixes both, and a later remove simply reuses it.
+ *
+ * Non-apply routes, and applies that already carry a key, pass through
+ * untouched (same reference) so callers can apply this unconditionally.
+ */
+export const stampPatchGroup = (ev: DoseEvent): DoseEvent =>
+    ev.route === Route.patchApply && !patchGroupOf(ev)
+        ? { ...ev, companionGroupId: uuidv4() }
+        : ev;
 
 /**
  * Find the remove event paired with `apply`. **Strict groupId-only** — only

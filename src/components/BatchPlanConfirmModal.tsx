@@ -5,6 +5,7 @@ import { getRouteIcon, formatTime } from '../utils/helpers';
 import { DoseEvent } from '../lib/logic';
 import { Plan, Route as RouteEnum } from '../lib/types';
 import { resolveBodyStats } from '../utils/weight';
+import { stampPatchGroup } from '../utils/patch';
 import { formatPlanDose } from '../utils/planSchedule';
 import { X, ListChecks, Check } from 'lucide-react';
 
@@ -30,7 +31,9 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
         const nowH = Date.now() / 3600000;
         const newEvents: DoseEvent[] = matches.map(({ plan, scheduledAt }) => {
             const timeH = scheduledAt.getTime() / 3600000;
-            return {
+            // `stampPatchGroup` 给贴片 apply 发一个配对键；否则 PK 引擎找不到
+            // remove，只能把这贴片当「永远戴着」建模（曲线只升不降）。
+            return stampPatchGroup({
                 id: `event-${uuidv4()}`,
                 route: plan.route,
                 timeH,
@@ -41,7 +44,7 @@ const BatchPlanConfirmModal: React.FC<BatchPlanConfirmModalProps> = ({
                 // Carry the plan's extras into the event so downstream PK code
                 // sees the same per-route settings the user configured.
                 extras: { ...plan.extras },
-            };
+            });
         });
         onConfirm(newEvents);
     };

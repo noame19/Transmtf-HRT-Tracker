@@ -11,7 +11,7 @@ import { DoseEvent, LabResult, Route, Ester } from '../lib/logic';
 import { Plan } from '../lib/types';
 import { findConflicts, matchPlansForNow } from '../utils/planSchedule';
 import { classifyDueState, findDueReminders, isDueReminderStale, PLAN_REMINDER_AUTO_DISMISS_MIN, DueReminder } from '../utils/planReminder';
-import { isPatchApply, collectCascadeIds, shouldCascadeRemove, removeCompanion } from '../utils/patch';
+import { isPatchApply, collectCascadeIds, shouldCascadeRemove, removeCompanion, stampPatchGroup } from '../utils/patch';
 import ReminderModal from './ReminderModal';
 import ReminderBanner, { PendingReminder } from './ReminderBanner';
 
@@ -329,7 +329,7 @@ const MainLayout: React.FC = () => {
                     // 历史列表 / AI 导出里都显示不出身高。改走 resolveBodyStats
                     // 这个唯一入口，以后加第三项体征也不会再漏。
                     const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(latestEvents);
-                    const newEvent: DoseEvent = {
+                    const newEvent: DoseEvent = stampPatchGroup({
                         id: `event-${uuidv4()}`,
                         route: plan.route,
                         ester: plan.ester,
@@ -338,7 +338,7 @@ const MainLayout: React.FC = () => {
                         weightKG: defaultWeight,
                         heightCm: defaultHeight,
                         extras: { ...plan.extras },
-                    };
+                    });
                     setEvents(prev => {
                         const exists = prev.find(e => e.id === newEvent.id);
                         return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
@@ -433,7 +433,7 @@ const MainLayout: React.FC = () => {
         setPendingReminder(null);
         if (!plan || !pendingReminder) return;
         const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(events);
-        const newEvent: DoseEvent = {
+        const newEvent: DoseEvent = stampPatchGroup({
             id: `event-${uuidv4()}`,
             route: plan.route,
             ester: plan.ester,
@@ -442,7 +442,7 @@ const MainLayout: React.FC = () => {
             weightKG: defaultWeight,
             heightCm: defaultHeight,
             extras: { ...plan.extras },
-        };
+        });
         setEvents(prev => {
             const exists = prev.find(e => e.id === newEvent.id);
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];
@@ -463,7 +463,7 @@ const MainLayout: React.FC = () => {
         if (!target) return;
         const plan = target.plan;
         const { weightKG: defaultWeight, heightCm: defaultHeight } = resolveBodyStats(events);
-        const newEvent: DoseEvent = {
+        const newEvent: DoseEvent = stampPatchGroup({
             id: `event-${uuidv4()}`,
             route: plan.route,
             ester: plan.ester,
@@ -472,7 +472,7 @@ const MainLayout: React.FC = () => {
             weightKG: defaultWeight,
             heightCm: defaultHeight,
             extras: { ...plan.extras },
-        };
+        });
         setEvents(prev => {
             const exists = prev.find(e => e.id === newEvent.id);
             return exists ? prev.map(e => e.id === newEvent.id ? newEvent : e) : [...prev, newEvent];

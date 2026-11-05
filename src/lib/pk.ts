@@ -2,6 +2,15 @@ import { Route, Ester, ExtraKey, type DoseEvent, type SimulationResult, type Con
 import { patchGroupOf } from '../utils/patch';
 
 /**
+ * Longest plausible wear time for a single transdermal patch. Used only as a
+ * fallback when a `patchApply` has no recorded `patchRemove`: transdermal
+ * patches are changed every 3-7 days and none is worn past two weeks, so
+ * assuming this cap is far closer to the truth than assuming "worn forever"
+ * (which left a permanent plateau on the E2 curve).
+ */
+const ASSUMED_MAX_PATCH_WEAR_H = 14 * 24;
+
+/**
  * Route-specific metadata for transdermal gel absorption.
  *
  * These definitions live in the PK module because they directly affect
@@ -1023,10 +1032,17 @@ class PrecomputedEventModel {
                 break;
             case Route.patchApply: {
                 // Strict groupId-only pairing: a patchApply's wear window is its
-                // sibling patchRemove stamped with the same companionGroupId. Without
-                // a groupId (legacy / hand-edited data) we fall back to "worn forever"
-                // — conservative, never wrong, and never reintroduces the 1-to-N bug
-                // that time-axis scan caused.
+                // sibling patchRemove stamped with the same companionGroupId.
+                //
+                // A missing remove does NOT mean "still on the skin forever".
+                // Before this cap the model used Number.MAX_VALUE, so one apply
+                // whose remove was never recorded (the "摘下" button was broken
+                // for a while, and plan-confirmed applies had no pairing key at
+                // all) contributed a plateau that never decayed — the whole E2
+                // curve flattened and stopped responding to patch changes.
+                // 14 days is the hard upper bound for any transdermal patch, so
+                // capping there is safe: a real wear window that short is
+                // unaffected, and missing data stops poisoning the tail.
                 const evGroupId = patchGroupOf(event);
                 const remove = evGroupId
                     ? allEvents.find(e =>
@@ -1034,7 +1050,7 @@ class PrecomputedEventModel {
                         patchGroupOf(e) === evGroupId &&
                         e.timeH > startTime)
                     : undefined;
-                const wearH = (remove?.timeH ?? Number.MAX_VALUE) - startTime;
+                const wearH = (remove?.timeH ?? (startTime + ASSUMED_MAX_PATCH_WEAR_H)) - startTime;
 
                 this.model = (timeH: number) => {
                     const tau = timeH - startTime;
