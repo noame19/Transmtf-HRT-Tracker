@@ -513,6 +513,34 @@ body {
     .glass, .glass-subtle, .glass-heavy, .glass-modal, .glass-input, .glass-btn { background: var(--bg-card) !important; }
 }
 
+/*
+ * Android 性能降级（由 src/main.tsx 根据 UA 打上 .is-android）。
+ *
+ * WebView 里的 backdrop-filter 是软件路径：每次重绘都要把下层内容整屏回读、
+ * 模糊、再合成。吸顶头部与底部标签栏各有一层玻璃，所以切 tab 这种整页换内容
+ * 的操作要连着算两遍，是中低端安卓上“切标签要等很久”的主因。
+ * 处理办法：安卓上关掉模糊，同时把底色提到接近不透明，视觉上仍是同一套配色，
+ * 但不再需要实时取样背景。网页端完全不受影响。
+ */
+.is-android {
+    --glass-bg-subtle:  rgba(255,255,255,0.96);
+    --glass-bg-default: rgba(255,255,255,0.97);
+    --glass-bg-heavy:   rgba(255,255,255,0.99);
+}
+.dark.is-android {
+    --glass-bg-subtle:  rgba(15,23,42,0.96);
+    --glass-bg-default: rgba(15,23,42,0.97);
+    --glass-bg-heavy:   rgba(15,23,42,0.99);
+}
+.is-android .glass,
+.is-android .glass-subtle,
+.is-android .glass-heavy,
+.is-android .glass-input,
+.is-android .glass-btn {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
     .modal-spring-glass, .modal-slide-up-glass, .card-lift-glass, .btn-press-glass,
