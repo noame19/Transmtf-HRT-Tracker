@@ -701,9 +701,12 @@ const MainLayout: React.FC = () => {
      * One-tap "贴片移除" from the /history list. Builds a Route.patchRemove
      * event stamped with the apply's companionGroupId (so the existing apply
      * card immediately hides the button on next render) and `timeH = now`.
-     * The event is appended to storage; the apply itself is untouched, so the
-     * PK engine's existing time-axis pairing logic continues to see both
-     * events even if companionGroupId were ever stripped.
+     *
+     * BOTH sides are stamped with the same groupId. Writing it only onto the
+     * new remove left the apply keyless, and every reader pairs strictly by
+     * groupId — so the button never disappeared and the "摘下时间" hint never
+     * appeared. Reusing the apply's existing id keeps already-paired data
+     * stable across repeat clicks.
      */
     const handleRemovePatch = (applyId: string) => {
         setEvents(prev => {
@@ -712,8 +715,8 @@ const MainLayout: React.FC = () => {
             const nowH = Date.now() / 3600000;
             if (nowH <= apply.timeH) {
                 // Refuse to record a remove at/before the apply time — the
-                // time-axis pairing would be nonsense and the UI already
-                // hides the button when no future-time remove exists.
+                // pairing would be nonsense and the UI already hides the
+                // button when no future-time remove exists.
                 return prev;
             }
             const groupId = apply.companionGroupId && apply.companionGroupId.trim().length > 0
@@ -736,7 +739,12 @@ const MainLayout: React.FC = () => {
                 extras: {},
                 companionGroupId: groupId,
             };
-            return [...prev, removeEvent];
+            return [
+                ...prev.map(p => (p.id === applyId && p.companionGroupId !== groupId
+                    ? { ...p, companionGroupId: groupId }
+                    : p)),
+                removeEvent,
+            ];
         });
     };
     const handleDeleteEvent = (id: string) => {

@@ -121,13 +121,18 @@ describe('sanitizePatchGroups — the runtime half of the contract', () => {
         expect(out[0].route).toBe(Route.patchApply);
     });
 
-    it('strips a dangling groupId but keeps the apply', () => {
-        // The user is still wearing the patch; the apply must survive so the
-        // row can show its 摘下 button.
+    it('keeps the apply\'s reserved groupId when the remove is still missing', () => {
+        // 「正在佩戴」是合法状态。groupId 是未来那条 remove 的预留键,剥掉它
+        // 会让「摘下」按钮永远配不上对(见 handleRemovePatch),所以必须原样保留。
         const out = sanitizePatchGroups([apply('solo')]);
         expect(out).toHaveLength(1);
         expect(out[0].route).toBe(Route.patchApply);
-        expect(out[0].companionGroupId).toBeUndefined();
+        expect(out[0].companionGroupId).toBe('solo');
+    });
+
+    it('does not clone a lone apply (nothing to fix → same reference)', () => {
+        const events = [apply('solo')];
+        expect(sanitizePatchGroups(events)).toBe(events);
     });
 
     it('keeps unrelated events byte-identical', () => {
@@ -140,6 +145,7 @@ describe('sanitizePatchGroups — the runtime half of the contract', () => {
     it('is idempotent', () => {
         const once = sanitizePatchGroups([apply('solo'), remove('ghost')]);
         expect(sanitizePatchGroups(once)).toBe(once);
+        expect(once[0].companionGroupId).toBe('solo');
     });
 
     it('returns the same reference when there are no patch events at all', () => {

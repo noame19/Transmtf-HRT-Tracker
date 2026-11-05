@@ -21,20 +21,24 @@ const groupOf = (e: DoseEvent): string | null => {
  * orphan survived until the user happened to import a backup. Running this on
  * every load keeps the invariant true; it is a single O(n) pass and idempotent.
  *
+ * ONLY orphan removes are dropped. An apply's `companionGroupId` is never
+ * touched: it is the reserved key its FUTURE remove will be stamped with, and
+ * "worn right now, not taken off yet" is a normal state, not corruption. An
+ * earlier version stripped it — the apply lost its key, the "摘下" handler
+ * then minted a fresh id for the remove alone, and the pair could never be
+ * recognised again (button stuck on screen forever, no "摘下时间" hint).
+ *
  * Returns the SAME array reference when nothing needed fixing, so callers can
  * cheaply decide whether to write localStorage.
  */
 export function sanitizePatchGroups(events: DoseEvent[]): DoseEvent[] {
-    const groupIds = new Set<string>();
+    // A remove is an orphan when no apply shares its groupId. Applies carry
+    // their key from creation time, so this set alone decides remove validity.
+    const groupsWithApply = new Set<string>();
     for (const e of events) {
+        if (!isPatchApply(e)) continue;
         const g = groupOf(e);
-        if (g) groupIds.add(g);
-    }
-    const validGroups = new Set<string>();
-    for (const g of groupIds) {
-        const hasApply = events.some((e) => groupOf(e) === g && isPatchApply(e));
-        const hasRemove = events.some((e) => groupOf(e) === g && isPatchRemove(e));
-        if (hasApply && hasRemove) validGroups.add(g);
+        if (g) groupsWithApply.add(g);
     }
 
     let changed = false;
@@ -42,16 +46,7 @@ export function sanitizePatchGroups(events: DoseEvent[]): DoseEvent[] {
     for (const e of events) {
         if (isPatchRemove(e)) {
             const g = groupOf(e);
-            if (g && !validGroups.has(g)) { changed = true; continue; } // orphan remove → drop
-        }
-        if (isPatchApply(e)) {
-            const g = groupOf(e);
-            if (g && !validGroups.has(g)) {
-                // dangling groupId on apply → strip it, keep the event
-                changed = true;
-                cleaned.push({ ...e, companionGroupId: undefined });
-                continue;
-            }
+            if (g && !groupsWithApply.has(g)) { changed = true; continue; } // orphan remove → drop
         }
         cleaned.push(e);
     }
@@ -64,15 +59,8 @@ export function sanitizePatchGroups(events: DoseEvent[]): DoseEvent[] {
  *
  *   1. Drop orphan `patchRemove` events whose `companionGroupId` has no
  *      matching `patchApply` in the same array (`sanitizePatchGroups`).
- *   2. Strip a dangling `companionGroupId` off any `patchApply` whose paired
- *      `patchRemove` is missing (UI must not show "摘下时间" for it).
- *   3. Backfill `companionGroupId` on legacy pairs (no groupId but a
- *      `patchRemove` lands within 14 days of the `patchApply` on the time
- *      axis). Pairing is 1-to-1 greedy: each `patchRemove` is consumed by
- *      the earliest unpaired `patchApply` whose wear window contains it.
- *   4. Events without any patch context pass through untouched.
- *
- * Step 3 is deliberately import-only: it *invents* group ids from the time
+ *   2. Backfill `companionGroupId` on legacy pairs — a `patchRemove` landing
+ *      within 14 days of an unpaired `patchApply` on the time axis.
  * axis, which is exactly the heuristic the project moved away from at runtime
  * (the old "within 14 days" fallback mis-paired different patch cycles).
  * Running it on every boot would re-introduce that bug, so only the invariant
@@ -83,12 +71,22 @@ export function sanitizePatchGroups(events: DoseEvent[]): DoseEvent[] {
  * data into the PK engine.
  */
 export function reconcileImportedPatchEvents(events: DoseEvent[]): DoseEvent[] {
-    // ── Pass 1: drop orphan removes + strip dangling groupIds ─────────────
+    // ── Pass 1: drop orphan removes (apply groupIds are left alone) ──────────
     const cleaned = sanitizePatchGroups(events);
 
-    // ── Pass 2: 1-to-1 greedy pairing of legacy (no-groupId) pairs ───────
+    // ── Pass 2: 1-to-1 greedy pairing of legacy / dangling pairs ────────────
+    // An apply is "unpaired" when no remove shares its groupId — that covers
+    // both "no groupId at all" (legacy data) and "groupId reserved but the
+    // remove was lost". Both are repairable here; at runtime nothing invents
+    // ids, so a reserved groupId survives untouched.
+    const removedGroups = new Set<string>();
+    for (const e of cleaned) {
+        if (!isPatchRemove(e)) continue;
+        const g = groupOf(e);
+        if (g) removedGroups.add(g);
+    }
     const noGroupApply = cleaned
-        .filter((e) => isPatchApply(e) && !groupOf(e))
+        .filter((e) => isPatchApply(e) && !removedGroups.has(groupOf(e) ?? ''))
         .sort((a, b) => a.timeH - b.timeH);
     const noGroupRemove = cleaned
         .filter((e) => isPatchRemove(e) && !groupOf(e))
